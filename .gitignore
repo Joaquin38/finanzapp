@@ -19,6 +19,12 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Local database exports
+backups/
+*.dump
+datos_locales.sql
+schema_local.sql
+
 # OS/editor
 .DS_Store
 Thumbs.db

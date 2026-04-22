@@ -7,16 +7,62 @@ const crypto = require('crypto');
 dotenv.config();
 
 const app = express();
-app.use(cors());
+const corsOrigin = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',').map((origin) => origin.trim()).filter(Boolean)
+  : true;
+app.use(cors({ origin: corsOrigin }));
 app.use(express.json());
 
-const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: Number(process.env.DB_PORT || 5432),
-  database: process.env.DB_NAME || 'finanzas_db',
-  user: process.env.DB_USER || 'finanzas',
-  password: process.env.DB_PASSWORD || 'finanzas_dev'
-});
+function envFlag(value) {
+  return ['1', 'true', 'yes', 'require'].includes(String(value || '').toLowerCase());
+}
+
+const sslConfig = envFlag(process.env.DB_SSL) ? { rejectUnauthorized: false } : undefined;
+const dbSchema = process.env.DB_SCHEMA || 'public';
+const dbOptions = `-c search_path=${dbSchema}`;
+const pool = new Pool(
+  process.env.DATABASE_URL
+    ? {
+        connectionString: process.env.DATABASE_URL,
+        ssl: sslConfig,
+        max: Number(process.env.DB_POOL_MAX || 5),
+        options: dbOptions
+      }
+    : {
+        host: process.env.DB_HOST || 'localhost',
+        port: Number(process.env.DB_PORT || 5432),
+        database: process.env.DB_NAME || 'finanzas_db',
+        user: process.env.DB_USER || 'finanzas',
+        password: process.env.DB_PASSWORD || 'finanzas_dev',
+        ssl: sslConfig,
+        max: Number(process.env.DB_POOL_MAX || 10),
+        options: dbOptions
+      }
+);
+
+function getSafeSchemaName(schema) {
+  return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(schema || '') ? schema : 'public';
+}
+
+async function setSearchPath(client) {
+  await client.query(`SET search_path TO ${getSafeSchemaName(dbSchema)}`);
+}
+
+const poolConnect = pool.connect.bind(pool);
+pool.connect = async (...args) => {
+  const client = await poolConnect(...args);
+  await setSearchPath(client);
+  return client;
+};
+
+pool.query = async (...args) => {
+  const client = await pool.connect();
+  try {
+    return await client.query(...args);
+  } finally {
+    client.release();
+  }
+};
 const COTIZACIONES_API_PUBLICA = 'https://dolarapi.com/v1/dolares/oficial';
 const AUTH_SECRET = process.env.AUTH_SECRET || 'finanzas-app-dev-secret';
 const ROLES_HOGAR = ['superadmin', 'hogar_admin', 'hogar_member'];
@@ -2366,10 +2412,14 @@ app.patch('/gastos-fijos/:id/estado-ciclo', async (req, res) => {
   }
 });
 
-const port = Number(process.env.API_PORT || 3000);
-app.listen(port, () => {
-  console.log(`finanzas-backend escuchando en http://localhost:${port}`);
-  asegurarDatosColon260().catch((error) => {
-    console.error('No se pudo asegurar datos iniciales de Colon 260', error);
+if (require.main === module) {
+  const port = Number(process.env.API_PORT || 3000);
+  app.listen(port, () => {
+    console.log(`finanzas-backend escuchando en http://localhost:${port}`);
+    asegurarDatosColon260().catch((error) => {
+      console.error('No se pudo asegurar datos iniciales de Colon 260', error);
+    });
   });
-});
+}
+
+module.exports = app;
