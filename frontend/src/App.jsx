@@ -135,6 +135,7 @@ export default function App() {
   const rolActivo = session?.usuario?.rol_global === 'superadmin' ? 'superadmin' : hogarActivo?.rol || session?.usuario?.rol;
   const canManageHome = rolActivo === 'superadmin' || rolActivo === 'hogar_admin';
   const canOperateHome = canManageHome || rolActivo === 'hogar_member';
+  const canSwitchHogar = hogaresContexto.length > 1;
   const mostrarAccionesCiclo = seccionActiva === 'dashboard' || seccionActiva === 'movimientos';
 
   const ciclosTendencia = useMemo(() => {
@@ -1039,7 +1040,7 @@ export default function App() {
                   </div>
 
                   <div className="account-dropdown-section">
-                    {isSuperadmin ? (
+                    {canSwitchHogar ? (
                       <label className="selector-ciclo selector-hogar">
                         Hogar actual
                         <select value={String(hogarId)} onChange={handleCambiarHogar}>

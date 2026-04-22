@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react';
 import {
   createAdminHogar,
+  createAdminUsuario,
   getAdminHogares,
   getAdminUsuarios,
+  updateAdminHogar,
   vincularAdminUsuarioHogar
 } from '../services/api.js';
 
 const roles = [
   { value: 'hogar_admin', label: 'Hogar admin' },
-  { value: 'hogar_member', label: 'Hogar member' },
-  { value: 'superadmin', label: 'Superadmin' }
+  { value: 'hogar_member', label: 'Hogar member' }
 ];
 
 export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHogarSelect }) {
@@ -19,6 +20,14 @@ export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHoga
   const [error, setError] = useState('');
   const [mensaje, setMensaje] = useState('');
   const [nuevoHogar, setNuevoHogar] = useState('');
+  const [hogarEditado, setHogarEditado] = useState({ id: '', nombre: '' });
+  const [nuevoUsuario, setNuevoUsuario] = useState({
+    nombre: '',
+    email: '',
+    password: '',
+    hogar_id: '',
+    rol: 'hogar_member'
+  });
   const [vinculo, setVinculo] = useState({
     hogar_id: '',
     usuario_id: '',
@@ -37,6 +46,14 @@ export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHoga
         hogar_id: String(hogarActivoId || prev.hogar_id || hogaresData.items?.[0]?.id || ''),
         usuario_id: prev.usuario_id || String(usuariosData.items?.[0]?.id || '')
       }));
+      setNuevoUsuario((prev) => ({
+        ...prev,
+        hogar_id: String(prev.hogar_id || hogarActivoId || hogaresData.items?.[0]?.id || '')
+      }));
+      setHogarEditado((prev) => {
+        const hogar = hogaresData.items?.find((item) => Number(item.id) === Number(prev.id || hogarActivoId)) || hogaresData.items?.[0];
+        return hogar ? { id: String(hogar.id), nombre: hogar.nombre } : prev;
+      });
       if (onHogaresChange) await onHogaresChange();
     } catch (err) {
       setError(err.message);
@@ -52,6 +69,7 @@ export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHoga
   useEffect(() => {
     if (!hogarActivoId) return;
     setVinculo((prev) => ({ ...prev, hogar_id: String(hogarActivoId) }));
+    setNuevoUsuario((prev) => ({ ...prev, hogar_id: String(hogarActivoId) }));
   }, [hogarActivoId]);
 
   const crearHogar = async (event) => {
@@ -65,6 +83,49 @@ export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHoga
       await createAdminHogar({ nombre: nuevoHogar.trim() });
       setNuevoHogar('');
       setMensaje('Hogar creado correctamente.');
+      await cargarAdmin();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const editarHogar = async (event) => {
+    event.preventDefault();
+    if (!hogarEditado.id || !hogarEditado.nombre.trim()) return;
+
+    try {
+      setLoading(true);
+      setError('');
+      setMensaje('');
+      await updateAdminHogar(hogarEditado.id, { nombre: hogarEditado.nombre.trim() });
+      setMensaje('Hogar actualizado correctamente.');
+      await cargarAdmin();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const crearUsuario = async (event) => {
+    event.preventDefault();
+    if (!nuevoUsuario.email.trim() || !nuevoUsuario.password.trim() || !nuevoUsuario.hogar_id) return;
+
+    try {
+      setLoading(true);
+      setError('');
+      setMensaje('');
+      await createAdminUsuario({
+        nombre: nuevoUsuario.nombre.trim(),
+        email: nuevoUsuario.email.trim(),
+        password: nuevoUsuario.password,
+        hogar_id: Number(nuevoUsuario.hogar_id),
+        rol: nuevoUsuario.rol
+      });
+      setNuevoUsuario((prev) => ({ ...prev, nombre: '', email: '', password: '' }));
+      setMensaje('Usuario creado y asignado al hogar.');
       await cargarAdmin();
     } catch (err) {
       setError(err.message);
@@ -117,6 +178,98 @@ export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHoga
           </label>
           <button type="submit" disabled={loading || !nuevoHogar.trim()}>
             Crear hogar
+          </button>
+        </form>
+
+        <form className="admin-card" onSubmit={editarHogar}>
+          <h3>Gestionar hogar</h3>
+          <label>
+            Hogar
+            <select
+              value={hogarEditado.id}
+              onChange={(event) => {
+                const hogar = hogares.find((item) => Number(item.id) === Number(event.target.value));
+                setHogarEditado({ id: event.target.value, nombre: hogar?.nombre || '' });
+              }}
+            >
+              {hogares.map((hogar) => (
+                <option key={hogar.id} value={hogar.id}>
+                  {hogar.nombre}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Nombre
+            <input
+              value={hogarEditado.nombre}
+              onChange={(event) => setHogarEditado((prev) => ({ ...prev, nombre: event.target.value }))}
+              placeholder="Nombre del hogar"
+            />
+          </label>
+          <button type="submit" disabled={loading || !hogarEditado.id || !hogarEditado.nombre.trim()}>
+            Guardar hogar
+          </button>
+        </form>
+
+        <form className="admin-card" onSubmit={crearUsuario}>
+          <h3>Crear usuario</h3>
+          <label>
+            Nombre
+            <input
+              value={nuevoUsuario.nombre}
+              onChange={(event) => setNuevoUsuario((prev) => ({ ...prev, nombre: event.target.value }))}
+              placeholder="Nombre visible"
+            />
+          </label>
+          <label>
+            Email
+            <input
+              type="email"
+              value={nuevoUsuario.email}
+              onChange={(event) => setNuevoUsuario((prev) => ({ ...prev, email: event.target.value }))}
+              placeholder="mail@ejemplo.com"
+              required
+            />
+          </label>
+          <label>
+            Password inicial
+            <input
+              type="password"
+              value={nuevoUsuario.password}
+              onChange={(event) => setNuevoUsuario((prev) => ({ ...prev, password: event.target.value }))}
+              placeholder="Password temporal"
+              required
+            />
+          </label>
+          <label>
+            Hogar
+            <select
+              value={nuevoUsuario.hogar_id}
+              onChange={(event) => setNuevoUsuario((prev) => ({ ...prev, hogar_id: event.target.value }))}
+            >
+              {hogares.map((hogar) => (
+                <option key={hogar.id} value={hogar.id}>
+                  {hogar.nombre}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Rol en el hogar
+            <select
+              value={nuevoUsuario.rol}
+              onChange={(event) => setNuevoUsuario((prev) => ({ ...prev, rol: event.target.value }))}
+            >
+              {roles.map((rol) => (
+                <option key={rol.value} value={rol.value}>
+                  {rol.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button type="submit" disabled={loading || !nuevoUsuario.email.trim() || !nuevoUsuario.password.trim() || !nuevoUsuario.hogar_id}>
+            Crear y asignar
           </button>
         </form>
 

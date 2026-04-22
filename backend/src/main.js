@@ -472,7 +472,7 @@ async function asegurarDatosColon260() {
     `
     INSERT INTO usuarios (id, correo, clave_hash, nombre, rol_global, activo)
     VALUES
-      ($1, 'joaco544@gmail.com', $3, 'Joaquin Diaz', 'hogar_admin', true),
+      ($1, 'joaco544@gmail.com', $3, 'Joaquin Diaz', 'superadmin', true),
       ($2, 'sofiacepeda56@gmail.com', $4, 'Sofia Cepeda', 'hogar_member', true)
     ON CONFLICT (id) DO UPDATE
     SET correo = EXCLUDED.correo,
@@ -854,6 +854,39 @@ app.post('/admin/hogares', autenticar, exigirSuperadmin, async (req, res) => {
   }
 });
 
+app.patch('/admin/hogares/:id', autenticar, exigirSuperadmin, async (req, res) => {
+  const hogarId = Number(req.params.id);
+  const { nombre } = req.body;
+
+  if (!hogarId) {
+    return res.status(400).json({ error: 'hogar_id es obligatorio' });
+  }
+
+  if (!nombre || !String(nombre).trim()) {
+    return res.status(400).json({ error: 'nombre es obligatorio' });
+  }
+
+  try {
+    const { rows } = await pool.query(
+      `
+      UPDATE hogares
+      SET nombre = $1
+      WHERE id = $2
+      RETURNING id, nombre, creado_en
+      `,
+      [String(nombre).trim(), hogarId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Hogar no encontrado' });
+    }
+
+    return res.status(200).json({ ok: true, hogar: { ...rows[0], id: Number(rows[0].id) } });
+  } catch (error) {
+    return res.status(500).json({ error: 'Error actualizando hogar', detalle: error.message });
+  }
+});
+
 app.get('/admin/usuarios', autenticar, exigirSuperadmin, async (_req, res) => {
   try {
     const { rows } = await pool.query(
@@ -888,6 +921,82 @@ app.get('/admin/usuarios', autenticar, exigirSuperadmin, async (_req, res) => {
     });
   } catch (error) {
     return res.status(500).json({ error: 'Error consultando usuarios', detalle: error.message });
+  }
+});
+
+app.post('/admin/usuarios', autenticar, exigirSuperadmin, async (req, res) => {
+  const { email, nombre, password, hogar_id, rol } = req.body;
+  const correoNormalizado = String(email || '').trim().toLowerCase();
+  const nombreNormalizado = String(nombre || correoNormalizado.split('@')[0] || 'Usuario').trim();
+  const passwordFinal = String(password || '').trim();
+  const hogarId = Number(hogar_id);
+  const rolNormalizado = normalizarRolHogar(rol || 'hogar_member');
+
+  if (!correoNormalizado || !passwordFinal || !hogarId) {
+    return res.status(400).json({ error: 'email, password y hogar_id son obligatorios' });
+  }
+
+  if (!ROLES_HOGAR.includes(rolNormalizado)) {
+    return res.status(400).json({ error: 'rol invalido' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const hogarExiste = await client.query('SELECT id FROM hogares WHERE id = $1', [hogarId]);
+    if (hogarExiste.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Hogar no encontrado' });
+    }
+
+    const usuarioExistente = await client.query(
+      `
+      SELECT id, correo, nombre, activo
+      FROM usuarios
+      WHERE LOWER(correo) = LOWER($1)
+      LIMIT 1
+      `,
+      [correoNormalizado]
+    );
+
+    let usuario = usuarioExistente.rows[0];
+    if (usuario && !usuario.activo) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'El usuario existe pero esta inactivo' });
+    }
+
+    if (!usuario) {
+      const creado = await client.query(
+        `
+        INSERT INTO usuarios (correo, clave_hash, nombre, rol_global, activo)
+        VALUES ($1, $2, $3, 'hogar_member', true)
+        RETURNING id, correo, nombre, activo
+        `,
+        [correoNormalizado, hashPassword(passwordFinal), nombreNormalizado]
+      );
+      usuario = creado.rows[0];
+    }
+
+    await client.query(
+      `
+      INSERT INTO hogares_usuarios (hogar_id, usuario_id, rol)
+      VALUES ($1, $2, $3)
+      ON CONFLICT (hogar_id, usuario_id) DO UPDATE SET rol = EXCLUDED.rol
+      `,
+      [hogarId, usuario.id, rolNormalizado]
+    );
+
+    await client.query('COMMIT');
+    return res.status(201).json({
+      ok: true,
+      usuario: { id: Number(usuario.id), correo: usuario.correo, nombre: usuario.nombre, activo: usuario.activo }
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    return res.status(500).json({ error: 'Error creando usuario', detalle: error.message });
+  } finally {
+    client.release();
   }
 });
 

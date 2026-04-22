@@ -134,6 +134,44 @@ export async function createAdminHogar(payload) {
   }
 }
 
+export async function updateAdminHogar(hogarId, payload) {
+  try {
+    const response = await fetch(`${API_URL}/admin/hogares/${hogarId}`, {
+      method: 'PATCH',
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.error || 'No se pudo actualizar el hogar');
+    }
+
+    return response.json();
+  } catch (error) {
+    throw new Error(normalizeFetchError(error));
+  }
+}
+
+export async function createAdminUsuario(payload) {
+  try {
+    const response = await fetch(`${API_URL}/admin/usuarios`, {
+      method: 'POST',
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.error || 'No se pudo crear el usuario');
+    }
+
+    return response.json();
+  } catch (error) {
+    throw new Error(normalizeFetchError(error));
+  }
+}
+
 export async function vincularAdminUsuarioHogar(hogarId, payload) {
   try {
     const response = await fetch(`${API_URL}/admin/hogares/${hogarId}/usuarios`, {
