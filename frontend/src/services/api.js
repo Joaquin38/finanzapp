@@ -39,7 +39,7 @@ function getRangoCiclo(ciclo) {
 
 function normalizeFetchError(error) {
   if (error?.name === 'TypeError') {
-    return 'No se pudo conectar con la API. Verificá que backend esté levantado en http://localhost:3000 y reiniciá npm run dev.';
+    return `No se pudo conectar con la API configurada (${API_URL}). Verificá que el backend esté disponible.`;
   }
   return error?.message || 'Ocurrió un error inesperado';
 }

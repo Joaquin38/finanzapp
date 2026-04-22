@@ -46,8 +46,6 @@ export default function LoginPanel({ onLogin, loading, error }) {
             {loading ? 'Ingresando...' : 'Ingresar'}
           </button>
         </form>
-
-        <p className="auth-helper">Usuarios iniciales: joaco544@gmail.com / prueba y sofiacepeda56@gmail.com / prueba</p>
       </section>
     </main>
   );

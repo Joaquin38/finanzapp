@@ -168,8 +168,25 @@ function verificarToken(token) {
 
 function passwordValida(password, claveHash) {
   if (!password || !claveHash) return false;
+  if (String(claveHash).startsWith('pbkdf2$')) {
+    const [, digest, iterationsText, salt, storedHash] = String(claveHash).split('$');
+    const iterations = Number(iterationsText);
+    if (!digest || !iterations || !salt || !storedHash) return false;
+    const hash = crypto.pbkdf2Sync(password, salt, iterations, 64, digest).toString('base64url');
+    const storedBuffer = Buffer.from(storedHash);
+    const hashBuffer = Buffer.from(hash);
+    return storedBuffer.length === hashBuffer.length && crypto.timingSafeEqual(storedBuffer, hashBuffer);
+  }
   if (password === claveHash) return true;
   return claveHash === 'demo_hash' && password === 'demo';
+}
+
+function hashPassword(password) {
+  const digest = 'sha256';
+  const iterations = 210000;
+  const salt = crypto.randomBytes(16).toString('base64url');
+  const hash = crypto.pbkdf2Sync(password, salt, iterations, 64, digest).toString('base64url');
+  return `pbkdf2$${digest}$${iterations}$${salt}$${hash}`;
 }
 
 function normalizarRolHogar(rol) {
@@ -455,16 +472,15 @@ async function asegurarDatosColon260() {
     `
     INSERT INTO usuarios (id, correo, clave_hash, nombre, rol_global, activo)
     VALUES
-      ($1, 'joaco544@gmail.com', 'prueba', 'Joaquin Diaz', 'hogar_admin', true),
-      ($2, 'sofiacepeda56@gmail.com', 'prueba', 'Sofia Cepeda', 'hogar_member', true)
+      ($1, 'joaco544@gmail.com', $3, 'Joaquin Diaz', 'hogar_admin', true),
+      ($2, 'sofiacepeda56@gmail.com', $4, 'Sofia Cepeda', 'hogar_member', true)
     ON CONFLICT (id) DO UPDATE
     SET correo = EXCLUDED.correo,
-        clave_hash = EXCLUDED.clave_hash,
         nombre = EXCLUDED.nombre,
         rol_global = EXCLUDED.rol_global,
         activo = true
     `,
-    [USUARIO_JOAQUIN_ID, USUARIO_SOFIA_ID]
+    [USUARIO_JOAQUIN_ID, USUARIO_SOFIA_ID, hashPassword('prueba'), hashPassword('prueba')]
   );
 
   await pool.query(
@@ -1013,7 +1029,7 @@ app.post('/hogares/:id/miembros', autenticar, async (req, res) => {
         VALUES ($1, $2, $3, 'hogar_member', true)
         RETURNING id, correo, nombre, activo
         `,
-        [correoNormalizado, passwordFinal, nombreFinal]
+        [correoNormalizado, hashPassword(passwordFinal), nombreFinal]
       );
       usuario = creado.rows[0];
     }
