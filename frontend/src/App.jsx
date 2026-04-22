@@ -982,7 +982,7 @@ export default function App() {
       <main className="auth-shell">
         <section className="auth-card auth-card-compact">
           <p className="eyebrow">FinanzApp</p>
-          <h1>Validando sesiÃ³n</h1>
+          <h1>Validando sesion</h1>
           <p className="subtitle">Estamos recuperando tu acceso guardado.</p>
         </section>
       </main>

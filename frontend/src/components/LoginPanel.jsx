@@ -1,7 +1,8 @@
 import { useState } from 'react';
+import logoFinanzApp from '../assets/finanzapp-logo.png';
 
 export default function LoginPanel({ onLogin, loading, error }) {
-  const [email, setEmail] = useState('joaco544@gmail.com');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
   const handleSubmit = async (event) => {
@@ -12,6 +13,7 @@ export default function LoginPanel({ onLogin, loading, error }) {
   return (
     <main className="auth-shell">
       <section className="auth-card">
+        <img src={logoFinanzApp} alt="FinanzApp" className="auth-logo" />
         <p className="eyebrow">FinanzApp</p>
         <h1>Iniciar sesion</h1>
         <p className="subtitle">Entra con tu email y password para acceder al panel del hogar.</p>

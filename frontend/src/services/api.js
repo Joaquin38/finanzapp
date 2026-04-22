@@ -54,7 +54,7 @@ export async function login(email, password) {
 
     if (!response.ok) {
       const detail = await response.json().catch(() => ({}));
-      throw new Error(detail.error || 'No se pudo iniciar sesiÃ³n');
+      throw new Error(detail.error || 'No se pudo iniciar sesion');
     }
 
     return response.json();
@@ -69,7 +69,7 @@ export async function getCurrentUser() {
       headers: getAuthHeaders()
     });
 
-    if (!response.ok) throw new Error('SesiÃ³n invÃ¡lida');
+    if (!response.ok) throw new Error('Sesion invalida');
     return response.json();
   } catch (error) {
     throw new Error(normalizeFetchError(error));
