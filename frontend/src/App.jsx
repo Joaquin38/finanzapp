@@ -27,6 +27,7 @@ import ResumenCards from './components/ResumenCards.jsx';
 import MovimientosTable from './components/MovimientosTable.jsx';
 import NuevoMovimientoForm from './components/NuevoMovimientoForm.jsx';
 import MenuLateral from './components/MenuLateral.jsx';
+import MonthPicker from './components/MonthPicker.jsx';
 import CotizacionesPanel from './components/CotizacionesPanel.jsx';
 import GastosFijosPanel from './components/GastosFijosPanel.jsx';
 import ReportesPanel from './components/ReportesPanel.jsx';
@@ -108,7 +109,8 @@ export default function App() {
   });
   const [ordenGrilla, setOrdenGrilla] = useState({
     campo: 'fecha',
-    direccion: 'desc'
+    direccion: 'desc',
+    manual: false
   });
   const [estadoOverrides, setEstadoOverrides] = useState({});
   const [reporteActivo, setReporteActivo] = useState('mensual');
@@ -483,7 +485,7 @@ export default function App() {
     }
   };
 
-  const handleEliminarGastoFijoEnCiclo = async (id) => {
+  const handleEliminarGastoFijoEnCiclo = async (id, cicloFinalizacion = cicloSeleccionado) => {
     if (!canManageHome) {
       setError('Tu rol no permite finalizar valores fijos');
       return;
@@ -491,7 +493,7 @@ export default function App() {
 
     try {
       setError('');
-      await deleteGastoFijoEnCiclo(id, cicloSeleccionado);
+      await deleteGastoFijoEnCiclo(id, cicloFinalizacion);
       await cargarDatos();
     } catch (err) {
       setError(err.message);
@@ -543,7 +545,8 @@ export default function App() {
 
     if (delta !== 0) {
       await handleAjustarGastoFijo(fijoEditForm.gasto_fijo_id, {
-        fecha_aplicacion: `${cicloSeleccionado}-01`,
+        ciclo_aplicacion: cicloSeleccionado,
+        alcance: 'desde_ciclo',
         tipo_ajuste: 'monto_fijo',
         valor: delta,
         nota: `Ajuste desde grilla para ciclo ${cicloSeleccionado}`
@@ -695,8 +698,10 @@ export default function App() {
     const { campo, direccion } = ordenGrilla;
     const factor = direccion === 'asc' ? 1 : -1;
     items.sort((a, b) => {
-      if (a.esProyectado && !b.esProyectado) return -1;
-      if (!a.esProyectado && b.esProyectado) return 1;
+      if (!ordenGrilla.manual) {
+        if (a.esProyectado && !b.esProyectado) return -1;
+        if (!a.esProyectado && b.esProyectado) return 1;
+      }
 
       const normalize = (item) => {
         if (campo === 'estado') return item.estado_consolidado || getEstadoMovimiento(item);
@@ -847,13 +852,17 @@ export default function App() {
     [resumenCalculado, resumenOperativo]
   );
   const balanceCalculadoCiclo = Number(resumenFinanciero.balanceActual || 0);
+  const saldoFinalEfectivoCierre =
+    saldoRealFinal === '' || Number.isNaN(Number(saldoRealFinal))
+      ? balanceCalculadoCiclo
+      : Number(saldoRealFinal);
   const diferenciaCierreCiclo =
-    saldoRealFinal === '' || Number.isNaN(Number(saldoRealFinal)) ? null : Number(saldoRealFinal) - balanceCalculadoCiclo;
+    saldoFinalEfectivoCierre - balanceCalculadoCiclo;
   const tipoAjusteCierre = diferenciaCierreCiclo == null ? null : diferenciaCierreCiclo >= 0 ? 'ingreso' : 'egreso';
   const categoriaAjusteCierre = categorias.find(
     (categoria) => categoria.nombre === 'Ajuste de cierre' && categoria.tipo_movimiento === tipoAjusteCierre
   );
-  const tipoArrastreCierre = saldoRealFinal === '' || Number.isNaN(Number(saldoRealFinal)) ? null : Number(saldoRealFinal) >= 0 ? 'ingreso' : 'egreso';
+  const tipoArrastreCierre = saldoFinalEfectivoCierre >= 0 ? 'ingreso' : 'egreso';
   const categoriaArrastreCierre = categorias.find(
     (categoria) => categoria.nombre === 'Arrastre de cierre' && categoria.tipo_movimiento === tipoArrastreCierre
   );
@@ -870,10 +879,6 @@ export default function App() {
       return;
     }
 
-    if (saldoRealFinal === '' || Number.isNaN(Number(saldoRealFinal))) {
-      return;
-    }
-
     try {
       setLoading(true);
       setError('');
@@ -882,7 +887,7 @@ export default function App() {
         hogar_id: hogarId,
         ciclo: cicloSeleccionado,
         balance_calculado: balanceCalculadoCiclo,
-        saldo_real_final: Number(saldoRealFinal),
+        saldo_real_final: saldoFinalEfectivoCierre,
         genera_saldo_inicial: generarSaldoInicial,
         creado_por_usuario_id: usuarioId
       });
@@ -927,6 +932,48 @@ export default function App() {
         ciclo: cicloSeleccionado
       }),
     [cicloSeleccionado, cotizaciones, gastosFijos, gastosFijosHistoricosPorCiclo, movimientosHistoricos]
+  );
+
+  const cycleControlPanel = (
+    <section className="panel cycle-control-panel">
+      <div className="cycle-control-main">
+        <span className="cycle-control-label">Ciclo de trabajo</span>
+        <strong>{cicloActual}</strong>
+        <small>{estadoCierreCiclo.cerrado ? 'Ciclo cerrado' : 'Ciclo abierto para operar'}</small>
+      </div>
+      <div className="cycle-control-tools">
+        <span className="cycle-control-label">Cambiar ciclo</span>
+        <div className="cycle-control-row">
+          <MonthPicker
+            value={cicloSeleccionado}
+            onChange={setCicloSeleccionado}
+            emptyLabel="Seleccionar ciclo"
+            className="cycle-control-picker"
+          />
+          {canManageHome && (
+            <div className="cycle-control-actions">
+              {estadoCierreCiclo.cerrado ? (
+                <button type="button" className="hero-action-btn secondary" onClick={handleReabrirCiclo} disabled={loading}>
+                  Reabrir ciclo
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="hero-action-btn"
+                  onClick={() => {
+                    setSaldoRealFinal('');
+                    setGenerarSaldoInicial(true);
+                    setCierreCicloAbierto(true);
+                  }}
+                >
+                  Cerrar ciclo
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
   );
 
   if (authLoading && !session) {
@@ -1042,6 +1089,8 @@ export default function App() {
 
         {error && <p className="error">{error}</p>}
 
+        {(seccionActiva === 'dashboard' || seccionActiva === 'movimientos') && cycleControlPanel}
+
         {seccionActiva === 'dashboard' && (
           <ResumenCards
             resumen={resumenCalculado}
@@ -1053,45 +1102,6 @@ export default function App() {
         <div className="contenido-dashboard">
           {(seccionActiva === 'dashboard' || seccionActiva === 'movimientos') && (
             <>
-              <section className="panel cycle-control-panel">
-                <div className="cycle-control-main">
-                  <span className="cycle-control-label">Ciclo de trabajo</span>
-                  <strong>{cicloActual}</strong>
-                  <small>{estadoCierreCiclo.cerrado ? 'Ciclo cerrado' : 'Ciclo abierto para operar'}</small>
-                </div>
-                <div className="cycle-control-tools">
-                  <span className="cycle-control-label">Cambiar ciclo</span>
-                  <div className="cycle-control-row">
-                    <input
-                      type="month"
-                      value={cicloSeleccionado}
-                      onChange={(e) => setCicloSeleccionado(e.target.value)}
-                      aria-label="Cambiar ciclo"
-                    />
-                    {canManageHome && (
-                      <div className="cycle-control-actions">
-                        {estadoCierreCiclo.cerrado ? (
-                          <button type="button" className="hero-action-btn secondary" onClick={handleReabrirCiclo} disabled={loading}>
-                            Reabrir ciclo
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            className="hero-action-btn"
-                            onClick={() => {
-                              setSaldoRealFinal('');
-                              setGenerarSaldoInicial(true);
-                              setCierreCicloAbierto(true);
-                            }}
-                          >
-                            Cerrar ciclo
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </section>
               <section className="panel operational-summary">
                 <div className="operational-item">
                   <span className="operational-label">Total de egresos pendientes</span>
@@ -1176,6 +1186,7 @@ export default function App() {
               gastos={gastosFijos}
               categorias={categorias}
               ciclo={cicloSeleccionado}
+              onCicloChange={setCicloSeleccionado}
               readOnly={!canManageHome}
               onCrear={handleCrearGastoFijo}
               onEditar={handleEditarGastoFijo}
@@ -1394,9 +1405,12 @@ export default function App() {
                   step="0.01"
                   value={saldoRealFinal}
                   onChange={(e) => setSaldoRealFinal(e.target.value)}
-                  placeholder="Ingresá el saldo real final"
+                  placeholder={`Si lo dejás vacío usa $${balanceCalculadoCiclo.toLocaleString('es-AR')}`}
                   autoFocus
                 />
+                <small className="field-helper">
+                  Si no cargás nada, se toma como saldo real final el balance calculado.
+                </small>
               </label>
 
               <label className="checkbox-card">
@@ -1421,9 +1435,9 @@ export default function App() {
                     {' '}Ajuste de cierre.
                   </small>
                 )}
-                {generarSaldoInicial && saldoRealFinal !== '' && !Number.isNaN(Number(saldoRealFinal)) && Number(saldoRealFinal) !== 0 && (
+                {generarSaldoInicial && saldoFinalEfectivoCierre !== 0 && (
                   <small>
-                    También se va a crear un {Number(saldoRealFinal) > 0 ? 'ingreso' : 'egreso'} confirmado como saldo inicial en {cicloSiguienteCierre}.
+                    También se va a crear un {saldoFinalEfectivoCierre > 0 ? 'ingreso' : 'egreso'} confirmado como saldo inicial en {cicloSiguienteCierre}.
                   </small>
                 )}
               </article>
@@ -1437,7 +1451,7 @@ export default function App() {
                 type="button"
                 className="btn-inline success"
                 onClick={aplicarCierreCiclo}
-                disabled={loading || diferenciaCierreCiclo == null || estadoCierreCiclo.cerrado}
+                disabled={loading || estadoCierreCiclo.cerrado}
               >
                 {diferenciaCierreCiclo === 0 ? 'Cerrar sin ajuste' : loading ? 'Aplicando...' : 'Aplicar cierre'}
               </button>

@@ -1,6 +1,17 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import MonthPicker from './MonthPicker.jsx';
 
-export default function GastosFijosPanel({ gastos, categorias, ciclo, onCrear, onEditar, onAjustar, onEliminarEnCiclo, readOnly = false }) {
+export default function GastosFijosPanel({
+  gastos,
+  categorias,
+  ciclo,
+  onCicloChange,
+  onCrear,
+  onEditar,
+  onAjustar,
+  onEliminarEnCiclo,
+  readOnly = false
+}) {
   const [mostrarAlta, setMostrarAlta] = useState(false);
   const [form, setForm] = useState({
     descripcion: '',
@@ -30,6 +41,21 @@ export default function GastosFijosPanel({ gastos, categorias, ciclo, onCrear, o
     nota: ''
   });
   const [gastoFinalizando, setGastoFinalizando] = useState(null);
+
+  useEffect(() => {
+    setForm((current) => ({
+      ...current,
+      ciclo_desde: mostrarAlta ? current.ciclo_desde : ciclo
+    }));
+    setFormEditar((current) => ({
+      ...current,
+      activo_desde_ciclo: gastoEditando ? current.activo_desde_ciclo : ciclo
+    }));
+    setFormAjuste((current) => ({
+      ...current,
+      ciclo_aplicacion: gastoAjustando ? current.ciclo_aplicacion : ciclo
+    }));
+  }, [ciclo, gastoAjustando, gastoEditando, mostrarAlta]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -81,7 +107,7 @@ export default function GastosFijosPanel({ gastos, categorias, ciclo, onCrear, o
 
   const confirmarFinalizacion = async () => {
     if (!gastoFinalizando) return;
-    await onEliminarEnCiclo(gastoFinalizando.id);
+    await onEliminarEnCiclo(gastoFinalizando.id, ciclo);
     setGastoFinalizando(null);
   };
 
@@ -153,7 +179,9 @@ export default function GastosFijosPanel({ gastos, categorias, ciclo, onCrear, o
       <div className="panel-header">
         <h2>Valores fijos</h2>
         <p>Defini importes recurrentes para contemplar gastos e ingresos fijos.</p>
-        <p>Ciclo seleccionado: {ciclo}</p>
+        <div className="fixed-values-cycle-selector">
+          <MonthPicker label="Ciclo seleccionado" value={ciclo} onChange={onCicloChange} />
+        </div>
         {!readOnly && (
           <div className="panel-header-actions">
             <button type="button" onClick={() => setMostrarAlta(true)}>
@@ -258,14 +286,19 @@ export default function GastosFijosPanel({ gastos, categorias, ciclo, onCrear, o
                 Dia vencimiento
                 <input type="number" min="1" max="31" value={formEditar.dia_vencimiento} onChange={(e) => setFormEditar((p) => ({ ...p, dia_vencimiento: e.target.value }))} />
               </label>
-              <label>
-                Ciclo inicio
-                <input type="month" value={formEditar.activo_desde_ciclo} onChange={(e) => setFormEditar((p) => ({ ...p, activo_desde_ciclo: e.target.value }))} required />
-              </label>
-              <label>
-                Ciclo fin
-                <input type="month" min={formEditar.activo_desde_ciclo || ciclo} value={formEditar.activo_hasta_ciclo} onChange={(e) => setFormEditar((p) => ({ ...p, activo_hasta_ciclo: e.target.value }))} />
-              </label>
+              <MonthPicker
+                label="Ciclo inicio"
+                value={formEditar.activo_desde_ciclo}
+                onChange={(value) => setFormEditar((p) => ({ ...p, activo_desde_ciclo: value }))}
+              />
+              <MonthPicker
+                label="Ciclo fin"
+                min={formEditar.activo_desde_ciclo || ciclo}
+                value={formEditar.activo_hasta_ciclo}
+                onChange={(value) => setFormEditar((p) => ({ ...p, activo_hasta_ciclo: value }))}
+                allowClear
+                emptyLabel="Sin fin"
+              />
               <div className="confirm-actions full-width">
                 <button type="button" className="btn-inline" onClick={() => setGastoEditando(null)}>
                   Cancelar
@@ -325,15 +358,20 @@ export default function GastosFijosPanel({ gastos, categorias, ciclo, onCrear, o
                 <small className="field-helper">Opcional. Sirve para ordenar y priorizar este valor fijo dentro del ciclo.</small>
               </label>
 
-              <label>
-                Ciclo inicio
-                <input type="month" value={form.ciclo_desde} onChange={(e) => setForm((p) => ({ ...p, ciclo_desde: e.target.value }))} required />
-              </label>
+              <MonthPicker
+                label="Ciclo inicio"
+                value={form.ciclo_desde}
+                onChange={(value) => setForm((p) => ({ ...p, ciclo_desde: value }))}
+              />
 
-              <label>
-                Ciclo fin
-                <input type="month" min={form.ciclo_desde || ciclo} value={form.ciclo_hasta} onChange={(e) => setForm((p) => ({ ...p, ciclo_hasta: e.target.value }))} />
-              </label>
+              <MonthPicker
+                label="Ciclo fin"
+                min={form.ciclo_desde || ciclo}
+                value={form.ciclo_hasta}
+                onChange={(value) => setForm((p) => ({ ...p, ciclo_hasta: value }))}
+                allowClear
+                emptyLabel="Sin fin"
+              />
 
               <div className="confirm-actions full-width">
                 <button type="button" className="btn-inline secondary" onClick={() => setMostrarAlta(false)}>
@@ -414,10 +452,12 @@ export default function GastosFijosPanel({ gastos, categorias, ciclo, onCrear, o
                   </label>
                 </div>
               </label>
-              <label>
-                Ciclo de aplicacion
-                <input type="month" min={ciclo} value={formAjuste.ciclo_aplicacion} onChange={(e) => setFormAjuste((p) => ({ ...p, ciclo_aplicacion: e.target.value }))} required />
-              </label>
+              <MonthPicker
+                label="Ciclo de aplicacion"
+                min={ciclo}
+                value={formAjuste.ciclo_aplicacion}
+                onChange={(value) => setFormAjuste((p) => ({ ...p, ciclo_aplicacion: value }))}
+              />
               <label>
                 Tipo ajuste
                 <select value={formAjuste.tipo_ajuste} onChange={(e) => setFormAjuste((p) => ({ ...p, tipo_ajuste: e.target.value }))}>

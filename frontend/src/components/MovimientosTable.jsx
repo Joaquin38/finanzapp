@@ -61,9 +61,9 @@ export default function MovimientosTable({
   const toggleSort = (campo) => {
     onOrdenChange((prev) => {
       if (prev.campo === campo) {
-        return { campo, direccion: prev.direccion === 'asc' ? 'desc' : 'asc' };
+        return { campo, direccion: prev.direccion === 'asc' ? 'desc' : 'asc', manual: true };
       }
-      return { campo, direccion: 'asc' };
+      return { campo, direccion: 'asc', manual: true };
     });
   };
 

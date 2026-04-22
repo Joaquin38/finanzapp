@@ -1938,6 +1938,8 @@ app.post('/gastos-fijos', exigirGestionHogar, async (req, res) => {
 app.patch('/gastos-fijos/:id', async (req, res) => {
   const gastoFijoId = Number(req.params.id);
   const { descripcion, categoria_id, moneda, monto_base, dia_vencimiento, activo_desde_ciclo, activo_hasta_ciclo } = req.body;
+  const payload = req.body || {};
+  const hasField = (field) => Object.prototype.hasOwnProperty.call(payload, field);
 
   if (!gastoFijoId) {
     return res.status(400).json({ error: 'id inválido' });
@@ -1955,14 +1957,13 @@ app.patch('/gastos-fijos/:id', async (req, res) => {
     return res.status(400).json({ error: 'activo_hasta_ciclo debe tener formato YYYY-MM' });
   }
 
-  if (activo_desde_ciclo && activo_hasta_ciclo && activo_hasta_ciclo < activo_desde_ciclo) {
-    return res.status(400).json({ error: 'activo_hasta_ciclo no puede ser anterior a activo_desde_ciclo' });
-  }
-
   try {
     await asegurarVigenciaGastosFijos();
 
-    const { rows: permisoRows } = await pool.query('SELECT hogar_id FROM gastos_fijos WHERE id = $1', [gastoFijoId]);
+    const { rows: permisoRows } = await pool.query(
+      'SELECT hogar_id, activo_desde_ciclo, activo_hasta_ciclo FROM gastos_fijos WHERE id = $1',
+      [gastoFijoId]
+    );
     if (permisoRows.length === 0) {
       return res.status(404).json({ error: 'Valor fijo no encontrado' });
     }
@@ -1980,28 +1981,46 @@ app.patch('/gastos-fijos/:id', async (req, res) => {
       }
     }
 
+    const activoDesdeFinal = hasField('activo_desde_ciclo')
+      ? activo_desde_ciclo || null
+      : permisoRows[0].activo_desde_ciclo;
+    const activoHastaFinal = hasField('activo_hasta_ciclo')
+      ? activo_hasta_ciclo || null
+      : permisoRows[0].activo_hasta_ciclo;
+
+    if (activoDesdeFinal && activoHastaFinal && activoHastaFinal < activoDesdeFinal) {
+      return res.status(400).json({ error: 'activo_hasta_ciclo no puede ser anterior a activo_desde_ciclo' });
+    }
+
     const { rows } = await pool.query(
       `
       UPDATE gastos_fijos
-      SET descripcion = COALESCE($1, descripcion),
-          categoria_id = COALESCE($2, categoria_id),
-          moneda = COALESCE($3, moneda),
-          monto_base = COALESCE($4, monto_base),
-          dia_vencimiento = COALESCE($5, dia_vencimiento),
-          activo_desde_ciclo = COALESCE($6, activo_desde_ciclo),
-          activo_hasta_ciclo = COALESCE($7, activo_hasta_ciclo),
+      SET descripcion = CASE WHEN $1 THEN $2 ELSE descripcion END,
+          categoria_id = CASE WHEN $3 THEN $4 ELSE categoria_id END,
+          moneda = CASE WHEN $5 THEN $6 ELSE moneda END,
+          monto_base = CASE WHEN $7 THEN $8 ELSE monto_base END,
+          dia_vencimiento = CASE WHEN $9 THEN $10 ELSE dia_vencimiento END,
+          activo_desde_ciclo = CASE WHEN $11 THEN $12 ELSE activo_desde_ciclo END,
+          activo_hasta_ciclo = CASE WHEN $13 THEN $14 ELSE activo_hasta_ciclo END,
           actualizado_en = NOW()
-      WHERE id = $8 AND activo = true
+      WHERE id = $15 AND activo = true
       RETURNING id, descripcion, categoria_id, moneda, monto_base, dia_vencimiento, activo_desde_ciclo, activo_hasta_ciclo
       `,
       [
+        hasField('descripcion'),
         descripcion ?? null,
+        hasField('categoria_id'),
         categoria_id ?? null,
+        hasField('moneda'),
         moneda ?? null,
+        hasField('monto_base'),
         monto_base ?? null,
+        hasField('dia_vencimiento'),
         dia_vencimiento ?? null,
-        activo_desde_ciclo ?? null,
-        activo_hasta_ciclo ?? null,
+        hasField('activo_desde_ciclo'),
+        activo_desde_ciclo || null,
+        hasField('activo_hasta_ciclo'),
+        activo_hasta_ciclo || null,
         gastoFijoId
       ]
     );
@@ -2095,9 +2114,14 @@ app.get('/cierres-ciclo/estado', async (req, res) => {
 app.post('/cierres-ciclo', exigirGestionHogar, async (req, res) => {
   const { hogar_id, ciclo, balance_calculado, saldo_real_final, genera_saldo_inicial = true, creado_por_usuario_id } = req.body;
   const creadorId = Number(req.usuario?.id || creado_por_usuario_id);
+  const balanceCalculadoFinal = Number(balance_calculado);
+  const saldoRealFinal =
+    saldo_real_final === undefined || saldo_real_final === null || String(saldo_real_final).trim() === ''
+      ? balanceCalculadoFinal
+      : Number(saldo_real_final);
 
-  if (!hogar_id || !cicloEsValido(ciclo) || saldo_real_final == null || balance_calculado == null || !creadorId) {
-    return res.status(400).json({ error: 'hogar_id, ciclo, balance_calculado y saldo_real_final son obligatorios' });
+  if (!hogar_id || !cicloEsValido(ciclo) || balance_calculado == null || !creadorId || !Number.isFinite(balanceCalculadoFinal) || !Number.isFinite(saldoRealFinal)) {
+    return res.status(400).json({ error: 'hogar_id, ciclo, balance_calculado y creador son obligatorios; saldo_real_final es opcional pero debe ser numerico si se envia' });
   }
 
   const client = await pool.connect();
@@ -2113,7 +2137,7 @@ app.post('/cierres-ciclo', exigirGestionHogar, async (req, res) => {
       return res.status(409).json({ error: 'El ciclo ya esta cerrado' });
     }
 
-    const diferencia = Number(saldo_real_final) - Number(balance_calculado);
+    const diferencia = saldoRealFinal - balanceCalculadoFinal;
     const { rows: tiposRows } = await client.query(`SELECT id, codigo FROM tipos_movimiento WHERE codigo IN ('ingreso', 'egreso')`);
     const tipoIds = Object.fromEntries(tiposRows.map((row) => [row.codigo, Number(row.id)]));
     const { rows: categoriasRows } = await client.query(
@@ -2148,8 +2172,8 @@ app.post('/cierres-ciclo', exigirGestionHogar, async (req, res) => {
       );
     }
 
-    if (Boolean(genera_saldo_inicial) && Number(saldo_real_final) !== 0) {
-      const tipo = Number(saldo_real_final) > 0 ? 'ingreso' : 'egreso';
+    if (Boolean(genera_saldo_inicial) && saldoRealFinal !== 0) {
+      const tipo = saldoRealFinal > 0 ? 'ingreso' : 'egreso';
       await client.query(
         `INSERT INTO movimientos (
           hogar_id, cuenta_id, tipo_movimiento_id, categoria_id, fecha, descripcion, moneda_original, monto_original, monto_ars,
@@ -2162,7 +2186,7 @@ app.post('/cierres-ciclo', exigirGestionHogar, async (req, res) => {
           categoriaPorClave[`Arrastre de cierre:${tipo}`] || null,
           `${siguienteCiclo(ciclo)}-01`,
           `Saldo inicial arrastrado desde ${ciclo}`,
-          Math.abs(Number(saldo_real_final)),
+          Math.abs(saldoRealFinal),
           tipo === 'egreso' ? 'pagado' : null,
           tipo === 'ingreso' ? 'registrado' : null,
           ciclo,
@@ -2175,7 +2199,7 @@ app.post('/cierres-ciclo', exigirGestionHogar, async (req, res) => {
       `INSERT INTO cierres_ciclo (hogar_id, ciclo, balance_calculado, saldo_real_final, diferencia, genera_saldo_inicial, creado_por_usuario_id)
        VALUES ($1,$2,$3,$4,$5,$6,$7)
        RETURNING id, hogar_id, ciclo, balance_calculado, saldo_real_final, diferencia, genera_saldo_inicial, creado_en`,
-      [hogar_id, ciclo, balance_calculado, saldo_real_final, diferencia, Boolean(genera_saldo_inicial), creadorId]
+      [hogar_id, ciclo, balanceCalculadoFinal, saldoRealFinal, diferencia, Boolean(genera_saldo_inicial), creadorId]
     );
 
     await client.query('COMMIT');

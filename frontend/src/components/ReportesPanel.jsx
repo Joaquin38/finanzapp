@@ -167,9 +167,9 @@ export default function ReportesPanel({
     return segment;
   });
   const chartSeries = [
-    { key: 'ingresos', label: 'Ingresos', color: '#15803d' },
-    { key: 'egresos', label: 'Egresos', color: '#dc2626' },
-    { key: 'balance', label: 'Balance', color: '#1d4ed8' }
+    { key: 'ingresos', label: 'Ingresos', color: 'var(--reportes-trend-income)' },
+    { key: 'egresos', label: 'Egresos', color: 'var(--reportes-trend-expense)' },
+    { key: 'balance', label: 'Balance', color: 'var(--reportes-trend-balance)' }
   ];
   const chartWidth = 720;
   const chartHeight = 280;
@@ -348,7 +348,7 @@ export default function ReportesPanel({
                             key={segment.categoria}
                             d={segment.path}
                             fill={segment.color}
-                            stroke="#ffffff"
+                            stroke="var(--reportes-chart-outline)"
                             strokeWidth={categoriaActiva === segment.categoria ? '4' : '2'}
                             className={`reportes-pie-slice ${categoriaActiva && categoriaActiva !== segment.categoria ? 'is-muted' : ''} ${
                               categoriaActiva === segment.categoria ? 'is-active' : ''
@@ -357,7 +357,7 @@ export default function ReportesPanel({
                             onMouseLeave={() => setCategoriaActiva('')}
                           />
                         ))}
-                        <circle cx="150" cy="150" r="58" fill="#ffffff" />
+                        <circle cx="150" cy="150" r="58" className="reportes-pie-hole" />
                       </svg>
                     </div>
                     <p className="reportes-pie-total">Total confirmado: {formatMoney(totalCategorias)}</p>
@@ -465,7 +465,7 @@ export default function ReportesPanel({
                           cy={point.y}
                           r={mesActivoTendencia === index ? '5' : '4'}
                           fill={serie.color}
-                          stroke="#ffffff"
+                          stroke="var(--reportes-chart-outline)"
                           strokeWidth="2"
                           className={mesActivoTendencia === index ? 'is-active' : ''}
                         />
@@ -481,7 +481,7 @@ export default function ReportesPanel({
                               cy={serie.ultimoPunto.y}
                               r="6"
                               fill={serie.color}
-                              stroke="#ffffff"
+                              stroke="var(--reportes-chart-outline)"
                               strokeWidth="2.5"
                             />
                             <text
@@ -490,7 +490,7 @@ export default function ReportesPanel({
                               textAnchor={serie.ultimoPunto.x > chartWidth - 120 ? 'end' : 'start'}
                               className="reportes-trend-last-label"
                               fill={serie.color}
-                              stroke="#ffffff"
+                              stroke="var(--reportes-chart-outline)"
                               strokeWidth="3"
                               paintOrder="stroke"
                             >
