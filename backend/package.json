@@ -1,0 +1,17 @@
+{
+  "name": "finanzas-backend",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Backend inicial para app de finanzas personales",
+  "main": "src/main.js",
+  "scripts": {
+    "dev": "node src/main.js",
+    "start": "node src/main.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "express": "^4.21.2",
+    "pg": "^8.16.3"
+  }
+}

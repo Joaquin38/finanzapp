@@ -1,0 +1,1450 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  clearSession,
+  createAjusteGastoFijo,
+  cerrarCiclo,
+  createGastoFijo,
+  createMovimiento,
+  deleteGastoFijoEnCiclo,
+  deleteMovimiento,
+  getCategorias,
+  getCurrentUser,
+  getEstadoCierreCiclo,
+  getCotizaciones,
+  getGastosFijos,
+  getHogares,
+  getMovimientos,
+  getMovimientosRango,
+  getStoredSession,
+  login,
+  reabrirCiclo,
+  saveSession,
+  updateGastoFijo,
+  updateEstadoGastoFijoEnCiclo,
+  updateMovimiento
+} from './services/api.js';
+import ResumenCards from './components/ResumenCards.jsx';
+import MovimientosTable from './components/MovimientosTable.jsx';
+import NuevoMovimientoForm from './components/NuevoMovimientoForm.jsx';
+import MenuLateral from './components/MenuLateral.jsx';
+import CotizacionesPanel from './components/CotizacionesPanel.jsx';
+import GastosFijosPanel from './components/GastosFijosPanel.jsx';
+import ReportesPanel from './components/ReportesPanel.jsx';
+import LoginPanel from './components/LoginPanel.jsx';
+import SuperAdminPanel from './components/SuperAdminPanel.jsx';
+import HogarAdminPanel from './components/HogarAdminPanel.jsx';
+import GastoRapidoModal from './components/GastoRapidoModal.jsx';
+import {
+  agruparEgresosConfirmadosPorCategoria,
+  construirMovimientosConsolidadosDelCiclo,
+  construirSerieResumenMensualConsolidada,
+  derivarResumenFinanciero,
+  derivarResumenOperativo,
+  getEstadoMovimientoConsolidado
+} from './utils/financials.js';
+
+const THEME_STORAGE_KEY = 'finanzapp_theme';
+const DASHBOARD_AMOUNTS_HIDDEN_STORAGE_KEY = 'finanzapp_dashboard_amounts_hidden';
+
+function getStoredTheme() {
+  try {
+    const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+    return stored === 'dark' ? 'dark' : 'light';
+  } catch {
+    return 'light';
+  }
+}
+
+function getStoredDashboardAmountsHidden() {
+  try {
+    return window.localStorage.getItem(DASHBOARD_AMOUNTS_HIDDEN_STORAGE_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+export default function App() {
+  const [theme, setTheme] = useState(() => getStoredTheme());
+  const [dashboardAmountsHidden, setDashboardAmountsHidden] = useState(() => getStoredDashboardAmountsHidden());
+  const [session, setSession] = useState(() => getStoredSession());
+  const [authLoading, setAuthLoading] = useState(() => Boolean(getStoredSession()?.token));
+  const [authError, setAuthError] = useState('');
+  const [movimientos, setMovimientos] = useState([]);
+  const [categorias, setCategorias] = useState([]);
+  const [cotizaciones, setCotizaciones] = useState([]);
+  const [gastosFijos, setGastosFijos] = useState([]);
+  const [gastosFijosHistoricosPorCiclo, setGastosFijosHistoricosPorCiclo] = useState({});
+  const [movimientosHistoricos, setMovimientosHistoricos] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [openModal, setOpenModal] = useState(false);
+  const [gastoRapidoAbierto, setGastoRapidoAbierto] = useState(false);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [insightsExpanded, setInsightsExpanded] = useState(false);
+  const accountMenuRef = useRef(null);
+  const [modoModal, setModoModal] = useState('crear');
+  const [movimientoEditando, setMovimientoEditando] = useState(null);
+  const [menuCollapsed, setMenuCollapsed] = useState(false);
+  const [deleteTargetId, setDeleteTargetId] = useState(null);
+  const [seccionActiva, setSeccionActiva] = useState('dashboard');
+  const [mostrarEliminados, setMostrarEliminados] = useState(false);
+  const [cicloSeleccionado, setCicloSeleccionado] = useState(new Date().toISOString().slice(0, 7));
+  const [fijoEditModal, setFijoEditModal] = useState(null);
+  const [fijoEditForm, setFijoEditForm] = useState({
+    gasto_fijo_id: null,
+    descripcion: '',
+    categoria_id: '',
+    moneda: 'ARS',
+    monto_base: '',
+    dia_vencimiento: '',
+    monto_ciclo: ''
+  });
+  const [filtrosGrilla, setFiltrosGrilla] = useState({
+    fechaDesde: '',
+    fechaHasta: '',
+    tipoMovimiento: '',
+    categoria: '',
+    busqueda: ''
+  });
+  const [ordenGrilla, setOrdenGrilla] = useState({
+    campo: 'fecha',
+    direccion: 'desc'
+  });
+  const [estadoOverrides, setEstadoOverrides] = useState({});
+  const [reporteActivo, setReporteActivo] = useState('mensual');
+  const [cierreCicloAbierto, setCierreCicloAbierto] = useState(false);
+  const [saldoRealFinal, setSaldoRealFinal] = useState('');
+  const [generarSaldoInicial, setGenerarSaldoInicial] = useState(true);
+  const [estadoCierreCiclo, setEstadoCierreCiclo] = useState({ cerrado: false, cierre: null });
+  const [hogaresDisponibles, setHogaresDisponibles] = useState([]);
+  const [hogarSeleccionadoId, setHogarSeleccionadoId] = useState('');
+  const hogaresSesion = session?.usuario?.hogares || [];
+  const isSuperadmin = session?.usuario?.rol_global === 'superadmin';
+  const hogaresContexto = isSuperadmin && hogaresDisponibles.length > 0 ? hogaresDisponibles : hogaresSesion;
+  const hogarActivo =
+    hogaresContexto.find((hogar) => Number(hogar.id) === Number(hogarSeleccionadoId)) ||
+    hogaresContexto.find((hogar) => Number(hogar.id) === Number(session?.usuario?.hogar_id)) ||
+    hogaresContexto[0] ||
+    (session?.usuario?.hogar_id
+      ? { id: session.usuario.hogar_id, nombre: session.usuario.hogar_nombre || 'Hogar', rol: session.usuario.rol }
+      : null);
+  const hogarId = Number(hogarActivo?.id || 1);
+  const usuarioId = Number(session?.usuario?.id || 1);
+  const rolActivo = session?.usuario?.rol_global === 'superadmin' ? 'superadmin' : hogarActivo?.rol || session?.usuario?.rol;
+  const canManageHome = rolActivo === 'superadmin' || rolActivo === 'hogar_admin';
+  const canOperateHome = canManageHome || rolActivo === 'hogar_member';
+  const mostrarAccionesCiclo = seccionActiva === 'dashboard' || seccionActiva === 'movimientos';
+
+  const ciclosTendencia = useMemo(() => {
+    const [anioTexto, mesTexto] = cicloSeleccionado.split('-');
+    const anio = Number(anioTexto);
+    const mes = Number(mesTexto) - 1;
+
+    return Array.from({ length: 6 }, (_, index) => {
+      const fecha = new Date(anio, mes - 5 + index, 1);
+      return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
+    });
+  }, [cicloSeleccionado]);
+
+  const getEstadoMovimiento = (mov) => {
+    return getEstadoMovimientoConsolidado(mov, estadoOverrides);
+  };
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    try {
+      window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+    } catch {
+      // Si localStorage no esta disponible, el tema sigue funcionando en memoria.
+    }
+  }, [theme]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(DASHBOARD_AMOUNTS_HIDDEN_STORAGE_KEY, String(dashboardAmountsHidden));
+    } catch {
+      // Si localStorage no esta disponible, la preferencia sigue funcionando en memoria.
+    }
+  }, [dashboardAmountsHidden]);
+
+  useEffect(() => {
+    if (!accountMenuOpen) return undefined;
+
+    const handleOutsideClick = (event) => {
+      if (accountMenuRef.current?.contains(event.target)) return;
+      setAccountMenuOpen(false);
+    };
+
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') setAccountMenuOpen(false);
+    };
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('keydown', handleEscape);
+
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [accountMenuOpen]);
+
+  const toggleTheme = () => {
+    setTheme((current) => (current === 'dark' ? 'light' : 'dark'));
+  };
+
+  const cargarHogaresContexto = async () => {
+    if (!session) return;
+
+    try {
+      const data = await getHogares();
+      const items = data.items || [];
+      setHogaresDisponibles(items);
+      setHogarSeleccionadoId((actual) => {
+        if (actual && items.some((hogar) => Number(hogar.id) === Number(actual))) return actual;
+        return String(session.usuario?.hogar_id || items[0]?.id || '');
+      });
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const toggleEstadoMovimiento = async (mov) => {
+    const estadoActual = getEstadoMovimiento(mov);
+    let siguiente = estadoActual;
+
+    if (mov.tipo_movimiento === 'egreso') {
+      siguiente = estadoActual === 'pagado' ? 'pendiente' : 'pagado';
+    } else if (['ingreso', 'ahorro'].includes(mov.tipo_movimiento)) {
+      siguiente = estadoActual === 'registrado' ? 'proyectado' : 'registrado';
+    } else {
+      return;
+    }
+
+    setEstadoOverrides((prev) => ({ ...prev, [mov.id]: siguiente }));
+
+    try {
+      setError('');
+      if (mov.esProyectado) {
+        if (mov.tipo_movimiento === 'egreso') {
+          await updateEstadoGastoFijoEnCiclo(mov.gasto_fijo_id, {
+            ciclo: cicloSeleccionado,
+            estado_egreso: siguiente
+          });
+        } else if (['ingreso', 'ahorro'].includes(mov.tipo_movimiento)) {
+          await updateEstadoGastoFijoEnCiclo(mov.gasto_fijo_id, {
+            ciclo: cicloSeleccionado,
+            estado_ingreso: siguiente
+          });
+        }
+      } else if (mov.tipo_movimiento === 'egreso') {
+        await updateMovimiento(mov.id, { estado_egreso: siguiente });
+      } else if (['ingreso', 'ahorro'].includes(mov.tipo_movimiento)) {
+        await updateMovimiento(mov.id, { estado_ingreso: siguiente });
+      }
+      await cargarDatos();
+    } catch (err) {
+      setEstadoOverrides((prev) => ({ ...prev, [mov.id]: estadoActual }));
+      setError(err.message);
+    }
+  };
+
+  const cargarDatos = async () => {
+    try {
+      setError('');
+      const [anioTexto, mesTexto] = cicloSeleccionado.split('-');
+      const anio = Number(anioTexto);
+      const mes = Number(mesTexto) - 1;
+      const inicioRango = new Date(anio, mes - 5, 1);
+      const finRango = new Date(anio, mes + 1, 0);
+      const desdeHistorico = `${inicioRango.getFullYear()}-${String(inicioRango.getMonth() + 1).padStart(2, '0')}-01`;
+      const hastaHistorico = `${finRango.getFullYear()}-${String(finRango.getMonth() + 1).padStart(2, '0')}-${String(finRango.getDate()).padStart(2, '0')}`;
+
+      const [movData, catData, cotiData, gastosData, historicoData, cierreData, gastosHistoricosData] = await Promise.allSettled([
+        getMovimientos(hogarId, mostrarEliminados, cicloSeleccionado),
+        getCategorias(hogarId),
+        getCotizaciones(),
+        getGastosFijos(hogarId, cicloSeleccionado),
+        getMovimientosRango(hogarId, desdeHistorico, hastaHistorico, mostrarEliminados),
+        getEstadoCierreCiclo(hogarId, cicloSeleccionado),
+        Promise.all(
+          ciclosTendencia.map(async (ciclo) => {
+            const data = await getGastosFijos(hogarId, ciclo);
+            return [ciclo, data.items || []];
+          })
+        )
+      ]);
+
+      if (movData.status === 'fulfilled') setMovimientos(movData.value.items || []);
+      if (catData.status === 'fulfilled') setCategorias(catData.value.items || []);
+      if (cotiData.status === 'fulfilled') setCotizaciones(cotiData.value.items || []);
+      if (gastosData.status === 'fulfilled') setGastosFijos(gastosData.value.items || []);
+      if (historicoData.status === 'fulfilled') setMovimientosHistoricos(historicoData.value.items || []);
+      if (cierreData.status === 'fulfilled') setEstadoCierreCiclo(cierreData.value || { cerrado: false, cierre: null });
+      if (gastosHistoricosData.status === 'fulfilled') {
+        setGastosFijosHistoricosPorCiclo(Object.fromEntries(gastosHistoricosData.value));
+      }
+
+      const errores = [movData, catData, cotiData, gastosData, historicoData, cierreData, gastosHistoricosData].filter(
+        (r) => r.status === 'rejected'
+      );
+      if (errores.length > 0) {
+        setError(errores[0].reason?.message || 'Hubo errores parciales al cargar el dashboard');
+      }
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  useEffect(() => {
+    let activo = true;
+    const stored = getStoredSession();
+
+    if (!stored?.token) {
+      setAuthLoading(false);
+      return () => {
+        activo = false;
+      };
+    }
+
+    getCurrentUser()
+      .then((data) => {
+        if (!activo) return;
+        const refreshedSession = { token: stored.token, usuario: data.usuario || stored.usuario };
+        saveSession(refreshedSession);
+        setSession(refreshedSession);
+        setAuthError('');
+      })
+      .catch(() => {
+        if (!activo) return;
+        clearSession();
+        setSession(null);
+      })
+      .finally(() => {
+        if (activo) setAuthLoading(false);
+      });
+
+    return () => {
+      activo = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!session) return;
+    cargarDatos();
+  }, [mostrarEliminados, cicloSeleccionado, ciclosTendencia, session, hogarId]);
+
+  useEffect(() => {
+    if (!session) return;
+    cargarHogaresContexto();
+  }, [session]);
+
+  useEffect(() => {
+    if (!session || hogarSeleccionadoId) return;
+    const hogarInicial = session.usuario?.hogar_id || hogaresContexto[0]?.id;
+    if (hogarInicial) setHogarSeleccionadoId(String(hogarInicial));
+  }, [session, hogaresContexto, hogarSeleccionadoId]);
+
+  useEffect(() => {
+    setMovimientos([]);
+    setGastosFijos([]);
+    setGastosFijosHistoricosPorCiclo({});
+    setMovimientosHistoricos([]);
+    setEstadoOverrides({});
+    setEstadoCierreCiclo({ cerrado: false, cierre: null });
+  }, [hogarId]);
+
+  useEffect(() => {
+    if (!canManageHome && seccionActiva === 'gastos_fijos') {
+      setSeccionActiva('dashboard');
+    }
+    if (!isSuperadmin && seccionActiva === 'superadmin') {
+      setSeccionActiva('dashboard');
+    }
+    if (!canManageHome && seccionActiva === 'mi_hogar') {
+      setSeccionActiva('dashboard');
+    }
+  }, [canManageHome, isSuperadmin, seccionActiva]);
+
+  const handleLogin = async ({ email, password }) => {
+    try {
+      setAuthLoading(true);
+      setAuthError('');
+      const data = await login(email, password);
+      const nextSession = { token: data.token, usuario: data.usuario };
+      saveSession(nextSession);
+      setSession(nextSession);
+    } catch (err) {
+      setAuthError(err.message);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    clearSession();
+    setSession(null);
+    setMovimientos([]);
+    setGastosFijos([]);
+    setGastosFijosHistoricosPorCiclo({});
+    setMovimientosHistoricos([]);
+    setHogaresDisponibles([]);
+    setHogarSeleccionadoId('');
+    setEstadoOverrides({});
+    setAuthError('');
+  };
+
+  const handleCambiarHogar = (event) => {
+    setHogarSeleccionadoId(event.target.value);
+    setError('');
+    setMostrarEliminados(false);
+  };
+
+  const handleCrearMovimiento = async (payload) => {
+    if (!canOperateHome) {
+      setError('Tu rol no permite operar en este hogar');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError('');
+
+      if (modoModal === 'editar' && movimientoEditando) {
+        if (!canManageHome) {
+          throw new Error('Tu rol no permite editar movimientos');
+        }
+        await updateMovimiento(movimientoEditando.id, {
+          descripcion: payload.descripcion,
+          categoria_id: payload.categoria_id,
+          cuenta_id: payload.cuenta_id
+        });
+      } else {
+        await createMovimiento({
+          ...payload,
+          hogar_id: hogarId,
+          creado_por_usuario_id: usuarioId
+        });
+      }
+
+      await cargarDatos();
+      setOpenModal(false);
+      setMovimientoEditando(null);
+      setModoModal('crear');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCrearGastoFijo = async (payload) => {
+    if (!canManageHome) {
+      setError('Tu rol no permite gestionar valores fijos');
+      return;
+    }
+
+    try {
+      setError('');
+      await createGastoFijo({ ...payload, hogar_id: hogarId, ciclo_desde: payload.ciclo_desde || cicloSeleccionado });
+      await cargarDatos();
+      setSeccionActiva('gastos_fijos');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleEditarGastoFijo = async (id, payload) => {
+    if (!canManageHome) {
+      setError('Tu rol no permite gestionar valores fijos');
+      return;
+    }
+
+    try {
+      setError('');
+      await updateGastoFijo(id, payload);
+      await cargarDatos();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleAjustarGastoFijo = async (id, payload) => {
+    if (!canManageHome) {
+      setError('Tu rol no permite ajustar valores fijos');
+      return;
+    }
+
+    try {
+      setError('');
+      await createAjusteGastoFijo(id, payload);
+      await cargarDatos();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleEliminarGastoFijoEnCiclo = async (id) => {
+    if (!canManageHome) {
+      setError('Tu rol no permite finalizar valores fijos');
+      return;
+    }
+
+    try {
+      setError('');
+      await deleteGastoFijoEnCiclo(id, cicloSeleccionado);
+      await cargarDatos();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleEditar = (movimiento) => {
+    if (!canManageHome) {
+      setError('Tu rol no permite editar movimientos');
+      return;
+    }
+    setModoModal('editar');
+    setMovimientoEditando(movimiento);
+    setOpenModal(true);
+  };
+
+  const handleEditarFijoEnGrilla = async (movimiento) => {
+    if (!canManageHome) {
+      setError('Tu rol no permite editar valores fijos');
+      return;
+    }
+    const gasto = gastosFijos.find((item) => Number(item.id) === Number(movimiento.gasto_fijo_id));
+    if (!gasto) return;
+    setFijoEditModal(movimiento);
+    setFijoEditForm({
+      gasto_fijo_id: gasto.id,
+      descripcion: gasto.descripcion || '',
+      categoria_id: gasto.categoria_id || '',
+      moneda: gasto.moneda || 'ARS',
+      monto_base: Number(gasto.monto_base || 0),
+      dia_vencimiento: gasto.dia_vencimiento || '',
+      monto_ciclo: Number(movimiento.monto_ars || 0)
+    });
+  };
+
+  const confirmarEditarFijoEnGrilla = async () => {
+    if (!fijoEditModal || !fijoEditForm.gasto_fijo_id) return;
+    const montoActual = Number(fijoEditModal.monto_ars || 0);
+    const nuevoMontoCiclo = Number(fijoEditForm.monto_ciclo || 0);
+    const delta = nuevoMontoCiclo - montoActual;
+
+    await handleEditarGastoFijo(fijoEditForm.gasto_fijo_id, {
+      descripcion: fijoEditForm.descripcion,
+      categoria_id: fijoEditForm.categoria_id ? Number(fijoEditForm.categoria_id) : null,
+      moneda: fijoEditForm.moneda,
+      monto_base: Number(fijoEditForm.monto_base || 0),
+      dia_vencimiento: fijoEditForm.dia_vencimiento ? Number(fijoEditForm.dia_vencimiento) : null
+    });
+
+    if (delta !== 0) {
+      await handleAjustarGastoFijo(fijoEditForm.gasto_fijo_id, {
+        fecha_aplicacion: `${cicloSeleccionado}-01`,
+        tipo_ajuste: 'monto_fijo',
+        valor: delta,
+        nota: `Ajuste desde grilla para ciclo ${cicloSeleccionado}`
+      });
+    }
+
+    setFijoEditModal(null);
+  };
+
+  const handleEliminarFijoEnGrilla = async (movimiento) => {
+    await handleEliminarGastoFijoEnCiclo(movimiento.gasto_fijo_id);
+  };
+
+  const handleEliminar = async (id) => {
+    if (!canManageHome) {
+      setError('Tu rol no permite eliminar movimientos');
+      return;
+    }
+    setDeleteTargetId(id);
+  };
+
+  const getFechaGastoRapido = () => {
+    const hoy = new Date().toISOString().slice(0, 10);
+    if (hoy.startsWith(cicloSeleccionado)) return hoy;
+    return `${cicloSeleccionado}-01`;
+  };
+
+  const handleCrearGastoRapido = async ({ monto, categoria_id, descripcion }) => {
+    if (!canOperateHome) {
+      setError('Tu rol no permite operar en este hogar');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError('');
+      await createMovimiento({
+        hogar_id: hogarId,
+        cuenta_id: 1,
+        tipo_movimiento_id: 2,
+        categoria_id,
+        fecha: getFechaGastoRapido(),
+        descripcion: descripcion || '',
+        moneda_original: 'ARS',
+        monto_original: monto,
+        monto_ars: monto,
+        usa_ahorro: false,
+        estado_egreso: 'pagado',
+        clasificacion_movimiento: 'normal',
+        creado_por_usuario_id: usuarioId
+      });
+      await cargarDatos();
+      setGastoRapidoAbierto(false);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const confirmarEliminar = async () => {
+    if (!deleteTargetId) return;
+
+    try {
+      setError('');
+      await deleteMovimiento(deleteTargetId);
+      await cargarDatos();
+      setDeleteTargetId(null);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const abrirModalCrear = () => {
+    if (!canOperateHome) {
+      setError('Tu rol no permite crear movimientos');
+      return;
+    }
+    setModoModal('crear');
+    setMovimientoEditando(null);
+    setOpenModal(true);
+  };
+
+  const getFechaFinDeCiclo = (ciclo) => {
+    const [anioTexto, mesTexto] = String(ciclo || '').split('-');
+    const anio = Number(anioTexto);
+    const mes = Number(mesTexto);
+    if (!Number.isInteger(anio) || !Number.isInteger(mes) || mes < 1 || mes > 12) {
+      return new Date().toISOString().slice(0, 10);
+    }
+    const ultimoDia = new Date(anio, mes, 0).getDate();
+    return `${ciclo}-${String(ultimoDia).padStart(2, '0')}`;
+  };
+
+  const getCicloSiguiente = (ciclo) => {
+    const [anioTexto, mesTexto] = String(ciclo || '').split('-');
+    const anio = Number(anioTexto);
+    const mes = Number(mesTexto);
+    if (!Number.isInteger(anio) || !Number.isInteger(mes) || mes < 1 || mes > 12) {
+      return new Date().toISOString().slice(0, 7);
+    }
+    const fecha = new Date(anio, mes, 1);
+    return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
+  };
+
+  const ultimaActualizacion = useMemo(() => new Date().toLocaleString('es-AR'), [movimientos, cotizaciones, gastosFijos]);
+  const cicloActual = useMemo(
+    () => {
+      const label = new Date(`${cicloSeleccionado}-01T00:00:00`).toLocaleDateString('es-AR', {
+        month: 'long',
+        year: 'numeric'
+      });
+      return label.charAt(0).toUpperCase() + label.slice(1);
+    },
+    [cicloSeleccionado]
+  );
+  const movimientosConsolidados = useMemo(
+    () =>
+      construirMovimientosConsolidadosDelCiclo({
+        movimientos,
+        gastosFijos,
+        cotizaciones,
+        ciclo: cicloSeleccionado,
+        estadoOverrides
+      }),
+    [movimientos, gastosFijos, cotizaciones, cicloSeleccionado, estadoOverrides]
+  );
+
+  const movimientosFiltradosYOrdenados = useMemo(() => {
+    let items = [...movimientosConsolidados];
+
+    if (filtrosGrilla.fechaDesde) {
+      items = items.filter((mov) => String(mov.fecha) >= filtrosGrilla.fechaDesde);
+    }
+    if (filtrosGrilla.fechaHasta) {
+      items = items.filter((mov) => String(mov.fecha) <= filtrosGrilla.fechaHasta);
+    }
+    if (filtrosGrilla.tipoMovimiento) {
+      items = items.filter((mov) => mov.tipo_movimiento === filtrosGrilla.tipoMovimiento);
+    }
+    if (filtrosGrilla.categoria) {
+      items = items.filter((mov) => String(mov.categoria || '') === filtrosGrilla.categoria);
+    }
+    if (filtrosGrilla.busqueda?.trim()) {
+      const textoBusqueda = filtrosGrilla.busqueda.trim().toLocaleLowerCase('es-AR');
+      items = items.filter((mov) => String(mov.descripcion || '').toLocaleLowerCase('es-AR').includes(textoBusqueda));
+    }
+
+    const { campo, direccion } = ordenGrilla;
+    const factor = direccion === 'asc' ? 1 : -1;
+    items.sort((a, b) => {
+      if (a.esProyectado && !b.esProyectado) return -1;
+      if (!a.esProyectado && b.esProyectado) return 1;
+
+      const normalize = (item) => {
+        if (campo === 'estado') return item.estado_consolidado || getEstadoMovimiento(item);
+        return item[campo] ?? '';
+      };
+      const av = normalize(a);
+      const bv = normalize(b);
+      if (campo === 'monto_ars') return (Number(av) - Number(bv)) * factor;
+      return String(av).localeCompare(String(bv)) * factor;
+    });
+
+    return items;
+  }, [movimientosConsolidados, filtrosGrilla, ordenGrilla, estadoOverrides]);
+
+  const categoriasDisponiblesGrilla = useMemo(() => {
+    const categoriasFiltradas = filtrosGrilla.tipoMovimiento
+      ? categorias.filter((categoria) => categoria.tipo_movimiento === filtrosGrilla.tipoMovimiento)
+      : categorias;
+
+    return categoriasFiltradas
+      .map((categoria) => categoria.nombre)
+      .filter(Boolean)
+      .sort((a, b) => String(a).localeCompare(String(b)));
+  }, [categorias, filtrosGrilla.tipoMovimiento]);
+
+  useEffect(() => {
+    if (!filtrosGrilla.categoria) return;
+    if (categoriasDisponiblesGrilla.includes(filtrosGrilla.categoria)) return;
+    setFiltrosGrilla((prev) => ({ ...prev, categoria: '' }));
+  }, [categoriasDisponiblesGrilla, filtrosGrilla.categoria]);
+
+  const resumenFinanciero = useMemo(() => derivarResumenFinanciero(movimientosConsolidados), [movimientosConsolidados]);
+
+  const resumenCalculado = useMemo(
+    () => ({
+      ingresos: resumenFinanciero.ingresosConfirmados,
+      egresos: resumenFinanciero.egresosConfirmados,
+      balance_actual: resumenFinanciero.balanceActual,
+      balance_proyectado: resumenFinanciero.balanceProyectado
+    }),
+    [resumenFinanciero]
+  );
+
+  const resumenOperativo = useMemo(() => derivarResumenOperativo(movimientosConsolidados), [movimientosConsolidados]);
+
+  const insightsCiclo = useMemo(() => {
+    const balanceActual = Number(resumenFinanciero.balanceActual || 0);
+    const balanceProyectado = Number(resumenFinanciero.balanceProyectado || 0);
+    const diferenciaBalance = balanceProyectado - balanceActual;
+    const categoriaMayorGasto = agruparEgresosConfirmadosPorCategoria(movimientosConsolidados)[0];
+    const montoPendiente = Number(resumenOperativo.montoPendienteEgresos || 0);
+    const diferenciaAbs = Math.abs(diferenciaBalance);
+    const diferenciaTexto =
+      diferenciaBalance > 0
+        ? `Podés cerrar el ciclo ${diferenciaAbs.toLocaleString('es-AR')} arriba si confirmás lo pendiente.`
+        : diferenciaBalance < 0
+          ? `El proyectado ya quedó ${diferenciaAbs.toLocaleString('es-AR')} por debajo del real. Revisá desvíos.`
+          : 'El balance real ya coincide con el proyectado.';
+
+    return [
+      montoPendiente > 0
+        ? `Te quedan $${montoPendiente.toLocaleString('es-AR')} pendientes de pago en el ciclo.`
+        : 'No tenés egresos pendientes en el ciclo.',
+      diferenciaTexto,
+      categoriaMayorGasto
+        ? `${categoriaMayorGasto.categoria} lidera el gasto confirmado con $${Number(categoriaMayorGasto.total).toLocaleString('es-AR')}.`
+        : 'Todavía no hay una categoría líder en gastos confirmados.'
+    ];
+  }, [movimientosConsolidados, resumenFinanciero, resumenOperativo]);
+
+  const insightsDashboard = useMemo(() => {
+    const balanceActual = Number(resumenFinanciero.balanceActual || 0);
+    const balanceProyectado = Number(resumenFinanciero.balanceProyectado || 0);
+    const diferenciaBalance = balanceProyectado - balanceActual;
+    const categoriaMayorGasto = agruparEgresosConfirmadosPorCategoria(movimientosConsolidados)[0];
+    const montoPendiente = Number(resumenOperativo.montoPendienteEgresos || 0);
+    const insights = [];
+
+    if (montoPendiente > 0) {
+      insights.push(
+        `Paga o reprograma $${montoPendiente.toLocaleString('es-AR')} pendientes: si se confirman, el balance final queda en $${balanceProyectado.toLocaleString('es-AR')}.`
+      );
+    } else {
+      insights.push(`Sin egresos pendientes: podes cerrar el ciclo con balance real de $${balanceActual.toLocaleString('es-AR')}.`);
+    }
+
+    if (diferenciaBalance < 0) {
+      insights.push(
+        `El proyectado empeora el balance en $${Math.abs(diferenciaBalance).toLocaleString('es-AR')}. Revisa gastos pendientes antes de cerrar.`
+      );
+    } else if (diferenciaBalance > 0) {
+      insights.push(
+        `Confirmar lo restante mejora el balance final en $${diferenciaBalance.toLocaleString('es-AR')}. Valida ingresos pendientes primero.`
+      );
+    } else {
+      insights.push('Balance real y proyectado coinciden: no hay impacto adicional pendiente.');
+    }
+
+    if (categoriaMayorGasto) {
+      insights.push(
+        `Revisa ${categoriaMayorGasto.categoria}: concentra $${Number(categoriaMayorGasto.total).toLocaleString('es-AR')} confirmados y puede mover el cierre.`
+      );
+    }
+
+    return insights.slice(0, 3);
+  }, [movimientosConsolidados, resumenFinanciero, resumenOperativo]);
+
+  const alertaDashboard = useMemo(() => {
+    const ingresos = Number(resumenFinanciero.ingresosConfirmados || 0);
+    const egresos = Number(resumenFinanciero.egresosConfirmados || 0);
+    if (ingresos <= 0 || egresos <= 0) return null;
+
+    const ratio = Math.round((egresos / ingresos) * 100);
+    if (ratio > 90) {
+      return {
+        tono: 'danger',
+        mensaje: `Alerta: los egresos confirmados representan ${ratio}% de los ingresos. Reduce o posterga gastos para proteger el balance.`
+      };
+    }
+
+    if (ratio >= 70) {
+      return {
+        tono: 'warning',
+        mensaje: `Atencion: los egresos ya consumen ${ratio}% de los ingresos. Revisa nuevos gastos antes de confirmarlos.`
+      };
+    }
+
+    return null;
+  }, [resumenFinanciero]);
+
+  const debeAbrirInsights = alertaDashboard?.tono === 'danger' || Number(resumenFinanciero.balanceActual || 0) < 0;
+
+  useEffect(() => {
+    if (debeAbrirInsights) {
+      setInsightsExpanded(true);
+    }
+  }, [debeAbrirInsights]);
+
+  const resumenMensualReportes = useMemo(
+    () => ({
+      ingresosConfirmados: resumenCalculado.ingresos || 0,
+      egresosConfirmados: resumenCalculado.egresos || 0,
+      balanceReal: resumenCalculado.balance_actual || 0,
+      pendienteEgresos: resumenOperativo.montoPendienteEgresos || 0,
+      balanceProyectado: resumenCalculado.balance_proyectado || 0,
+      porcentajeCumplimiento: resumenOperativo.porcentajeEgresosPagados || 0
+    }),
+    [resumenCalculado, resumenOperativo]
+  );
+  const balanceCalculadoCiclo = Number(resumenFinanciero.balanceActual || 0);
+  const diferenciaCierreCiclo =
+    saldoRealFinal === '' || Number.isNaN(Number(saldoRealFinal)) ? null : Number(saldoRealFinal) - balanceCalculadoCiclo;
+  const tipoAjusteCierre = diferenciaCierreCiclo == null ? null : diferenciaCierreCiclo >= 0 ? 'ingreso' : 'egreso';
+  const categoriaAjusteCierre = categorias.find(
+    (categoria) => categoria.nombre === 'Ajuste de cierre' && categoria.tipo_movimiento === tipoAjusteCierre
+  );
+  const tipoArrastreCierre = saldoRealFinal === '' || Number.isNaN(Number(saldoRealFinal)) ? null : Number(saldoRealFinal) >= 0 ? 'ingreso' : 'egreso';
+  const categoriaArrastreCierre = categorias.find(
+    (categoria) => categoria.nombre === 'Arrastre de cierre' && categoria.tipo_movimiento === tipoArrastreCierre
+  );
+  const cicloSiguienteCierre = getCicloSiguiente(cicloSeleccionado);
+
+  const reporteCategorias = useMemo(
+    () => agruparEgresosConfirmadosPorCategoria(movimientosConsolidados),
+    [movimientosConsolidados]
+  );
+
+  const aplicarCierreCiclo = async () => {
+    if (!canManageHome) {
+      setError('Tu rol no permite cerrar ciclos');
+      return;
+    }
+
+    if (saldoRealFinal === '' || Number.isNaN(Number(saldoRealFinal))) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError('');
+
+      await cerrarCiclo({
+        hogar_id: hogarId,
+        ciclo: cicloSeleccionado,
+        balance_calculado: balanceCalculadoCiclo,
+        saldo_real_final: Number(saldoRealFinal),
+        genera_saldo_inicial: generarSaldoInicial,
+        creado_por_usuario_id: usuarioId
+      });
+
+      await cargarDatos();
+      setCierreCicloAbierto(false);
+      setSaldoRealFinal('');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleReabrirCiclo = async () => {
+    if (!canManageHome) {
+      setError('Tu rol no permite reabrir ciclos');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError('');
+      await reabrirCiclo(hogarId, cicloSeleccionado);
+      await cargarDatos();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const reporteEvolucionMensual = useMemo(
+    () =>
+      construirSerieResumenMensualConsolidada({
+        movimientos: movimientosHistoricos,
+        gastosFijosPorCiclo: {
+          ...gastosFijosHistoricosPorCiclo,
+          [cicloSeleccionado]: gastosFijos
+        },
+        cotizaciones,
+        ciclo: cicloSeleccionado
+      }),
+    [cicloSeleccionado, cotizaciones, gastosFijos, gastosFijosHistoricosPorCiclo, movimientosHistoricos]
+  );
+
+  if (authLoading && !session) {
+    return (
+      <main className="auth-shell">
+        <section className="auth-card auth-card-compact">
+          <p className="eyebrow">FinanzApp</p>
+          <h1>Validando sesiÃ³n</h1>
+          <p className="subtitle">Estamos recuperando tu acceso guardado.</p>
+        </section>
+      </main>
+    );
+  }
+
+  if (!session) {
+    return <LoginPanel onLogin={handleLogin} loading={authLoading} error={authError} />;
+  }
+
+  return (
+    <main className={`container ${menuCollapsed ? 'menu-colapsado' : ''}`}>
+      <MenuLateral
+        collapsed={menuCollapsed}
+        onToggle={() => setMenuCollapsed((v) => !v)}
+        active={seccionActiva}
+        onSelect={setSeccionActiva}
+        canManageHome={canManageHome}
+        isSuperadmin={isSuperadmin}
+      />
+
+      <div className="contenido-principal">
+        <header className="hero">
+          <div>
+            <p className="eyebrow">FinanzApp</p>
+            <h1>Panel mensual</h1>
+          </div>
+          <div className="hero-meta">
+            <div className="account-menu" ref={accountMenuRef}>
+              <button
+                type="button"
+                className="account-menu-trigger"
+                onClick={() => setAccountMenuOpen((current) => !current)}
+                aria-expanded={accountMenuOpen}
+                aria-haspopup="menu"
+              >
+                <span className="account-avatar" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" role="img">
+                    <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm0 2c-4.4 0-8 2.2-8 5v1h16v-1c0-2.8-3.6-5-8-5Z" />
+                  </svg>
+                </span>
+                <span className="account-trigger-copy">
+                  <strong>Cuenta</strong>
+                  <small>{session.usuario?.nombre || session.usuario?.email}</small>
+                </span>
+                <span className="account-chevron" aria-hidden="true">v</span>
+              </button>
+
+              {accountMenuOpen && (
+                <div className="account-dropdown" role="menu">
+                  <div className="account-dropdown-section">
+                    <span>Usuario</span>
+                    <strong>{session.usuario?.nombre || session.usuario?.email}</strong>
+                    <small>{rolActivo || 'sin rol'}</small>
+                  </div>
+
+                  <div className="account-dropdown-section">
+                    {isSuperadmin ? (
+                      <label className="selector-ciclo selector-hogar">
+                        Hogar actual
+                        <select value={String(hogarId)} onChange={handleCambiarHogar}>
+                          {hogaresContexto.map((hogar) => (
+                            <option key={hogar.id} value={hogar.id}>
+                              {hogar.nombre} #{hogar.id}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : (
+                      <>
+                        <span>Hogar actual</span>
+                        <strong>{hogarActivo?.nombre || 'Hogar'} #{hogarId}</strong>
+                      </>
+                    )}
+                  </div>
+
+                  {estadoCierreCiclo.cerrado && <span className="pill success account-status-pill">Ciclo cerrado</span>}
+
+                  <div className="account-dropdown-divider" />
+
+                  <label className="account-theme-switch">
+                    <span>
+                      <strong>Modo oscuro</strong>
+                      <small>{theme === 'dark' ? 'Activado' : 'Desactivado'}</small>
+                    </span>
+                    <input type="checkbox" checked={theme === 'dark'} onChange={toggleTheme} />
+                    <span className="account-switch-track" aria-hidden="true">
+                      <span className="account-switch-thumb" />
+                    </span>
+                  </label>
+
+                  <div className="account-dropdown-divider" />
+
+                  <button type="button" className="session-logout account-logout" onClick={handleLogout}>
+                    Cerrar sesion
+                  </button>
+                </div>
+              )}
+            </div>
+            <div className="header-submeta">
+              <span>Actualizado: {ultimaActualizacion}</span>
+            </div>
+          </div>
+        </header>
+
+        {error && <p className="error">{error}</p>}
+
+        {seccionActiva === 'dashboard' && (
+          <ResumenCards
+            resumen={resumenCalculado}
+            amountsHidden={dashboardAmountsHidden}
+            onToggleAmountsHidden={() => setDashboardAmountsHidden((current) => !current)}
+          />
+        )}
+
+        <div className="contenido-dashboard">
+          {(seccionActiva === 'dashboard' || seccionActiva === 'movimientos') && (
+            <>
+              <section className="panel cycle-control-panel">
+                <div className="cycle-control-main">
+                  <span className="cycle-control-label">Ciclo de trabajo</span>
+                  <strong>{cicloActual}</strong>
+                  <small>{estadoCierreCiclo.cerrado ? 'Ciclo cerrado' : 'Ciclo abierto para operar'}</small>
+                </div>
+                <div className="cycle-control-tools">
+                  <span className="cycle-control-label">Cambiar ciclo</span>
+                  <div className="cycle-control-row">
+                    <input
+                      type="month"
+                      value={cicloSeleccionado}
+                      onChange={(e) => setCicloSeleccionado(e.target.value)}
+                      aria-label="Cambiar ciclo"
+                    />
+                    {canManageHome && (
+                      <div className="cycle-control-actions">
+                        {estadoCierreCiclo.cerrado ? (
+                          <button type="button" className="hero-action-btn secondary" onClick={handleReabrirCiclo} disabled={loading}>
+                            Reabrir ciclo
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="hero-action-btn"
+                            onClick={() => {
+                              setSaldoRealFinal('');
+                              setGenerarSaldoInicial(true);
+                              setCierreCicloAbierto(true);
+                            }}
+                          >
+                            Cerrar ciclo
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </section>
+              <section className="panel operational-summary">
+                <div className="operational-item">
+                  <span className="operational-label">Total de egresos pendientes</span>
+                  <strong>${Number(resumenOperativo.montoPendienteEgresos || 0).toLocaleString('es-AR')}</strong>
+                </div>
+                <div className="operational-item">
+                  <span className="operational-label">Egresos pagados del ciclo</span>
+                  <strong>{Number(resumenOperativo.porcentajeEgresosPagados || 0)}%</strong>
+                </div>
+                <div className="operational-item operational-item-wide">
+                  <span className="operational-label">Cantidad de pendientes</span>
+                  <strong>{resumenOperativo.pendientes}</strong>
+                </div>
+              </section>
+              {alertaDashboard && (
+                <section className={`dashboard-alert ${alertaDashboard.tono}`}>
+                  <strong>{alertaDashboard.tono === 'danger' ? 'Umbral critico' : 'Umbral preventivo'}</strong>
+                  <span>{alertaDashboard.mensaje}</span>
+                </section>
+              )}
+              <section className={`panel cycle-insights ${insightsExpanded ? 'is-expanded' : 'is-collapsed'}`}>
+                <div className="panel-header cycle-insights-header">
+                  <div className="cycle-insights-heading">
+                    <h2>Insights del ciclo</h2>
+                    {!insightsExpanded && (
+                      <p className="cycle-insight-preview">
+                        {insightsDashboard[0] || 'No hay insights relevantes para este ciclo.'}
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    className="cycle-insights-toggle"
+                    onClick={() => setInsightsExpanded((current) => !current)}
+                    aria-expanded={insightsExpanded}
+                  >
+                    {insightsExpanded ? 'Ver menos' : 'Ver mas'}
+                    <span aria-hidden="true">{insightsExpanded ? '−' : '+'}</span>
+                  </button>
+                </div>
+                <div className="cycle-insights-collapse" aria-hidden={!insightsExpanded}>
+                  <div className="cycle-insights-list">
+                    {insightsDashboard.map((insight) => (
+                      <p key={insight} className="cycle-insight-item">
+                        {insight}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              </section>
+              <MovimientosTable
+                movimientos={movimientosFiltradosYOrdenados}
+                categoriasDisponibles={categoriasDisponiblesGrilla}
+                onEditar={handleEditar}
+                onEliminar={handleEliminar}
+                onNuevo={abrirModalCrear}
+                canCreate={canOperateHome}
+                canEdit={canManageHome}
+                canDelete={canManageHome}
+                canManageFixedValues={canManageHome}
+                canToggleEstado={canOperateHome}
+                mostrarEliminados={mostrarEliminados}
+                onToggleEliminados={setMostrarEliminados}
+                onEditarFijo={handleEditarFijoEnGrilla}
+                onEliminarFijo={handleEliminarFijoEnGrilla}
+                filtros={filtrosGrilla}
+                onFiltrosChange={setFiltrosGrilla}
+                orden={ordenGrilla}
+                onOrdenChange={setOrdenGrilla}
+                getEstadoMovimiento={getEstadoMovimiento}
+                onToggleEstadoPago={toggleEstadoMovimiento}
+              />
+            </>
+          )}
+
+          {(seccionActiva === 'dashboard' || seccionActiva === 'cotizacion') && (
+            <CotizacionesPanel cotizaciones={cotizaciones} onRefrescar={cargarDatos} />
+          )}
+
+          {seccionActiva === 'gastos_fijos' && (
+            <GastosFijosPanel
+              gastos={gastosFijos}
+              categorias={categorias}
+              ciclo={cicloSeleccionado}
+              readOnly={!canManageHome}
+              onCrear={handleCrearGastoFijo}
+              onEditar={handleEditarGastoFijo}
+              onAjustar={handleAjustarGastoFijo}
+              onEliminarEnCiclo={handleEliminarGastoFijoEnCiclo}
+            />
+          )}
+
+          {seccionActiva === 'ahorros' && (
+            <section className="panel">
+              <h2>🏦 Ahorros</h2>
+              <p>Próximo paso: vista dedicada para evolución de ahorro en ARS/USD.</p>
+            </section>
+          )}
+
+          {seccionActiva === 'reportes' && (
+            <ReportesPanel
+              reporteActivo={reporteActivo}
+              onReporteChange={setReporteActivo}
+              ciclo={cicloSeleccionado}
+              resumenMensual={resumenMensualReportes}
+              categoriasReportes={reporteCategorias}
+              evolucionMensual={reporteEvolucionMensual}
+            />
+          )}
+
+          {seccionActiva === 'superadmin' && isSuperadmin && (
+            <SuperAdminPanel
+              hogarActivoId={hogarId}
+              onHogaresChange={cargarHogaresContexto}
+              onHogarSelect={(id) => setHogarSeleccionadoId(String(id))}
+            />
+          )}
+
+          {seccionActiva === 'mi_hogar' && canManageHome && (
+            <HogarAdminPanel
+              hogarId={hogarId}
+              hogarNombre={hogarActivo?.nombre}
+              usuarioActualId={usuarioId}
+            />
+          )}
+        </div>
+      </div>
+
+      {canOperateHome && (
+        <button
+          type="button"
+          className="quick-expense-fab"
+          onClick={() => setGastoRapidoAbierto(true)}
+          aria-label="Cargar gasto rapido"
+        >
+          <span aria-hidden="true">+</span>
+          Gasto rapido
+        </button>
+      )}
+
+      {gastoRapidoAbierto && (
+        <GastoRapidoModal
+          categorias={categorias}
+          loading={loading}
+          onClose={() => setGastoRapidoAbierto(false)}
+          onSubmit={handleCrearGastoRapido}
+        />
+      )}
+
+      {openModal && (
+        <div className="modal-overlay" role="dialog" aria-modal="true">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h3>{modoModal === 'editar' ? 'Editar movimiento' : 'Alta de movimiento'}</h3>
+              <button
+                type="button"
+                className="close-btn"
+                onClick={() => {
+                  setOpenModal(false);
+                  setModoModal('crear');
+                  setMovimientoEditando(null);
+                }}
+              >
+                ✕
+              </button>
+            </div>
+            <NuevoMovimientoForm
+              categorias={categorias}
+              onCrear={handleCrearMovimiento}
+              loading={loading}
+              modo={modoModal}
+              initialValues={movimientoEditando}
+            />
+          </div>
+        </div>
+      )}
+
+      {deleteTargetId && (
+        <div className="modal-overlay" role="dialog" aria-modal="true">
+          <div className="modal-content confirm-modal">
+            <h3>🗑️ Confirmar eliminación</h3>
+            <p>¿Seguro querés eliminar este movimiento? Esta acción no se puede deshacer.</p>
+            <div className="confirm-actions">
+              <button type="button" className="btn-inline" onClick={() => setDeleteTargetId(null)}>
+                Cancelar
+              </button>
+              <button type="button" className="btn-inline danger" onClick={confirmarEliminar}>
+                Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {fijoEditModal && (
+        <div className="modal-overlay" role="dialog" aria-modal="true">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h3>✏️ Editar valor fijo</h3>
+              <button type="button" className="close-btn" onClick={() => setFijoEditModal(null)}>
+                ✕
+              </button>
+            </div>
+
+            <form className="form-grid" onSubmit={(e) => { e.preventDefault(); confirmarEditarFijoEnGrilla(); }}>
+              <label>
+                Descripción
+                <input
+                  value={fijoEditForm.descripcion}
+                  onChange={(e) => setFijoEditForm((prev) => ({ ...prev, descripcion: e.target.value }))}
+                  required
+                />
+              </label>
+              <label>
+                Categoría
+                <select
+                  value={fijoEditForm.categoria_id}
+                  onChange={(e) => setFijoEditForm((prev) => ({ ...prev, categoria_id: e.target.value }))}
+                  required
+                >
+                  <option value="">Seleccionar</option>
+                  {categorias.map((cat) => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.nombre}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Moneda
+                <select value={fijoEditForm.moneda} onChange={(e) => setFijoEditForm((prev) => ({ ...prev, moneda: e.target.value }))}>
+                  <option value="ARS">ARS</option>
+                  <option value="USD">USD</option>
+                </select>
+              </label>
+              <label>
+                Monto base
+                <input
+                  type="number"
+                  min="1"
+                  value={fijoEditForm.monto_base}
+                  onChange={(e) => setFijoEditForm((prev) => ({ ...prev, monto_base: e.target.value }))}
+                  required
+                />
+              </label>
+              <label>
+                Día vencimiento
+                <input
+                  type="number"
+                  min="1"
+                  max="31"
+                  value={fijoEditForm.dia_vencimiento}
+                  onChange={(e) => setFijoEditForm((prev) => ({ ...prev, dia_vencimiento: e.target.value }))}
+                />
+              </label>
+              <label>
+                Monto en ciclo {cicloSeleccionado}
+                <input
+                  type="number"
+                  min="0"
+                  value={fijoEditForm.monto_ciclo}
+                  onChange={(e) => setFijoEditForm((prev) => ({ ...prev, monto_ciclo: e.target.value }))}
+                />
+              </label>
+              <div className="confirm-actions full-width">
+                <button type="button" className="btn-inline" onClick={() => setFijoEditModal(null)}>
+                  Cancelar
+                </button>
+                <button type="submit" className="btn-inline success">
+                  Guardar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {cierreCicloAbierto && (
+        <div className="modal-overlay" role="dialog" aria-modal="true">
+          <div className="modal-content modal-compact">
+            <div className="modal-header">
+              <h3>Cerrar ciclo</h3>
+              <button type="button" className="close-btn" onClick={() => setCierreCicloAbierto(false)}>
+                ×
+              </button>
+            </div>
+
+            <div className="cycle-close-summary">
+              <article className="cycle-close-card">
+                <span>Balance calculado del ciclo</span>
+                <strong className={balanceCalculadoCiclo >= 0 ? 'positivo' : 'negativo'}>
+                  ${balanceCalculadoCiclo.toLocaleString('es-AR')}
+                </strong>
+              </article>
+
+              <label>
+                Saldo real final
+                <input
+                  type="number"
+                  step="0.01"
+                  value={saldoRealFinal}
+                  onChange={(e) => setSaldoRealFinal(e.target.value)}
+                  placeholder="Ingresá el saldo real final"
+                  autoFocus
+                />
+              </label>
+
+              <label className="checkbox-card">
+                <span className="checkbox-row">
+                  <input
+                    type="checkbox"
+                    checked={generarSaldoInicial}
+                    onChange={(e) => setGenerarSaldoInicial(e.target.checked)}
+                  />
+                  <span>Generar saldo inicial en {cicloSiguienteCierre}</span>
+                </span>
+              </label>
+
+              <article className="cycle-close-card cycle-close-diff">
+                <span>Diferencia</span>
+                <strong className={diferenciaCierreCiclo == null ? '' : diferenciaCierreCiclo >= 0 ? 'positivo' : 'negativo'}>
+                  {diferenciaCierreCiclo == null ? '—' : `$${diferenciaCierreCiclo.toLocaleString('es-AR')}`}
+                </strong>
+                {diferenciaCierreCiclo != null && diferenciaCierreCiclo !== 0 && (
+                  <small>
+                    Se va a crear un {diferenciaCierreCiclo > 0 ? 'ingreso' : 'egreso'} confirmado en
+                    {' '}Ajuste de cierre.
+                  </small>
+                )}
+                {generarSaldoInicial && saldoRealFinal !== '' && !Number.isNaN(Number(saldoRealFinal)) && Number(saldoRealFinal) !== 0 && (
+                  <small>
+                    También se va a crear un {Number(saldoRealFinal) > 0 ? 'ingreso' : 'egreso'} confirmado como saldo inicial en {cicloSiguienteCierre}.
+                  </small>
+                )}
+              </article>
+            </div>
+
+            <div className="confirm-actions">
+              <button type="button" className="btn-inline" onClick={() => setCierreCicloAbierto(false)}>
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="btn-inline success"
+                onClick={aplicarCierreCiclo}
+                disabled={loading || diferenciaCierreCiclo == null || estadoCierreCiclo.cerrado}
+              >
+                {diferenciaCierreCiclo === 0 ? 'Cerrar sin ajuste' : loading ? 'Aplicando...' : 'Aplicar cierre'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </main>
+  );
+}

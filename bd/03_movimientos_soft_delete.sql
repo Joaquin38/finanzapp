@@ -1,0 +1,13 @@
+BEGIN;
+
+ALTER TABLE movimientos
+  ADD COLUMN IF NOT EXISTS activo BOOLEAN NOT NULL DEFAULT TRUE;
+
+ALTER TABLE movimientos
+  ADD COLUMN IF NOT EXISTS eliminado_en TIMESTAMPTZ;
+
+UPDATE movimientos
+SET activo = TRUE
+WHERE activo IS NULL;
+
+COMMIT;
