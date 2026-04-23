@@ -509,37 +509,39 @@ async function asegurarDatosColon260() {
     ADD COLUMN IF NOT EXISTS hogar_id BIGINT
   `);
 
-  await pool.query('UPDATE cuentas SET hogar_id = $1 WHERE hogar_id IS DISTINCT FROM $1', [HOGAR_COLON_260_ID]);
-  await pool.query('UPDATE categorias SET hogar_id = $1 WHERE hogar_id IS DISTINCT FROM $1', [HOGAR_COLON_260_ID]);
-  await pool.query('UPDATE etiquetas SET hogar_id = $1 WHERE hogar_id IS DISTINCT FROM $1', [HOGAR_COLON_260_ID]);
+  await pool.query('UPDATE cuentas SET hogar_id = $1 WHERE hogar_id IS NULL', [HOGAR_COLON_260_ID]);
+  await pool.query('UPDATE categorias SET hogar_id = $1 WHERE hogar_id IS NULL', [HOGAR_COLON_260_ID]);
+  await pool.query('UPDATE etiquetas SET hogar_id = $1 WHERE hogar_id IS NULL', [HOGAR_COLON_260_ID]);
   await pool.query(
     `
     UPDATE movimientos
-    SET hogar_id = $1,
-        creado_por_usuario_id = CASE
+    SET creado_por_usuario_id = CASE
           WHEN creado_por_usuario_id IN ($2, $3) THEN creado_por_usuario_id
           ELSE $2
         END
-    WHERE hogar_id IS DISTINCT FROM $1
-       OR creado_por_usuario_id IS NULL
-       OR creado_por_usuario_id NOT IN ($2, $3)
+    WHERE hogar_id = $1
+      AND (
+        creado_por_usuario_id IS NULL
+        OR creado_por_usuario_id NOT IN ($2, $3)
+      )
     `,
     [HOGAR_COLON_260_ID, USUARIO_JOAQUIN_ID, USUARIO_SOFIA_ID]
   );
-  await pool.query('UPDATE gastos_fijos SET hogar_id = $1 WHERE hogar_id IS DISTINCT FROM $1', [HOGAR_COLON_260_ID]);
+  await pool.query('UPDATE gastos_fijos SET hogar_id = $1 WHERE hogar_id IS NULL', [HOGAR_COLON_260_ID]);
   await pool.query(`
     DO $$
     BEGIN
       IF to_regclass('public.cierres_ciclo') IS NOT NULL THEN
         UPDATE cierres_ciclo
-        SET hogar_id = ${HOGAR_COLON_260_ID},
-            creado_por_usuario_id = CASE
+        SET creado_por_usuario_id = CASE
               WHEN creado_por_usuario_id IN (${USUARIO_JOAQUIN_ID}, ${USUARIO_SOFIA_ID}) THEN creado_por_usuario_id
               ELSE ${USUARIO_JOAQUIN_ID}
             END
-        WHERE hogar_id IS DISTINCT FROM ${HOGAR_COLON_260_ID}
-           OR creado_por_usuario_id IS NULL
-           OR creado_por_usuario_id NOT IN (${USUARIO_JOAQUIN_ID}, ${USUARIO_SOFIA_ID});
+        WHERE hogar_id = ${HOGAR_COLON_260_ID}
+          AND (
+            creado_por_usuario_id IS NULL
+            OR creado_por_usuario_id NOT IN (${USUARIO_JOAQUIN_ID}, ${USUARIO_SOFIA_ID})
+          );
       END IF;
     END $$;
   `);
@@ -603,13 +605,21 @@ async function asegurarAlcanceAjustesGastosFijos() {
 }
 
 async function asegurarCategoriasBase(hogarId) {
+  if (!hogarId) return;
+
   const { rows: tiposRows } = await pool.query('SELECT id, codigo FROM tipos_movimiento');
   const tipoIdPorCodigo = new Map(tiposRows.map((row) => [row.codigo, Number(row.id)]));
 
-  const categoriasBaseConTipo = CATEGORIAS_BASE.map((categoria) => ({
-    nombre: categoria.nombre,
-    tipoMovimientoId: tipoIdPorCodigo.get(categoria.tipoMovimiento)
-  })).filter((categoria) => categoria.tipoMovimientoId);
+  const categoriasBaseConTipo = Array.from(
+    new Map(
+      CATEGORIAS_BASE.map((categoria) => ({
+        nombre: categoria.nombre,
+        tipoMovimientoId: tipoIdPorCodigo.get(categoria.tipoMovimiento)
+      }))
+        .filter((categoria) => categoria.tipoMovimientoId)
+        .map((categoria) => [`${categoria.nombre}::${categoria.tipoMovimientoId}`, categoria])
+    ).values()
+  );
 
   if (categoriasBaseConTipo.length === 0) {
     return;
@@ -618,8 +628,15 @@ async function asegurarCategoriasBase(hogarId) {
   await pool.query(
     `
     INSERT INTO categorias (hogar_id, nombre, tipo_movimiento_id)
-    SELECT $1, categoria.nombre, categoria.tipo_movimiento_id
+    SELECT DISTINCT $1::bigint, categoria.nombre, categoria.tipo_movimiento_id
     FROM UNNEST($2::text[], $3::smallint[]) AS categoria(nombre, tipo_movimiento_id)
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM categorias existente
+      WHERE existente.hogar_id = $1::bigint
+        AND existente.nombre = categoria.nombre
+        AND existente.tipo_movimiento_id = categoria.tipo_movimiento_id
+    )
     ON CONFLICT (hogar_id, nombre, tipo_movimiento_id) DO NOTHING
     `,
     [
@@ -848,7 +865,9 @@ app.post('/admin/hogares', autenticar, exigirSuperadmin, async (req, res) => {
       `,
       [String(nombre).trim()]
     );
-    return res.status(201).json({ ok: true, hogar: { ...rows[0], id: Number(rows[0].id) } });
+    const hogar = { ...rows[0], id: Number(rows[0].id) };
+    await asegurarCategoriasBase(hogar.id);
+    return res.status(201).json({ ok: true, hogar });
   } catch (error) {
     return res.status(500).json({ error: 'Error creando hogar', detalle: error.message });
   }
@@ -1725,6 +1744,8 @@ app.post('/categorias', exigirGestionHogar, async (req, res) => {
       `
       INSERT INTO categorias (hogar_id, nombre, tipo_movimiento_id)
       VALUES ($1, $2, $3)
+      ON CONFLICT (hogar_id, nombre, tipo_movimiento_id)
+      DO UPDATE SET activo = true
       RETURNING id, hogar_id, nombre, tipo_movimiento_id
       `,
       [hogar_id, nombre.trim(), tipo_movimiento_id]
