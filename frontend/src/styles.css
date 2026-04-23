@@ -915,6 +915,7 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 8px;
   width: 34px;
   height: 34px;
   padding: 0;
@@ -933,6 +934,12 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
   height: 16px;
   object-fit: contain;
   opacity: 0.78;
+}
+.amount-privacy-toggle span {
+  display: none;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
 }
 .amount-hidden {
   color: var(--dashboard-card-value);
@@ -2787,8 +2794,25 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   .header-cycle-selector { border-left: 0; padding-left: 0; }
   .header-submeta { justify-content: flex-start; flex-direction: column; gap: 2px; }
   .session-logout { width: 100%; }
-  .dashboard-cards-toolbar { justify-content: flex-end; }
-  .amount-privacy-toggle { width: auto; }
+  .dashboard-cards-toolbar { justify-content: flex-start; }
+  .amount-privacy-toggle {
+    justify-content: flex-start;
+    gap: 10px;
+    width: auto;
+    min-width: 44px;
+    height: 42px;
+    padding: 0 14px;
+    border-radius: 12px;
+  }
+  .amount-privacy-toggle img {
+    width: 18px;
+    height: 18px;
+    opacity: 0.92;
+  }
+  .amount-privacy-toggle span {
+    display: inline;
+    font-size: 13px;
+  }
   .cards-grid, .form-grid, .cotizaciones-grid { grid-template-columns: 1fr; }
   .cycle-control-tools { justify-self: stretch; }
   .cycle-control-row { flex-direction: column; align-items: stretch; }
