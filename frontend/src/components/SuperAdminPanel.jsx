@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   createAdminHogar,
   createAdminUsuario,
+  deleteAdminHogar,
   getAdminHogares,
   getAdminUsuarios,
   updateAdminHogar,
@@ -30,6 +31,7 @@ export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHoga
   const [modal, setModal] = useState(null);
   const [nuevoHogar, setNuevoHogar] = useState('');
   const [hogarEditado, setHogarEditado] = useState({ id: '', nombre: '' });
+  const [hogarAEliminar, setHogarAEliminar] = useState(null);
   const [nuevoUsuario, setNuevoUsuario] = useState(crearUsuarioInicial);
   const [vinculo, setVinculo] = useState({
     hogar_id: '',
@@ -94,6 +96,15 @@ export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHoga
     () => usuarios.filter((usuario) => (usuario.hogares || []).length === 0),
     [usuarios]
   );
+  const resumenAdmin = useMemo(
+    () => ({
+      hogares: hogares.length,
+      usuarios: usuarios.length,
+      hogaresActivos: usuariosPorHogar.filter((hogar) => hogar.usuarios.length > 0).length,
+      usuariosSinHogar: usuariosSinHogar.length
+    }),
+    [hogares.length, usuarios.length, usuariosPorHogar, usuariosSinHogar.length]
+  );
   const modalError = modal && error ? <p className="error full-width">{error}</p> : null;
 
   const abrirCrearHogar = () => {
@@ -104,6 +115,11 @@ export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHoga
   const abrirEditarHogar = (hogar) => {
     setHogarEditado({ id: String(hogar.id), nombre: hogar.nombre || '' });
     setModal('editar-hogar');
+  };
+
+  const abrirEliminarHogar = (hogar) => {
+    setHogarAEliminar(hogar);
+    setModal('eliminar-hogar');
   };
 
   const abrirCrearUsuario = (hogarId = hogarActivoId) => {
@@ -126,6 +142,7 @@ export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHoga
   const cerrarModal = () => {
     setModal(null);
     setError('');
+    setHogarAEliminar(null);
   };
 
   const crearHogar = async (event) => {
@@ -157,6 +174,31 @@ export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHoga
       setMensaje('');
       await updateAdminHogar(hogarEditado.id, { nombre: hogarEditado.nombre.trim() });
       setMensaje('Hogar actualizado correctamente.');
+      cerrarModal();
+      await cargarAdmin();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const eliminarHogar = async () => {
+    if (!hogarAEliminar?.id) return;
+
+    const hogaresRestantes = hogares.filter((hogar) => Number(hogar.id) !== Number(hogarAEliminar.id));
+
+    try {
+      setLoading(true);
+      setError('');
+      setMensaje('');
+      await deleteAdminHogar(hogarAEliminar.id);
+
+      if (Number(hogarActivoId) === Number(hogarAEliminar.id)) {
+        onHogarSelect?.(hogaresRestantes[0]?.id || '');
+      }
+
+      setMensaje('Hogar eliminado correctamente.');
       cerrarModal();
       await cargarAdmin();
     } catch (err) {
@@ -236,10 +278,36 @@ export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHoga
       {error && <p className="error">{error}</p>}
       {mensaje && <p className="success-message">{mensaje}</p>}
 
+      <div className="superadmin-summary-grid">
+        <article className="superadmin-summary-card">
+          <span>Hogares</span>
+          <strong>{resumenAdmin.hogares}</strong>
+          <small>Espacios creados para organizar la app</small>
+        </article>
+        <article className="superadmin-summary-card">
+          <span>Usuarios</span>
+          <strong>{resumenAdmin.usuarios}</strong>
+          <small>Personas cargadas en el sistema</small>
+        </article>
+        <article className="superadmin-summary-card">
+          <span>Hogares con usuarios</span>
+          <strong>{resumenAdmin.hogaresActivos}</strong>
+          <small>Hogares que ya tienen miembros vinculados</small>
+        </article>
+        <article className="superadmin-summary-card">
+          <span>Sin hogar</span>
+          <strong>{resumenAdmin.usuariosSinHogar}</strong>
+          <small>Usuarios pendientes de asignacion</small>
+        </article>
+      </div>
+
       <div className="superadmin-grid">
         <div className="admin-card superadmin-table-card">
           <div className="admin-card-header">
-            <h3>Hogares</h3>
+            <div>
+              <h3>Hogares</h3>
+              <small>Administracion general de hogares y acceso rapido al contexto activo.</small>
+            </div>
             <small>{hogares.length} hogares cargados</small>
           </div>
           <div className="table-wrapper">
@@ -261,7 +329,9 @@ export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHoga
                     </td>
                     <td>{hogar.usuarios_vinculados || 0}</td>
                     <td>
-                      {Number(hogarActivoId) === Number(hogar.id) ? (
+                      {Number(hogar.id) === 1 ? (
+                        <span className="pill muted">Protegido</span>
+                      ) : Number(hogarActivoId) === Number(hogar.id) ? (
                         <span className="pill success">Activo</span>
                       ) : (
                         <span className="pill">Disponible</span>
@@ -280,6 +350,14 @@ export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHoga
                             Ver
                           </button>
                         )}
+                        <button
+                          type="button"
+                          className="btn-inline danger ghost-btn"
+                          disabled={Number(hogar.id) === 1}
+                          onClick={() => abrirEliminarHogar(hogar)}
+                        >
+                          Eliminar
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -296,7 +374,10 @@ export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHoga
 
         <div className="admin-card superadmin-table-card">
           <div className="admin-card-header">
-            <h3>Usuarios por hogar</h3>
+            <div>
+              <h3>Usuarios por hogar</h3>
+              <small>Vista agrupada para entender rapido quienes acceden a cada hogar.</small>
+            </div>
             <small>{usuarios.length} usuarios cargados</small>
           </div>
 
@@ -404,6 +485,31 @@ export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHoga
                 <button type="submit" className="btn-inline success" disabled={loading || !hogarEditado.nombre.trim()}>Guardar</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {modal === 'eliminar-hogar' && (
+        <div className="modal-overlay" role="dialog" aria-modal="true">
+          <div className="modal-content modal-compact confirm-modal">
+            <div className="modal-header">
+              <h3>Eliminar hogar</h3>
+              <button type="button" className="close-btn" onClick={cerrarModal}>x</button>
+            </div>
+            {modalError}
+            <div className="confirm-copy">
+              <strong>{hogarAEliminar?.nombre}</strong>
+              <p>
+                Se van a borrar sus configuraciones basicas y las vinculaciones de usuarios. Si el hogar tiene movimientos,
+                valores fijos o cierres, la eliminacion se bloquea para proteger la informacion.
+              </p>
+            </div>
+            <div className="confirm-actions full-width">
+              <button type="button" className="btn-inline secondary" onClick={cerrarModal}>Cancelar</button>
+              <button type="button" className="btn-inline danger" onClick={eliminarHogar} disabled={loading || !hogarAEliminar?.id}>
+                Eliminar hogar
+              </button>
+            </div>
           </div>
         </div>
       )}

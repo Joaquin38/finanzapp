@@ -500,9 +500,23 @@ h1 { margin: 4px 0; font-size: 34px; font-weight: 700; }
   white-space: nowrap;
 }
 .account-chevron {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
   color: var(--text-muted);
-  font-size: 16px;
-  line-height: 1;
+}
+.account-chevron::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-1px) rotate(45deg);
+  transition: transform 0.18s ease, color 0.18s ease;
+}
+.account-menu-trigger[aria-expanded='true'] .account-chevron::before {
+  transform: translateY(2px) rotate(225deg);
 }
 .account-dropdown {
   position: absolute;
@@ -1752,6 +1766,39 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
   justify-content: flex-end;
   gap: 8px;
 }
+.superadmin-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.superadmin-summary-card {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid #dbe4f2;
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.98)),
+    #ffffff;
+}
+.superadmin-summary-card span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.superadmin-summary-card strong {
+  color: #0f172a;
+  font-size: 28px;
+  line-height: 1;
+}
+.superadmin-summary-card small {
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.45;
+}
 .superadmin-actions,
 .superadmin-grid,
 .hogar-admin-layout {
@@ -1765,10 +1812,12 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
 .admin-card {
   display: grid;
   gap: 12px;
-  padding: 14px;
-  border: 1px solid #e2e8f0;
+  padding: 16px;
+  border: 1px solid #dbe4f2;
   border-radius: 12px;
-  background: #f8fafc;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.98)),
+    #ffffff;
 }
 .admin-card-header,
 .house-users-header {
@@ -1801,6 +1850,11 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--surface-soft);
+}
+.admin-card-header > div,
+.house-users-header > div {
+  display: grid;
+  gap: 2px;
 }
 .house-users-header strong,
 .unassigned-user strong {
@@ -2112,6 +2166,10 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
 }
 
 .acciones-inline { display: flex; gap: 6px; }
+.acciones-inline {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
 .btn-inline { padding: 6px 8px; border-radius: 8px; font-size: 12px; }
 .acciones-inline .btn-inline { min-width: 34px; text-align: center; }
 .btn-inline.danger { background: #ef4444; }
@@ -2252,6 +2310,7 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
 :root[data-theme='dark'] .header-context-item strong,
 :root[data-theme='dark'] .cycle-control-main strong,
 :root[data-theme='dark'] .operational-item strong,
+:root[data-theme='dark'] .superadmin-summary-card strong,
 :root[data-theme='dark'] .reportes-main h3,
 :root[data-theme='dark'] .reportes-summary-card strong,
 :root[data-theme='dark'] .reportes-ratio-card strong,
@@ -2274,6 +2333,8 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
 :root[data-theme='dark'] .selector-ciclo,
 :root[data-theme='dark'] .cycle-control-label,
 :root[data-theme='dark'] .cycle-control-main small,
+:root[data-theme='dark'] .superadmin-summary-card span,
+:root[data-theme='dark'] .superadmin-summary-card small,
 :root[data-theme='dark'] .cycle-insight-preview,
 :root[data-theme='dark'] .operational-label,
 :root[data-theme='dark'] .reportes-main p,
@@ -2315,7 +2376,8 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   box-shadow: var(--shadow-soft);
 }
 :root[data-theme='dark'] .house-users-card,
-:root[data-theme='dark'] .unassigned-user {
+:root[data-theme='dark'] .unassigned-user,
+:root[data-theme='dark'] .superadmin-summary-card {
   background: var(--surface-soft);
   border-color: var(--border);
 }
@@ -2749,6 +2811,7 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   .reportes-category-layout { grid-template-columns: 1fr; }
   .superadmin-header { flex-direction: column; }
   .superadmin-toolbar { justify-content: flex-start; width: 100%; }
+  .superadmin-summary-grid,
   .superadmin-actions,
   .superadmin-grid,
   .hogar-admin-layout { grid-template-columns: 1fr; }

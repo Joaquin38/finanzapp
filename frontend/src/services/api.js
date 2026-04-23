@@ -153,6 +153,24 @@ export async function updateAdminHogar(hogarId, payload) {
   }
 }
 
+export async function deleteAdminHogar(hogarId) {
+  try {
+    const response = await fetch(`${API_URL}/admin/hogares/${hogarId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders()
+    });
+
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.error || 'No se pudo eliminar el hogar');
+    }
+
+    return response.json();
+  } catch (error) {
+    throw new Error(normalizeFetchError(error));
+  }
+}
+
 export async function createAdminUsuario(payload) {
   try {
     const response = await fetch(`${API_URL}/admin/usuarios`, {
