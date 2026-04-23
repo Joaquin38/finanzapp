@@ -12,6 +12,7 @@ function FormattedAmount({ value, hidden }) {
 export default function ResumenCards({ resumen, amountsHidden = false, onToggleAmountsHidden }) {
   const { ingresos = 0, egresos = 0, balance_actual = 0, balance_proyectado = 0 } = resumen || {};
   const toggleLabel = amountsHidden ? 'Mostrar' : 'Ocultar';
+  const toggleText = amountsHidden ? 'Mostrar montos' : 'Ocultar montos';
 
   return (
     <section className="dashboard-cards-block">
@@ -25,6 +26,7 @@ export default function ResumenCards({ resumen, amountsHidden = false, onToggleA
           title={`${toggleLabel} importes`}
         >
           <img src={amountsHidden ? hiddenIcon : visibleIcon} alt="" aria-hidden="true" />
+          <span>{toggleText}</span>
         </button>
       </div>
 

@@ -915,6 +915,7 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 8px;
   width: 34px;
   height: 34px;
   padding: 0;
@@ -933,6 +934,12 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
   height: 16px;
   object-fit: contain;
   opacity: 0.78;
+}
+.amount-privacy-toggle span {
+  display: none;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
 }
 .amount-hidden {
   color: var(--dashboard-card-value);
@@ -2828,8 +2835,12 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
     margin-bottom: 10px;
   }
   .amount-privacy-toggle {
-    width: 42px;
+    justify-content: flex-start;
+    gap: 10px;
+    width: auto;
+    min-width: 44px;
     height: 42px;
+    padding: 0 14px;
     border-radius: 12px;
     background: var(--surface);
     border-color: var(--border-strong);
@@ -2839,6 +2850,10 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
     width: 18px;
     height: 18px;
     opacity: 0.92;
+  }
+  .amount-privacy-toggle span {
+    display: inline;
+    font-size: 13px;
   }
   .dashboard-cards-block {
     margin: 8px 0 16px;
