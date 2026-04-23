@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  changeOwnPassword,
   clearSession,
   createAjusteGastoFijo,
   cerrarCiclo,
@@ -32,6 +33,7 @@ import CotizacionesPanel from './components/CotizacionesPanel.jsx';
 import GastosFijosPanel from './components/GastosFijosPanel.jsx';
 import ReportesPanel from './components/ReportesPanel.jsx';
 import LoginPanel from './components/LoginPanel.jsx';
+import PasswordSetupForm from './components/PasswordSetupForm.jsx';
 import SuperAdminPanel from './components/SuperAdminPanel.jsx';
 import HogarAdminPanel from './components/HogarAdminPanel.jsx';
 import GastoRapidoModal from './components/GastoRapidoModal.jsx';
@@ -70,6 +72,7 @@ export default function App() {
   const [session, setSession] = useState(() => getStoredSession());
   const [authLoading, setAuthLoading] = useState(() => Boolean(getStoredSession()?.token));
   const [authError, setAuthError] = useState('');
+  const [passwordUpdateError, setPasswordUpdateError] = useState('');
   const [movimientos, setMovimientos] = useState([]);
   const [categorias, setCategorias] = useState([]);
   const [cotizaciones, setCotizaciones] = useState([]);
@@ -394,6 +397,22 @@ export default function App() {
     setHogarSeleccionadoId('');
     setEstadoOverrides({});
     setAuthError('');
+    setPasswordUpdateError('');
+  };
+
+  const handleForcePasswordChange = async ({ password }) => {
+    try {
+      setAuthLoading(true);
+      setPasswordUpdateError('');
+      const data = await changeOwnPassword({ new_password: password });
+      const nextSession = { token: data.token, usuario: data.usuario };
+      saveSession(nextSession);
+      setSession(nextSession);
+    } catch (err) {
+      setPasswordUpdateError(err.message);
+    } finally {
+      setAuthLoading(false);
+    }
   };
 
   const handleCambiarHogar = (event) => {
@@ -1251,6 +1270,21 @@ export default function App() {
           onClose={() => setGastoRapidoAbierto(false)}
           onSubmit={handleCrearGastoRapido}
         />
+      )}
+
+      {session?.usuario?.force_password_change && (
+        <div className="modal-overlay" role="dialog" aria-modal="true">
+          <div className="modal-content modal-compact force-password-modal">
+            <PasswordSetupForm
+              title="Actualiza tu password"
+              subtitle="Tu cuenta requiere una nueva password antes de seguir usando la app."
+              submitLabel="Guardar password"
+              loading={authLoading}
+              error={passwordUpdateError}
+              onSubmit={handleForcePasswordChange}
+            />
+          </div>
+        </div>
       )}
 
       {openModal && (
