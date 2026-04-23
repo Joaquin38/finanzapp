@@ -1856,6 +1856,9 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
   display: grid;
   gap: 2px;
 }
+.house-users-header {
+  padding-bottom: 2px;
+}
 .house-users-header strong,
 .unassigned-user strong {
   display: block;
@@ -2170,8 +2173,27 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   flex-wrap: wrap;
   justify-content: flex-end;
 }
+.acciones-inline-iconos {
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+}
 .btn-inline { padding: 6px 8px; border-radius: 8px; font-size: 12px; }
 .acciones-inline .btn-inline { min-width: 34px; text-align: center; }
+.icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 10px;
+}
+.icon-btn svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
 .btn-inline.danger { background: #ef4444; }
 .btn-inline.success { background: #16a34a; }
 .btn-inline.secondary { background: #e2e8f0; color: #0f172a; }

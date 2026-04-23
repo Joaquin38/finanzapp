@@ -22,6 +22,30 @@ const crearUsuarioInicial = {
   rol: 'hogar_member'
 };
 
+function ActionIcon({ type }) {
+  if (type === 'edit') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M3 17.25V21h3.75L17.8 9.94l-3.75-3.75L3 17.25Zm2.92 2.33H5v-.92l8.06-8.06.92.92L5.92 19.58ZM20.71 7.04a1.003 1.003 0 0 0 0-1.42l-2.34-2.33a1.003 1.003 0 0 0-1.42 0l-1.54 1.54 3.75 3.75 1.55-1.54Z" />
+      </svg>
+    );
+  }
+
+  if (type === 'user') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4Zm-6 0c1.66 0 3-1.34 3-3S10.66 6 9 6 6 7.34 6 9s1.34 3 3 3Zm6 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4Zm-6 0c-.41 0-.87.02-1.36.07C5.34 14.37 2 15.5 2 18v2h4v-2c0-1.16.59-2.2 1.57-3.03A9.7 9.7 0 0 1 9 14Z" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M6 7h12v2H6V7Zm1 3h10l-1 10H8L7 10Zm3-5h4l1 1h4v2H5V6h4l1-1Z" />
+    </svg>
+  );
+}
+
 export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHogarSelect }) {
   const [hogares, setHogares] = useState([]);
   const [usuarios, setUsuarios] = useState([]);
@@ -338,25 +362,34 @@ export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHoga
                       )}
                     </td>
                     <td>
-                      <div className="acciones-inline">
-                        <button type="button" className="btn-inline" onClick={() => abrirEditarHogar(hogar)}>
-                          Editar
-                        </button>
-                        <button type="button" className="btn-inline" onClick={() => abrirCrearUsuario(hogar.id)}>
-                          Usuario
-                        </button>
-                        {Number(hogarActivoId) !== Number(hogar.id) && (
-                          <button type="button" className="btn-inline secondary" onClick={() => onHogarSelect?.(hogar.id)}>
-                            Ver
-                          </button>
-                        )}
+                      <div className="acciones-inline acciones-inline-iconos">
                         <button
                           type="button"
-                          className="btn-inline danger ghost-btn"
+                          className="btn-inline icon-btn"
+                          onClick={() => abrirEditarHogar(hogar)}
+                          aria-label={`Editar ${hogar.nombre}`}
+                          title="Editar hogar"
+                        >
+                          <ActionIcon type="edit" />
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-inline icon-btn"
+                          onClick={() => abrirCrearUsuario(hogar.id)}
+                          aria-label={`Crear usuario en ${hogar.nombre}`}
+                          title="Crear usuario en este hogar"
+                        >
+                          <ActionIcon type="user" />
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-inline danger ghost-btn icon-btn"
                           disabled={Number(hogar.id) === 1}
                           onClick={() => abrirEliminarHogar(hogar)}
+                          aria-label={`Eliminar ${hogar.nombre}`}
+                          title={Number(hogar.id) === 1 ? 'Hogar protegido' : 'Eliminar hogar'}
                         >
-                          Eliminar
+                          <ActionIcon type="delete" />
                         </button>
                       </div>
                     </td>
@@ -389,9 +422,6 @@ export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHoga
                     <strong>{hogar.nombre}</strong>
                     <small>#{hogar.id}</small>
                   </div>
-                  <button type="button" className="btn-inline" onClick={() => abrirVincularUsuario(hogar.id)}>
-                    Vincular
-                  </button>
                 </div>
 
                 <div className="table-wrapper compact-table">
