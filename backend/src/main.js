@@ -189,6 +189,23 @@ function hashPassword(password) {
   return `pbkdf2$${digest}$${iterations}$${salt}$${hash}`;
 }
 
+function validarFormatoPassword(password) {
+  const value = String(password || '');
+  if (value.length < 8) {
+    return 'La password debe tener al menos 8 caracteres';
+  }
+  if (!/[a-z]/.test(value)) {
+    return 'La password debe incluir una minuscula';
+  }
+  if (!/[A-Z]/.test(value)) {
+    return 'La password debe incluir una mayuscula';
+  }
+  if (!/\d/.test(value)) {
+    return 'La password debe incluir un numero';
+  }
+  return '';
+}
+
 function normalizarRolHogar(rol) {
   if (rol === 'admin') return 'hogar_admin';
   if (rol === 'miembro' || rol === 'member') return 'hogar_member';
@@ -264,7 +281,7 @@ function esPatchEstadoMovimiento(payload) {
 async function cargarUsuarioSesion(usuarioId, hogarIdPreferido = null) {
   const { rows } = await pool.query(
     `
-    SELECT u.id, u.correo, u.nombre, u.rol_global
+    SELECT u.id, u.correo, u.nombre, u.rol_global, u.force_password_change
     FROM usuarios u
     WHERE u.id = $1 AND u.activo = true
     LIMIT 1
@@ -299,6 +316,7 @@ async function cargarUsuarioSesion(usuarioId, hogarIdPreferido = null) {
     email: usuario.correo,
     nombre: usuario.nombre,
     rol_global: normalizarRolHogar(usuario.rol_global),
+    force_password_change: Boolean(usuario.force_password_change),
     hogar_id: hogarActivo?.id || null,
     hogar_nombre: hogarActivo?.nombre || null,
     rol: hogarActivo?.rol || normalizarRolHogar(usuario.rol_global),
@@ -404,6 +422,10 @@ async function asegurarModeloMultiHogar() {
   await pool.query(`
     ALTER TABLE usuarios
     ADD COLUMN IF NOT EXISTS rol_global VARCHAR(30) NOT NULL DEFAULT 'hogar_member'
+  `);
+  await pool.query(`
+    ALTER TABLE usuarios
+    ADD COLUMN IF NOT EXISTS force_password_change BOOLEAN NOT NULL DEFAULT FALSE
   `);
   await pool.query(`
     ALTER TABLE hogares_usuarios
@@ -705,7 +727,7 @@ app.post('/auth/login', async (req, res) => {
 
     const { rows } = await pool.query(
       `
-      SELECT u.id, u.correo, u.clave_hash, u.nombre, u.rol_global
+      SELECT u.id, u.correo, u.clave_hash, u.nombre, u.rol_global, u.force_password_change
       FROM usuarios u
       WHERE LOWER(u.correo) = LOWER($1)
         AND u.activo = true
@@ -741,6 +763,7 @@ app.post('/auth/login', async (req, res) => {
       email: usuario.correo,
       nombre: usuario.nombre,
       rol_global: normalizarRolHogar(usuario.rol_global),
+      force_password_change: Boolean(usuario.force_password_change),
       hogar_id: hogarActivo?.id || null,
       hogar_nombre: hogarActivo?.nombre || null,
       rol: hogarActivo?.rol || normalizarRolHogar(usuario.rol_global),
@@ -760,7 +783,7 @@ app.get('/auth/me', autenticar, async (req, res) => {
 
     const { rows } = await pool.query(
       `
-      SELECT u.id, u.correo, u.nombre, u.rol_global
+      SELECT u.id, u.correo, u.nombre, u.rol_global, u.force_password_change
       FROM usuarios u
       WHERE u.id = $1 AND u.activo = true
       LIMIT 1
@@ -798,6 +821,7 @@ app.get('/auth/me', autenticar, async (req, res) => {
         email: usuario.correo,
         nombre: usuario.nombre,
         rol_global: normalizarRolHogar(usuario.rol_global),
+        force_password_change: Boolean(usuario.force_password_change),
         hogar_id: hogarActivo?.id || null,
         hogar_nombre: hogarActivo?.nombre || null,
         rol: hogarActivo?.rol || normalizarRolHogar(usuario.rol_global),
@@ -977,6 +1001,7 @@ app.get('/admin/usuarios', autenticar, exigirSuperadmin, async (_req, res) => {
         u.correo,
         u.nombre,
         u.rol_global,
+        u.force_password_change,
         u.activo,
         COALESCE(
           JSON_AGG(
@@ -997,6 +1022,7 @@ app.get('/admin/usuarios', autenticar, exigirSuperadmin, async (_req, res) => {
       items: rows.map((row) => ({
         ...row,
         id: Number(row.id),
+        force_password_change: Boolean(row.force_password_change),
         hogares: (row.hogares || []).map((hogar) => ({ ...hogar, id: Number(hogar.id) }))
       }))
     });
@@ -1119,6 +1145,110 @@ app.post('/admin/hogares/:id/usuarios', autenticar, exigirSuperadmin, async (req
     return res.status(200).json({ ok: true, vinculo: rows[0] });
   } catch (error) {
     return res.status(500).json({ error: 'Error vinculando usuario al hogar', detalle: error.message });
+  }
+});
+
+app.post('/admin/usuarios/:id/password', autenticar, exigirSuperadmin, async (req, res) => {
+  const usuarioId = Number(req.params.id);
+  const { password, force_password_change } = req.body || {};
+  const nuevaPassword = String(password || '');
+  const debeForzarCambio = Boolean(force_password_change);
+
+  if (!usuarioId) {
+    return res.status(400).json({ error: 'usuario_id es obligatorio' });
+  }
+
+  if (!nuevaPassword && !debeForzarCambio) {
+    return res.status(400).json({ error: 'Defini una nueva password o forza el cambio en el proximo login' });
+  }
+
+  const errorFormato = nuevaPassword ? validarFormatoPassword(nuevaPassword) : '';
+  if (errorFormato) {
+    return res.status(400).json({ error: errorFormato });
+  }
+
+  try {
+    const { rows } = await pool.query(
+      `
+      UPDATE usuarios
+      SET
+        clave_hash = COALESCE($1, clave_hash),
+        force_password_change = $2
+      WHERE id = $3
+        AND activo = true
+      RETURNING id, correo, nombre, force_password_change
+      `,
+      [nuevaPassword ? hashPassword(nuevaPassword) : null, debeForzarCambio, usuarioId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    return res.status(200).json({
+      ok: true,
+      usuario: {
+        id: Number(rows[0].id),
+        correo: rows[0].correo,
+        nombre: rows[0].nombre,
+        force_password_change: Boolean(rows[0].force_password_change)
+      }
+    });
+  } catch (error) {
+    return res.status(500).json({ error: 'Error actualizando password', detalle: error.message });
+  }
+});
+
+app.post('/auth/cambiar-password', autenticar, async (req, res) => {
+  const { current_password, new_password } = req.body || {};
+  const currentPassword = String(current_password || '');
+  const newPassword = String(new_password || '');
+
+  if (!newPassword) {
+    return res.status(400).json({ error: 'new_password es obligatoria' });
+  }
+
+  const errorFormato = validarFormatoPassword(newPassword);
+  if (errorFormato) {
+    return res.status(400).json({ error: errorFormato });
+  }
+
+  try {
+    const { rows } = await pool.query(
+      `
+      SELECT id, clave_hash, force_password_change
+      FROM usuarios
+      WHERE id = $1
+        AND activo = true
+      LIMIT 1
+      `,
+      [req.usuario.id]
+    );
+    const usuario = rows[0];
+    if (!usuario) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    if (!usuario.force_password_change && !passwordValida(currentPassword, usuario.clave_hash)) {
+      return res.status(401).json({ error: 'La password actual no es correcta' });
+    }
+
+    await pool.query(
+      `
+      UPDATE usuarios
+      SET clave_hash = $1,
+          force_password_change = false
+      WHERE id = $2
+      `,
+      [hashPassword(newPassword), req.usuario.id]
+    );
+
+    const usuarioSesion = await cargarUsuarioSesion(req.usuario.id, req.usuario.hogar_id);
+    const token = firmarToken({ ...usuarioSesion, exp: Date.now() + 1000 * 60 * 60 * 24 * 7 });
+
+    return res.status(200).json({ ok: true, token, usuario: usuarioSesion });
+  } catch (error) {
+    return res.status(500).json({ error: 'Error actualizando password', detalle: error.message });
   }
 });
 

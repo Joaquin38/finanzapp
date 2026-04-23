@@ -115,6 +115,44 @@ export async function getAdminUsuarios() {
   }
 }
 
+export async function updateAdminUsuarioPassword(usuarioId, payload) {
+  try {
+    const response = await fetch(`${API_URL}/admin/usuarios/${usuarioId}/password`, {
+      method: 'POST',
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.error || 'No se pudo actualizar la password');
+    }
+
+    return response.json();
+  } catch (error) {
+    throw new Error(normalizeFetchError(error));
+  }
+}
+
+export async function changeOwnPassword(payload) {
+  try {
+    const response = await fetch(`${API_URL}/auth/cambiar-password`, {
+      method: 'POST',
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.error || 'No se pudo actualizar la password');
+    }
+
+    return response.json();
+  } catch (error) {
+    throw new Error(normalizeFetchError(error));
+  }
+}
+
 export async function createAdminHogar(payload) {
   try {
     const response = await fetch(`${API_URL}/admin/hogares`, {

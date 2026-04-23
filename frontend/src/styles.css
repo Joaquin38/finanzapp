@@ -1809,6 +1809,9 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
 .superadmin-grid {
   align-items: start;
 }
+.full-span {
+  grid-column: 1 / -1;
+}
 .admin-card {
   display: grid;
   gap: 12px;
@@ -1866,6 +1869,78 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
 }
 .compact-table table {
   font-size: 13px;
+}
+.admin-user-hogares {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.modal-password-usuario {
+  width: min(720px, 100%);
+}
+.password-admin-shell {
+  display: grid;
+  gap: 14px;
+}
+.password-admin-summary {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+.password-admin-summary strong {
+  color: var(--text-primary);
+}
+.password-admin-summary small {
+  color: var(--text-muted);
+}
+.password-admin-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-solid);
+}
+.password-admin-toggle input {
+  width: 16px;
+  height: 16px;
+}
+.password-setup-form {
+  display: grid;
+  gap: 12px;
+}
+.password-setup-form label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.password-setup-form label small {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.password-setup-copy {
+  display: grid;
+  gap: 4px;
+}
+.password-setup-copy h3,
+.password-setup-copy p {
+  margin: 0;
+}
+.password-setup-copy p,
+.password-admin-actions p {
+  color: var(--text-muted);
+}
+.password-admin-actions {
+  display: grid;
+  gap: 12px;
+}
+.force-password-modal {
+  width: min(540px, 100%);
 }
 .unassigned-user {
   display: grid;
@@ -2228,6 +2303,19 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
 .modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 100; }
 .modal-content { width: min(760px, 100%); background: #fff; border-radius: 14px; padding: 16px; box-shadow: 0 20px 40px rgba(15, 23, 42, 0.25); }
 .modal-compact { width: min(520px, 100%); }
+.modal-vincular-usuario {
+  width: min(680px, 100%);
+}
+.modal-vincular-usuario .form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.modal-vincular-usuario label {
+  min-width: 0;
+}
+.modal-vincular-usuario select {
+  width: 100%;
+  min-width: 0;
+}
 .modal-header { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 6px; }
 .close-btn { background: #e2e8f0; color: #0f172a; width: 34px; height: 34px; border-radius: 8px; }
 .quick-expense-fab {
