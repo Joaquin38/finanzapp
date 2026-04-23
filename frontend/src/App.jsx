@@ -1028,7 +1028,7 @@ export default function App() {
                   <strong>Cuenta</strong>
                   <small>{session.usuario?.nombre || session.usuario?.email}</small>
                 </span>
-                <span className="account-chevron" aria-hidden="true">v</span>
+                <span className="account-chevron" aria-hidden="true" />
               </button>
 
               {accountMenuOpen && (

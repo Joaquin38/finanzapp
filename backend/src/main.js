@@ -906,6 +906,68 @@ app.patch('/admin/hogares/:id', autenticar, exigirSuperadmin, async (req, res) =
   }
 });
 
+app.delete('/admin/hogares/:id', autenticar, exigirSuperadmin, async (req, res) => {
+  const hogarId = Number(req.params.id);
+
+  if (!hogarId) {
+    return res.status(400).json({ error: 'hogar_id es obligatorio' });
+  }
+
+  if (hogarId === HOGAR_COLON_260_ID) {
+    return res.status(400).json({ error: 'El hogar principal no se puede eliminar' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const hogar = await client.query('SELECT id, nombre FROM hogares WHERE id = $1 FOR UPDATE', [hogarId]);
+    if (hogar.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Hogar no encontrado' });
+    }
+
+    const movimientos = await client.query('SELECT COUNT(*)::int AS total FROM movimientos WHERE hogar_id = $1', [hogarId]);
+    const gastosFijos = await client.query('SELECT COUNT(*)::int AS total FROM gastos_fijos WHERE hogar_id = $1', [hogarId]);
+    const cierres = await client.query(
+      `
+      SELECT COUNT(*)::int AS total
+      FROM cierres_ciclo
+      WHERE hogar_id = $1
+      `,
+      [hogarId]
+    );
+
+    const totalMovimientos = Number(movimientos.rows[0]?.total || 0);
+    const totalGastosFijos = Number(gastosFijos.rows[0]?.total || 0);
+    const totalCierres = Number(cierres.rows[0]?.total || 0);
+
+    if (totalMovimientos > 0 || totalGastosFijos > 0 || totalCierres > 0) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        error: 'No se puede eliminar el hogar porque tiene datos financieros cargados'
+      });
+    }
+
+    await client.query('DELETE FROM hogares_usuarios WHERE hogar_id = $1', [hogarId]);
+    await client.query('DELETE FROM cuentas WHERE hogar_id = $1', [hogarId]);
+    await client.query('DELETE FROM etiquetas WHERE hogar_id = $1', [hogarId]);
+    await client.query('DELETE FROM categorias WHERE hogar_id = $1', [hogarId]);
+    await client.query('DELETE FROM hogares WHERE id = $1', [hogarId]);
+
+    await client.query('COMMIT');
+    return res.status(200).json({
+      ok: true,
+      hogar: { id: Number(hogar.rows[0].id), nombre: hogar.rows[0].nombre }
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    return res.status(500).json({ error: 'Error eliminando hogar', detalle: error.message });
+  } finally {
+    client.release();
+  }
+});
+
 app.get('/admin/usuarios', autenticar, exigirSuperadmin, async (_req, res) => {
   try {
     const { rows } = await pool.query(
