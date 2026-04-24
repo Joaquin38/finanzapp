@@ -74,9 +74,17 @@ const items = [
   { key: 'superadmin', label: 'Superadmin', icon: icons.superadmin }
 ];
 
-export default function MenuLateral({ collapsed, onToggle, active, onSelect, canManageHome = true, isSuperadmin = false }) {
+export default function MenuLateral({
+  collapsed,
+  onToggle,
+  active,
+  onSelect,
+  canManageHome = true,
+  canAccessFixedValues = true,
+  isSuperadmin = false
+}) {
   const visibleItems = items.filter((item) => {
-    if (!canManageHome && item.key === 'gastos_fijos') return false;
+    if (!canAccessFixedValues && item.key === 'gastos_fijos') return false;
     if (!canManageHome && item.key === 'mi_hogar') return false;
     if (!isSuperadmin && item.key === 'superadmin') return false;
     return true;
