@@ -14,13 +14,16 @@ import {
   getCotizaciones,
   getGastosFijos,
   getHogares,
+  forgotPassword,
   getMovimientos,
   getMovimientosRango,
   getStoredSession,
   login,
   reabrirCiclo,
+  resetPasswordWithToken,
   saveSession,
   updateGastoFijo,
+  validateResetPasswordToken,
   updateEstadoGastoFijoEnCiclo,
   updateMovimiento
 } from './services/api.js';
@@ -34,6 +37,7 @@ import GastosFijosPanel from './components/GastosFijosPanel.jsx';
 import ReportesPanel from './components/ReportesPanel.jsx';
 import LoginPanel from './components/LoginPanel.jsx';
 import PasswordSetupForm from './components/PasswordSetupForm.jsx';
+import ResetPasswordPanel from './components/ResetPasswordPanel.jsx';
 import SuperAdminPanel from './components/SuperAdminPanel.jsx';
 import HogarAdminPanel from './components/HogarAdminPanel.jsx';
 import GastoRapidoModal from './components/GastoRapidoModal.jsx';
@@ -66,12 +70,31 @@ function getStoredDashboardAmountsHidden() {
   }
 }
 
+function getAuthRouteState() {
+  if (typeof window === 'undefined') {
+    return { view: 'login', token: '' };
+  }
+
+  const path = window.location.pathname.replace(/\/+$/, '') || '/';
+  const token = new URLSearchParams(window.location.search).get('token') || '';
+
+  if (path === '/reset-password') {
+    return { view: 'reset-password', token };
+  }
+
+  return { view: 'login', token: '' };
+}
+
 export default function App() {
   const [theme, setTheme] = useState(() => getStoredTheme());
   const [dashboardAmountsHidden, setDashboardAmountsHidden] = useState(() => getStoredDashboardAmountsHidden());
   const [session, setSession] = useState(() => getStoredSession());
   const [authLoading, setAuthLoading] = useState(() => Boolean(getStoredSession()?.token));
   const [authError, setAuthError] = useState('');
+  const [forgotPasswordMessage, setForgotPasswordMessage] = useState('');
+  const [authRoute, setAuthRoute] = useState(() => getAuthRouteState());
+  const [resetPasswordValidating, setResetPasswordValidating] = useState(false);
+  const [resetPasswordValid, setResetPasswordValid] = useState(false);
   const [passwordUpdateError, setPasswordUpdateError] = useState('');
   const [movimientos, setMovimientos] = useState([]);
   const [categorias, setCategorias] = useState([]);
@@ -193,6 +216,17 @@ export default function App() {
       document.removeEventListener('keydown', handleEscape);
     };
   }, [accountMenuOpen]);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setAuthRoute(getAuthRouteState());
+      setAuthError('');
+      setForgotPasswordMessage('');
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   const toggleTheme = () => {
     setTheme((current) => (current === 'dark' ? 'light' : 'dark'));
@@ -335,6 +369,42 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (session || authRoute.view !== 'reset-password') return undefined;
+
+    let activo = true;
+
+    if (!authRoute.token) {
+      setResetPasswordValid(false);
+      setAuthError('Token invalido o inexistente');
+      return () => {
+        activo = false;
+      };
+    }
+
+    setResetPasswordValidating(true);
+    setAuthError('');
+
+    validateResetPasswordToken(authRoute.token)
+      .then((data) => {
+        if (!activo) return;
+        setResetPasswordValid(Boolean(data.valid));
+        setAuthError(data.valid ? '' : data.error || 'Token invalido o inexistente');
+      })
+      .catch((err) => {
+        if (!activo) return;
+        setResetPasswordValid(false);
+        setAuthError(err.message);
+      })
+      .finally(() => {
+        if (activo) setResetPasswordValidating(false);
+      });
+
+    return () => {
+      activo = false;
+    };
+  }, [session, authRoute]);
+
+  useEffect(() => {
     if (!session) return;
     cargarDatos();
   }, [mostrarEliminados, cicloSeleccionado, ciclosTendencia, session, hogarId]);
@@ -375,10 +445,52 @@ export default function App() {
     try {
       setAuthLoading(true);
       setAuthError('');
+      setForgotPasswordMessage('');
       const data = await login(email, password);
       const nextSession = { token: data.token, usuario: data.usuario };
       saveSession(nextSession);
       setSession(nextSession);
+    } catch (err) {
+      setAuthError(err.message);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async ({ email }) => {
+    try {
+      setAuthLoading(true);
+      setAuthError('');
+      const data = await forgotPassword(email);
+      setForgotPasswordMessage(data.mensaje || 'Si el email existe, vas a recibir instrucciones para restablecer la password.');
+    } catch (err) {
+      setAuthError(err.message);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const goToLogin = () => {
+    if (typeof window !== 'undefined') {
+      window.history.replaceState({}, '', '/');
+    }
+    setAuthRoute({ view: 'login', token: '' });
+    setResetPasswordValid(false);
+    setResetPasswordValidating(false);
+    setAuthError('');
+  };
+
+  const handleResetPassword = async ({ password, confirmPassword }) => {
+    try {
+      setAuthLoading(true);
+      setAuthError('');
+      const data = await resetPasswordWithToken({
+        token: authRoute.token,
+        password,
+        confirmPassword
+      });
+      setForgotPasswordMessage(data.mensaje || 'Password actualizada correctamente');
+      goToLogin();
     } catch (err) {
       setAuthError(err.message);
     } finally {
@@ -1009,7 +1121,28 @@ export default function App() {
   }
 
   if (!session) {
-    return <LoginPanel onLogin={handleLogin} loading={authLoading} error={authError} />;
+    if (authRoute.view === 'reset-password') {
+      return (
+        <ResetPasswordPanel
+          validating={resetPasswordValidating}
+          validToken={resetPasswordValid}
+          error={authError}
+          loading={authLoading}
+          onSubmit={handleResetPassword}
+          onBackToLogin={goToLogin}
+        />
+      );
+    }
+
+    return (
+      <LoginPanel
+        onLogin={handleLogin}
+        onForgotPassword={handleForgotPassword}
+        loading={authLoading}
+        error={authError}
+        forgotPasswordMessage={forgotPasswordMessage}
+      />
+    );
   }
 
   return (

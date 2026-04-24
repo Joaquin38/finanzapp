@@ -5,8 +5,11 @@ import {
   deleteAdminHogar,
   getAdminHogares,
   getAdminUsuarios,
+  deleteMiembroHogar,
+  updateAdminUsuario,
   updateAdminUsuarioPassword,
   updateAdminHogar,
+  updateMiembroHogar,
   vincularAdminUsuarioHogar
 } from '../services/api.js';
 import PasswordSetupForm from './PasswordSetupForm.jsx';
@@ -23,6 +26,27 @@ const crearUsuarioInicial = {
   hogar_id: '',
   rol: 'hogar_member'
 };
+
+const sortDefaults = {
+  campo: 'creado_en',
+  direccion: 'desc'
+};
+
+const userGlobalRoles = [
+  { value: 'superadmin', label: 'Superadmin' },
+  { value: 'hogar_admin', label: 'Hogar admin' },
+  { value: 'hogar_member', label: 'Hogar member' }
+];
+
+function formatDateTime(value) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleString('es-AR', {
+    dateStyle: 'short',
+    timeStyle: 'short'
+  });
+}
 
 function ActionIcon({ type }) {
   if (type === 'edit') {
@@ -51,6 +75,7 @@ function ActionIcon({ type }) {
 export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHogarSelect }) {
   const [hogares, setHogares] = useState([]);
   const [usuarios, setUsuarios] = useState([]);
+  const [usuariosSort, setUsuariosSort] = useState(sortDefaults);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [mensaje, setMensaje] = useState('');
@@ -58,9 +83,10 @@ export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHoga
   const [nuevoHogar, setNuevoHogar] = useState('');
   const [hogarEditado, setHogarEditado] = useState({ id: '', nombre: '' });
   const [hogarAEliminar, setHogarAEliminar] = useState(null);
-  const [usuarioPasswordTarget, setUsuarioPasswordTarget] = useState(null);
-  const [forzarCambioPassword, setForzarCambioPassword] = useState(false);
-  const [pisarPassword, setPisarPassword] = useState(true);
+  const [usuarioEditando, setUsuarioEditando] = useState(null);
+  const [usuarioEditandoOriginal, setUsuarioEditandoOriginal] = useState(null);
+  const [passwordChangeNow, setPasswordChangeNow] = useState(false);
+  const [passwordForceChange, setPasswordForceChange] = useState(false);
   const [nuevoUsuario, setNuevoUsuario] = useState(crearUsuarioInicial);
   const [vinculo, setVinculo] = useState({
     hogar_id: '',
@@ -125,6 +151,29 @@ export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHoga
     () => usuarios.filter((usuario) => (usuario.hogares || []).length === 0),
     [usuarios]
   );
+  const usuariosOrdenados = useMemo(() => {
+    const items = [...usuarios];
+    const { campo, direccion } = usuariosSort;
+    const factor = direccion === 'asc' ? 1 : -1;
+
+    const getSortValue = (usuario) => {
+      if (campo === 'hogares') return (usuario.hogares || []).length;
+      if (campo === 'creado_en') return Date.parse(usuario.creado_en || '') || 0;
+      if (campo === 'password') return Number(Boolean(usuario.force_password_change));
+      if (campo === 'activo') return Number(Boolean(usuario.activo));
+      if (campo === 'rol_global') return String(usuario.rol_global || '');
+      return String(usuario.nombre || '');
+    };
+
+    items.sort((a, b) => {
+      const av = getSortValue(a);
+      const bv = getSortValue(b);
+      if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * factor;
+      return String(av).localeCompare(String(bv), 'es-AR') * factor;
+    });
+
+    return items;
+  }, [usuarios, usuariosSort]);
   const resumenAdmin = useMemo(
     () => ({
       hogares: hogares.length,
@@ -135,6 +184,7 @@ export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHoga
     [hogares.length, usuarios.length, usuariosPorHogar, usuariosSinHogar.length]
   );
   const modalError = modal && modal !== 'password-usuario' && error ? <p className="error full-width">{error}</p> : null;
+  const modalUsuarioError = modal === 'editar-usuario' && error ? <p className="error full-width">{error}</p> : null;
 
   const abrirCrearHogar = () => {
     setNuevoHogar('');
@@ -168,20 +218,52 @@ export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHoga
     setModal('vincular-usuario');
   };
 
-  const abrirPasswordUsuario = (usuario) => {
-    setUsuarioPasswordTarget(usuario);
-    setForzarCambioPassword(Boolean(usuario.force_password_change));
-    setPisarPassword(true);
-    setModal('password-usuario');
+  const abrirEditarUsuario = (usuario) => {
+    const hogaresUsuario = (usuario.hogares || []).map((hogar) => ({
+      id: Number(hogar.id),
+      nombre: hogar.nombre,
+      rol: hogar.rol || 'hogar_member',
+      asignado: true
+    }));
+    const hogaresIniciales = hogares.map((hogar) => {
+      const actual = (usuario.hogares || []).find((item) => Number(item.id) === Number(hogar.id));
+      return {
+        id: Number(hogar.id),
+        nombre: hogar.nombre,
+        rol: actual?.rol || 'hogar_member',
+        asignado: Boolean(actual)
+      };
+    });
+
+    setUsuarioEditando({
+      id: Number(usuario.id),
+      nombre: usuario.nombre || '',
+      correo: usuario.correo || '',
+      rol_global: usuario.rol_global || 'hogar_member',
+      activo: Boolean(usuario.activo),
+      force_password_change: Boolean(usuario.force_password_change),
+      creado_en: usuario.creado_en || '',
+      hogares: hogaresIniciales
+    });
+    setUsuarioEditandoOriginal({
+      id: Number(usuario.id),
+      correo: usuario.correo || '',
+      hogares: hogaresUsuario
+    });
+    setPasswordChangeNow(false);
+    setPasswordForceChange(Boolean(usuario.force_password_change));
+    setError('');
+    setModal('editar-usuario');
   };
 
   const cerrarModal = () => {
     setModal(null);
     setError('');
     setHogarAEliminar(null);
-    setUsuarioPasswordTarget(null);
-    setForzarCambioPassword(false);
-    setPisarPassword(true);
+    setUsuarioEditando(null);
+    setUsuarioEditandoOriginal(null);
+    setPasswordChangeNow(false);
+    setPasswordForceChange(false);
   };
 
   const crearHogar = async (event) => {
@@ -294,10 +376,93 @@ export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHoga
     }
   };
 
-  const actualizarPasswordUsuario = async ({ password }) => {
-    if (!usuarioPasswordTarget?.id) return;
-    if (!pisarPassword && !forzarCambioPassword) {
-      setError('Elegí al menos una accion para la password.');
+  const toggleUsuarioSort = (campo) => {
+    setUsuariosSort((prev) => ({
+      campo,
+      direccion: prev.campo === campo ? (prev.direccion === 'asc' ? 'desc' : 'asc') : (campo === 'creado_en' ? 'desc' : 'asc')
+    }));
+  };
+
+  const sortIndicator = (campo) => (usuariosSort.campo === campo ? (usuariosSort.direccion === 'asc' ? ' ▲' : ' ▼') : '');
+
+  const actualizarUsuarioEditando = (campo, value) => {
+    setUsuarioEditando((prev) => (prev ? { ...prev, [campo]: value } : prev));
+  };
+
+  const actualizarHogarUsuarioEditando = (hogarId, cambios) => {
+    setUsuarioEditando((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        hogares: prev.hogares.map((hogar) => (Number(hogar.id) === Number(hogarId) ? { ...hogar, ...cambios } : hogar))
+      };
+    });
+  };
+
+  const guardarUsuarioEditado = async (event) => {
+    event.preventDefault();
+    if (!usuarioEditando?.id) return;
+
+    try {
+      setLoading(true);
+      setError('');
+      setMensaje('');
+
+      await updateAdminUsuario(usuarioEditando.id, {
+        nombre: usuarioEditando.nombre.trim(),
+        email: usuarioEditando.correo.trim(),
+        rol_global: usuarioEditando.rol_global,
+        activo: Boolean(usuarioEditando.activo),
+        force_password_change: Boolean(passwordForceChange)
+      });
+
+      const originales = new Map((usuarioEditandoOriginal?.hogares || []).map((hogar) => [Number(hogar.id), hogar]));
+
+      for (const hogar of usuarioEditando.hogares || []) {
+        const hogarId = Number(hogar.id);
+        const estabaAsignado = originales.has(hogarId);
+        const quiereAsignado = Boolean(hogar.asignado);
+        const rolDeseado = hogar.rol || 'hogar_member';
+
+        if (quiereAsignado && !estabaAsignado) {
+          await vincularAdminUsuarioHogar(hogarId, {
+            usuario_id: Number(usuarioEditando.id),
+            rol: rolDeseado
+          });
+        } else if (quiereAsignado && estabaAsignado) {
+          const original = originales.get(hogarId);
+          if (original?.rol !== rolDeseado) {
+            await updateMiembroHogar(hogarId, usuarioEditando.id, { rol: rolDeseado });
+          }
+        } else if (!quiereAsignado && estabaAsignado) {
+          await deleteMiembroHogar(hogarId, usuarioEditando.id);
+        }
+      }
+
+      setMensaje('Usuario actualizado correctamente.');
+      setUsuarioEditandoOriginal({
+        id: Number(usuarioEditando.id),
+        correo: usuarioEditando.correo.trim(),
+        hogares: (usuarioEditando.hogares || [])
+          .filter((hogar) => hogar.asignado)
+          .map((hogar) => ({
+            id: Number(hogar.id),
+            nombre: hogar.nombre,
+            rol: hogar.rol || 'hogar_member'
+          }))
+      });
+      await cargarAdmin();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const guardarPasswordUsuario = async ({ password }) => {
+    if (!usuarioEditando?.id) return;
+    if (!passwordChangeNow && !passwordForceChange) {
+      setError('Elegí al menos una acción para la password.');
       return;
     }
 
@@ -305,12 +470,12 @@ export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHoga
       setLoading(true);
       setError('');
       setMensaje('');
-      await updateAdminUsuarioPassword(usuarioPasswordTarget.id, {
-        password: pisarPassword ? password : '',
-        force_password_change: forzarCambioPassword
+      await updateAdminUsuarioPassword(usuarioEditando.id, {
+        password: passwordChangeNow ? password : '',
+        force_password_change: passwordForceChange
       });
       setMensaje('Configuracion de password actualizada.');
-      cerrarModal();
+      setPasswordChangeNow(false);
       await cargarAdmin();
     } catch (err) {
       setError(err.message);
@@ -518,7 +683,7 @@ export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHoga
           <div className="admin-card-header">
             <div>
               <h3>Usuarios del sistema</h3>
-              <small>Desde aca podes redefinir passwords o exigir cambio en el proximo login.</small>
+              <small>Desde aca podes editar todo el usuario, incluyendo password y hogares vinculados.</small>
             </div>
             <small>{usuarios.length} usuarios</small>
           </div>
@@ -526,15 +691,29 @@ export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHoga
             <table>
               <thead>
                 <tr>
-                  <th>Usuario</th>
-                  <th>Hogares</th>
-                  <th>Rol global</th>
-                  <th>Password</th>
+                  <th className="sortable" onClick={() => toggleUsuarioSort('nombre')}>
+                    Usuario{sortIndicator('nombre')}
+                  </th>
+                  <th className="sortable" onClick={() => toggleUsuarioSort('hogares')}>
+                    Hogares{sortIndicator('hogares')}
+                  </th>
+                  <th className="sortable" onClick={() => toggleUsuarioSort('rol_global')}>
+                    Rol global{sortIndicator('rol_global')}
+                  </th>
+                  <th className="sortable" onClick={() => toggleUsuarioSort('creado_en')}>
+                    Creado{sortIndicator('creado_en')}
+                  </th>
+                  <th className="sortable" onClick={() => toggleUsuarioSort('password')}>
+                    Password{sortIndicator('password')}
+                  </th>
+                  <th className="sortable" onClick={() => toggleUsuarioSort('activo')}>
+                    Estado{sortIndicator('activo')}
+                  </th>
                   <th>Acciones</th>
                 </tr>
               </thead>
               <tbody>
-                {usuarios.map((usuario) => (
+                {usuariosOrdenados.map((usuario) => (
                   <tr key={usuario.id}>
                     <td>
                       <strong>{usuario.nombre}</strong>
@@ -551,6 +730,7 @@ export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHoga
                       </div>
                     </td>
                     <td>{usuario.rol_global}</td>
+                    <td>{formatDateTime(usuario.creado_en)}</td>
                     <td>
                       {usuario.force_password_change ? (
                         <span className="pill muted">Cambio pendiente</span>
@@ -558,10 +738,17 @@ export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHoga
                         <span className="pill success">OK</span>
                       )}
                     </td>
+                    <td>{usuario.activo ? <span className="pill success">Activo</span> : <span className="pill muted">Inactivo</span>}</td>
                     <td>
                       <div className="acciones-inline">
-                        <button type="button" className="btn-inline secondary" onClick={() => abrirPasswordUsuario(usuario)}>
-                          Password
+                        <button
+                          type="button"
+                          className="btn-inline icon-btn"
+                          onClick={() => abrirEditarUsuario(usuario)}
+                          aria-label={`Editar ${usuario.nombre}`}
+                          title="Editar usuario"
+                        >
+                          <ActionIcon type="edit" />
                         </button>
                       </div>
                     </td>
@@ -569,7 +756,7 @@ export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHoga
                 ))}
                 {usuarios.length === 0 && (
                   <tr>
-                    <td colSpan={5}>No hay usuarios cargados.</td>
+                    <td colSpan={7}>No hay usuarios cargados.</td>
                   </tr>
                 )}
               </tbody>
@@ -735,55 +922,160 @@ export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHoga
         </div>
       )}
 
-      {modal === 'password-usuario' && (
+      {modal === 'editar-usuario' && usuarioEditando && (
         <div className="modal-overlay" role="dialog" aria-modal="true">
-          <div className="modal-content modal-password-usuario">
+          <div className="modal-content modal-user-edit">
             <div className="modal-header">
-              <h3>Gestionar password</h3>
+              <h3>Editar usuario</h3>
               <button type="button" className="close-btn" onClick={cerrarModal}>x</button>
             </div>
-            {modalError}
+            {modalUsuarioError}
+            <div className="password-admin-summary">
+              <strong>{usuarioEditando.nombre}</strong>
+              <small>{usuarioEditando.correo}</small>
+              <small>Creado: {formatDateTime(usuarioEditando.creado_en)}</small>
+            </div>
+
+            <form className="user-edit-form" onSubmit={guardarUsuarioEditado}>
+              <div className="form-grid">
+                <label>
+                  Nombre
+                  <input
+                    value={usuarioEditando.nombre}
+                    onChange={(event) => actualizarUsuarioEditando('nombre', event.target.value)}
+                  />
+                </label>
+                <label>
+                  Email
+                  <input
+                    type="email"
+                    value={usuarioEditando.correo}
+                    onChange={(event) => actualizarUsuarioEditando('correo', event.target.value)}
+                  />
+                </label>
+                <label>
+                  Rol global
+                  <select
+                    value={usuarioEditando.rol_global}
+                    onChange={(event) => actualizarUsuarioEditando('rol_global', event.target.value)}
+                  >
+                    {userGlobalRoles.map((rol) => (
+                      <option key={rol.value} value={rol.value}>
+                        {rol.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Estado
+                  <select
+                    value={usuarioEditando.activo ? 'true' : 'false'}
+                    onChange={(event) => actualizarUsuarioEditando('activo', event.target.value === 'true')}
+                  >
+                    <option value="true">Activo</option>
+                    <option value="false">Inactivo</option>
+                  </select>
+                </label>
+              </div>
+
+              <div className="admin-card compact-table user-home-access">
+                <div className="admin-card-header">
+                  <div>
+                    <h3>Hogares</h3>
+                    <small>Marcá a qué hogares pertenece y con qué rol opera en cada uno.</small>
+                  </div>
+                </div>
+                <div className="table-wrapper">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Asignado</th>
+                        <th>Hogar</th>
+                        <th>Rol</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(usuarioEditando.hogares || []).map((hogar) => (
+                        <tr key={hogar.id}>
+                          <td>
+                            <input
+                              type="checkbox"
+                              checked={Boolean(hogar.asignado)}
+                              onChange={(event) => actualizarHogarUsuarioEditando(hogar.id, { asignado: event.target.checked })}
+                            />
+                          </td>
+                          <td>{hogar.nombre}</td>
+                          <td>
+                            <select
+                              value={hogar.rol}
+                              disabled={!hogar.asignado}
+                              onChange={(event) => actualizarHogarUsuarioEditando(hogar.id, { rol: event.target.value })}
+                            >
+                              {roles.map((rol) => (
+                                <option key={rol.value} value={rol.value}>
+                                  {rol.label}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="confirm-actions full-width">
+                <button type="button" className="btn-inline secondary" onClick={cerrarModal}>Cancelar</button>
+                <button type="submit" className="btn-inline success" disabled={loading}>
+                  Guardar usuario
+                </button>
+              </div>
+            </form>
+
             <div className="password-admin-shell">
-              <div className="password-admin-summary">
-                <strong>{usuarioPasswordTarget?.nombre}</strong>
-                <small>{usuarioPasswordTarget?.correo}</small>
+              <div className="admin-card-header">
+                <div>
+                  <h3>Password</h3>
+                  <small>Podés redefinirla ahora o forzar el cambio en el próximo ingreso.</small>
+                </div>
               </div>
 
               <label className="password-admin-toggle">
-                <input type="checkbox" checked={pisarPassword} onChange={(event) => setPisarPassword(event.target.checked)} />
+                <input type="checkbox" checked={passwordChangeNow} onChange={(event) => setPasswordChangeNow(event.target.checked)} />
                 <span>Definir una nueva password ahora</span>
               </label>
 
               <label className="password-admin-toggle">
                 <input
                   type="checkbox"
-                  checked={forzarCambioPassword}
-                  onChange={(event) => setForzarCambioPassword(event.target.checked)}
+                  checked={passwordForceChange}
+                  onChange={(event) => setPasswordForceChange(event.target.checked)}
                 />
                 <span>Forzar cambio de password en el proximo login</span>
               </label>
 
-              {pisarPassword ? (
+              {passwordChangeNow ? (
                 <PasswordSetupForm
                   title="Nueva password"
                   subtitle="La password se guarda directamente para este usuario."
-                  submitLabel="Guardar configuracion"
+                  submitLabel="Guardar password"
                   loading={loading}
                   error={error}
-                  onSubmit={actualizarPasswordUsuario}
+                  onSubmit={guardarPasswordUsuario}
                 />
               ) : (
                 <div className="password-admin-actions">
-                  <p>Podés dejar una password actual y solo forzar el cambio cuando la persona vuelva a entrar.</p>
+                  <p>Podés dejar la password actual y solo marcar el cambio forzado.</p>
                   <div className="confirm-actions">
-                    <button type="button" className="btn-inline secondary" onClick={cerrarModal}>Cancelar</button>
+                    <button type="button" className="btn-inline secondary" onClick={cerrarModal}>Cerrar</button>
                     <button
                       type="button"
                       className="btn-inline success"
-                      disabled={loading || !forzarCambioPassword}
-                      onClick={() => actualizarPasswordUsuario({ password: '' })}
+                      disabled={loading || !passwordForceChange}
+                      onClick={() => guardarPasswordUsuario({ password: '' })}
                     >
-                      Guardar configuracion
+                      Guardar password
                     </button>
                   </div>
                 </div>

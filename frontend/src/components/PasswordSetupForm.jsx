@@ -44,7 +44,8 @@ export default function PasswordSetupForm({
     setLocalError('');
     await onSubmit({
       currentPassword,
-      password
+      password,
+      confirmPassword: passwordConfirm
     });
   };
 

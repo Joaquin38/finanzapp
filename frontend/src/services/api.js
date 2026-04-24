@@ -63,6 +63,59 @@ export async function login(email, password) {
   }
 }
 
+export async function forgotPassword(email) {
+  try {
+    const response = await fetch(`${API_URL}/auth/forgot-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email })
+    });
+
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.error || 'No se pudo solicitar el restablecimiento');
+    }
+
+    return response.json();
+  } catch (error) {
+    throw new Error(normalizeFetchError(error));
+  }
+}
+
+export async function validateResetPasswordToken(token) {
+  try {
+    const response = await fetch(`${API_URL}/auth/reset-password/validate?token=${encodeURIComponent(token)}`);
+
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.error || 'No se pudo validar el token');
+    }
+
+    return response.json();
+  } catch (error) {
+    throw new Error(normalizeFetchError(error));
+  }
+}
+
+export async function resetPasswordWithToken(payload) {
+  try {
+    const response = await fetch(`${API_URL}/auth/reset-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.error || 'No se pudo restablecer la password');
+    }
+
+    return response.json();
+  } catch (error) {
+    throw new Error(normalizeFetchError(error));
+  }
+}
+
 export async function getCurrentUser() {
   try {
     const response = await fetch(`${API_URL}/auth/me`, {
@@ -126,6 +179,25 @@ export async function updateAdminUsuarioPassword(usuarioId, payload) {
     if (!response.ok) {
       const detail = await response.json().catch(() => ({}));
       throw new Error(detail.error || 'No se pudo actualizar la password');
+    }
+
+    return response.json();
+  } catch (error) {
+    throw new Error(normalizeFetchError(error));
+  }
+}
+
+export async function updateAdminUsuario(usuarioId, payload) {
+  try {
+    const response = await fetch(`${API_URL}/admin/usuarios/${usuarioId}`, {
+      method: 'PATCH',
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.error || 'No se pudo actualizar el usuario');
     }
 
     return response.json();
@@ -271,6 +343,43 @@ export async function agregarMiembroHogar(hogarId, payload) {
     if (!response.ok) {
       const detail = await response.json().catch(() => ({}));
       throw new Error(detail.error || 'No se pudo agregar el miembro');
+    }
+
+    return response.json();
+  } catch (error) {
+    throw new Error(normalizeFetchError(error));
+  }
+}
+
+export async function updateMiembroHogar(hogarId, usuarioId, payload) {
+  try {
+    const response = await fetch(`${API_URL}/hogares/${hogarId}/miembros/${usuarioId}`, {
+      method: 'PATCH',
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.error || 'No se pudo actualizar el miembro');
+    }
+
+    return response.json();
+  } catch (error) {
+    throw new Error(normalizeFetchError(error));
+  }
+}
+
+export async function deleteMiembroHogar(hogarId, usuarioId) {
+  try {
+    const response = await fetch(`${API_URL}/hogares/${hogarId}/miembros/${usuarioId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders()
+    });
+
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.error || 'No se pudo quitar el miembro');
     }
 
     return response.json();

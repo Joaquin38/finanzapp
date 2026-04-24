@@ -3,6 +3,7 @@ const cors = require('cors');
 const { Pool } = require('pg');
 const dotenv = require('dotenv');
 const crypto = require('crypto');
+const nodemailer = require('nodemailer');
 
 dotenv.config();
 
@@ -65,6 +66,14 @@ pool.query = async (...args) => {
 };
 const COTIZACIONES_API_PUBLICA = 'https://dolarapi.com/v1/dolares/oficial';
 const AUTH_SECRET = process.env.AUTH_SECRET || 'finanzas-app-dev-secret';
+const PASSWORD_RESET_TTL_MINUTES = Number(process.env.PASSWORD_RESET_TTL_MINUTES || 60);
+const FRONTEND_URL = String(process.env.FRONTEND_URL || '').trim().replace(/\/+$/, '');
+const SMTP_HOST = String(process.env.SMTP_HOST || '').trim();
+const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
+const SMTP_SECURE = envFlag(process.env.SMTP_SECURE);
+const SMTP_USER = String(process.env.SMTP_USER || '').trim();
+const SMTP_PASS = String(process.env.SMTP_PASS || '');
+const SMTP_FROM = String(process.env.SMTP_FROM || '').trim();
 const ROLES_HOGAR = ['superadmin', 'hogar_admin', 'hogar_member'];
 const ROLES_GESTION_HOGAR = ['hogar_admin', 'hogar_member'];
 const HOGAR_COLON_260_ID = 1;
@@ -187,6 +196,94 @@ function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('base64url');
   const hash = crypto.pbkdf2Sync(password, salt, iterations, 64, digest).toString('base64url');
   return `pbkdf2$${digest}$${iterations}$${salt}$${hash}`;
+}
+
+function generarPasswordResetToken() {
+  return crypto.randomBytes(32).toString('base64url');
+}
+
+function hashPasswordResetToken(token) {
+  return crypto.createHash('sha256').update(String(token || '')).digest('hex');
+}
+
+function evaluarPasswordResetToken(resetToken) {
+  if (!resetToken) {
+    return {
+      valid: false,
+      error: 'Token invalido o inexistente'
+    };
+  }
+
+  if (resetToken.consumido_en) {
+    return {
+      valid: false,
+      error: 'El token ya fue usado'
+    };
+  }
+
+  const expiraEn = new Date(resetToken.expira_en);
+  if (Number.isNaN(expiraEn.getTime()) || expiraEn.getTime() <= Date.now()) {
+    return {
+      valid: false,
+      error: 'El token esta vencido'
+    };
+  }
+
+  return { valid: true };
+}
+
+async function buscarPasswordResetToken(client, token, options = {}) {
+  const tokenHash = hashPasswordResetToken(token);
+  const forUpdate = options.forUpdate ? '\n    FOR UPDATE' : '';
+  const { rows } = await client.query(
+    `
+    SELECT id, usuario_id, expira_en, consumido_en
+    FROM password_reset_tokens
+    WHERE token_hash = $1
+    LIMIT 1
+    ${forUpdate}
+    `,
+    [tokenHash]
+  );
+  return rows[0] || null;
+}
+
+function getPasswordResetUrl(token) {
+  if (!FRONTEND_URL) {
+    throw new Error('FRONTEND_URL no esta configurada');
+  }
+  return `${FRONTEND_URL}/reset-password?token=${encodeURIComponent(token)}`;
+}
+
+function getSmtpTransport() {
+  if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS || !SMTP_FROM) {
+    throw new Error('Faltan variables SMTP para enviar email');
+  }
+
+  return nodemailer.createTransport({
+    host: SMTP_HOST,
+    port: SMTP_PORT,
+    secure: SMTP_SECURE,
+    auth: {
+      user: SMTP_USER,
+      pass: SMTP_PASS
+    }
+  });
+}
+
+async function enviarEmailResetPassword({ to, resetUrl }) {
+  const transporter = getSmtpTransport();
+  await transporter.sendMail({
+    from: SMTP_FROM,
+    to,
+    subject: 'Restablecer password',
+    text: `Recibimos una solicitud para restablecer tu password.\n\nUsa este link:\n${resetUrl}\n\nSi no fuiste vos, ignora este mensaje.`,
+    html: `
+      <p>Recibimos una solicitud para restablecer tu password.</p>
+      <p><a href="${resetUrl}">Restablecer password</a></p>
+      <p>Si no fuiste vos, ignora este mensaje.</p>
+    `
+  });
 }
 
 function validarFormatoPassword(password) {
@@ -478,8 +575,30 @@ async function asegurarModeloMultiHogar() {
   `);
 }
 
+async function asegurarPasswordResetTokens() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id BIGSERIAL PRIMARY KEY,
+      usuario_id BIGINT NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+      token_hash VARCHAR(128) NOT NULL UNIQUE,
+      expira_en TIMESTAMPTZ NOT NULL,
+      consumido_en TIMESTAMPTZ,
+      creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_usuario_id
+    ON password_reset_tokens (usuario_id)
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_expira_en
+    ON password_reset_tokens (expira_en)
+  `);
+}
+
 async function asegurarDatosColon260() {
   await asegurarModeloMultiHogar();
+  await asegurarPasswordResetTokens();
 
   await pool.query(
     `
@@ -1002,6 +1121,7 @@ app.get('/admin/usuarios', autenticar, exigirSuperadmin, async (_req, res) => {
         u.nombre,
         u.rol_global,
         u.force_password_change,
+        u.creado_en,
         u.activo,
         COALESCE(
           JSON_AGG(
@@ -1013,7 +1133,7 @@ app.get('/admin/usuarios', autenticar, exigirSuperadmin, async (_req, res) => {
       FROM usuarios u
       LEFT JOIN hogares_usuarios hu ON hu.usuario_id = u.id
       LEFT JOIN hogares h ON h.id = hu.hogar_id
-      GROUP BY u.id, u.correo, u.nombre, u.rol_global, u.activo
+      GROUP BY u.id, u.correo, u.nombre, u.rol_global, u.force_password_change, u.creado_en, u.activo
       ORDER BY u.nombre ASC
       `
     );
@@ -1023,6 +1143,7 @@ app.get('/admin/usuarios', autenticar, exigirSuperadmin, async (_req, res) => {
         ...row,
         id: Number(row.id),
         force_password_change: Boolean(row.force_password_change),
+        creado_en: row.creado_en,
         hogares: (row.hogares || []).map((hogar) => ({ ...hogar, id: Number(hogar.id) }))
       }))
     });
@@ -1148,6 +1269,107 @@ app.post('/admin/hogares/:id/usuarios', autenticar, exigirSuperadmin, async (req
   }
 });
 
+app.patch('/admin/usuarios/:id', autenticar, exigirSuperadmin, async (req, res) => {
+  const usuarioId = Number(req.params.id);
+  const { nombre, email, rol_global, activo, force_password_change } = req.body || {};
+  const nombreFinal = nombre == null ? null : String(nombre).trim();
+  const correoFinal = email == null ? null : String(email).trim().toLowerCase();
+  const rolFinal = rol_global == null ? null : normalizarRolHogar(rol_global);
+  const activoFinal = typeof activo === 'boolean' ? activo : null;
+  const forzarCambioFinal = typeof force_password_change === 'boolean' ? force_password_change : null;
+
+  if (!usuarioId) {
+    return res.status(400).json({ error: 'usuario_id es obligatorio' });
+  }
+
+  if (nombreFinal !== null && !nombreFinal) {
+    return res.status(400).json({ error: 'nombre no puede estar vacio' });
+  }
+
+  if (correoFinal !== null && !correoFinal) {
+    return res.status(400).json({ error: 'email no puede estar vacio' });
+  }
+
+  if (rolFinal !== null && !['superadmin', 'hogar_admin', 'hogar_member'].includes(rolFinal)) {
+    return res.status(400).json({ error: 'rol_global invalido' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const actual = await client.query(
+      `
+      SELECT id, correo, nombre, rol_global, activo, force_password_change
+      FROM usuarios
+      WHERE id = $1
+      FOR UPDATE
+      `,
+      [usuarioId]
+    );
+
+    const usuarioActual = actual.rows[0];
+    if (!usuarioActual) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    if (correoFinal && correoFinal !== String(usuarioActual.correo || '').toLowerCase()) {
+      const duplicado = await client.query(
+        `
+        SELECT id
+        FROM usuarios
+        WHERE LOWER(correo) = LOWER($1)
+          AND id <> $2
+        LIMIT 1
+        `,
+        [correoFinal, usuarioId]
+      );
+      if (duplicado.rows.length > 0) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'Ya existe otro usuario con ese email' });
+      }
+    }
+
+    const { rows } = await client.query(
+      `
+      UPDATE usuarios
+      SET
+        nombre = COALESCE($1, nombre),
+        correo = COALESCE($2, correo),
+        rol_global = COALESCE($3, rol_global),
+        activo = COALESCE($4, activo),
+        force_password_change = COALESCE($5, force_password_change)
+      WHERE id = $6
+      RETURNING id, correo, nombre, rol_global, activo, force_password_change, creado_en
+      `,
+      [
+        nombreFinal,
+        correoFinal,
+        rolFinal,
+        activoFinal,
+        forzarCambioFinal,
+        usuarioId
+      ]
+    );
+
+    await client.query('COMMIT');
+    return res.status(200).json({
+      ok: true,
+      usuario: {
+        ...rows[0],
+        id: Number(rows[0].id),
+        force_password_change: Boolean(rows[0].force_password_change)
+      }
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    return res.status(500).json({ error: 'Error actualizando usuario', detalle: error.message });
+  } finally {
+    client.release();
+  }
+});
+
 app.post('/admin/usuarios/:id/password', autenticar, exigirSuperadmin, async (req, res) => {
   const usuarioId = Number(req.params.id);
   const { password, force_password_change } = req.body || {};
@@ -1249,6 +1471,192 @@ app.post('/auth/cambiar-password', autenticar, async (req, res) => {
     return res.status(200).json({ ok: true, token, usuario: usuarioSesion });
   } catch (error) {
     return res.status(500).json({ error: 'Error actualizando password', detalle: error.message });
+  }
+});
+
+app.post('/auth/forgot-password', async (req, res) => {
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  const genericResponse = {
+    ok: true,
+    mensaje: 'Si el email existe, vas a recibir instrucciones para restablecer la password.'
+  };
+
+  if (!email) {
+    return res.status(200).json(genericResponse);
+  }
+
+  try {
+    await asegurarDatosColon260();
+
+    const { rows } = await pool.query(
+      `
+      SELECT id, correo
+      FROM usuarios
+      WHERE LOWER(correo) = LOWER($1)
+        AND activo = true
+      LIMIT 1
+      `,
+      [email]
+    );
+
+    const usuario = rows[0];
+    if (!usuario) {
+      return res.status(200).json(genericResponse);
+    }
+
+    const tokenPlano = generarPasswordResetToken();
+    const tokenHash = hashPasswordResetToken(tokenPlano);
+    const expiraEn = new Date(Date.now() + PASSWORD_RESET_TTL_MINUTES * 60 * 1000);
+
+    await pool.query(
+      `
+      DELETE FROM password_reset_tokens
+      WHERE usuario_id = $1
+        OR expira_en <= NOW()
+        OR consumido_en IS NOT NULL
+      `,
+      [usuario.id]
+    );
+
+    await pool.query(
+      `
+      INSERT INTO password_reset_tokens (usuario_id, token_hash, expira_en)
+      VALUES ($1, $2, $3)
+      `,
+      [usuario.id, tokenHash, expiraEn]
+    );
+
+    await enviarEmailResetPassword({
+      to: usuario.correo,
+      resetUrl: getPasswordResetUrl(tokenPlano)
+    });
+
+    return res.status(200).json(genericResponse);
+  } catch (error) {
+    return res.status(500).json({
+      error: 'Error solicitando restablecimiento de password',
+      detalle: error.message
+    });
+  }
+});
+
+app.get('/auth/reset-password/validate', async (req, res) => {
+  const token = String(req.query?.token || '').trim();
+
+  if (!token) {
+    return res.status(200).json({
+      ok: true,
+      valid: false,
+      error: 'Token invalido o inexistente'
+    });
+  }
+
+  try {
+    await asegurarDatosColon260();
+    const resetToken = await buscarPasswordResetToken(pool, token);
+    const validation = evaluarPasswordResetToken(resetToken);
+
+    if (!validation.valid) {
+      return res.status(200).json({
+        ok: true,
+        valid: false,
+        error: validation.error
+      });
+    }
+
+    return res.status(200).json({
+      ok: true,
+      valid: true,
+      mensaje: 'Token valido'
+    });
+  } catch (error) {
+    return res.status(500).json({
+      error: 'Error validando token de restablecimiento',
+      detalle: error.message
+    });
+  }
+});
+
+app.post('/auth/reset-password', async (req, res) => {
+  const token = String(req.body?.token || '').trim();
+  const password = String(req.body?.password || '');
+  const confirmPassword = String(req.body?.confirmPassword || '');
+
+  if (!token || !password || !confirmPassword) {
+    return res.status(400).json({ error: 'token, password y confirmPassword son obligatorios' });
+  }
+
+  if (password !== confirmPassword) {
+    return res.status(400).json({ error: 'Las passwords no coinciden' });
+  }
+
+  const errorFormato = validarFormatoPassword(password);
+  if (errorFormato) {
+    return res.status(400).json({ error: errorFormato });
+  }
+
+  const client = await pool.connect();
+  try {
+    await asegurarDatosColon260();
+    await client.query('BEGIN');
+
+    const resetToken = await buscarPasswordResetToken(client, token, { forUpdate: true });
+    const validation = evaluarPasswordResetToken(resetToken);
+
+    if (!validation.valid) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: validation.error });
+    }
+
+    const { rows: usuarioRows } = await client.query(
+      `
+      UPDATE usuarios
+      SET clave_hash = $1,
+          force_password_change = false
+      WHERE id = $2
+        AND activo = true
+      RETURNING id
+      `,
+      [hashPassword(password), resetToken.usuario_id]
+    );
+
+    if (usuarioRows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Usuario no disponible para restablecer password' });
+    }
+
+    await client.query(
+      `
+      UPDATE password_reset_tokens
+      SET consumido_en = NOW()
+      WHERE id = $1
+        AND consumido_en IS NULL
+      `,
+      [resetToken.id]
+    );
+
+    await client.query(
+      `
+      DELETE FROM password_reset_tokens
+      WHERE usuario_id = $1
+        AND id <> $2
+      `,
+      [resetToken.usuario_id, resetToken.id]
+    );
+
+    await client.query('COMMIT');
+    return res.status(200).json({
+      ok: true,
+      mensaje: 'Password actualizada correctamente'
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    return res.status(500).json({
+      error: 'Error restableciendo password',
+      detalle: error.message
+    });
+  } finally {
+    client.release();
   }
 });
 

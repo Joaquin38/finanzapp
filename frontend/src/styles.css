@@ -206,14 +206,27 @@ label,
   background: var(--surface);
   box-shadow: var(--shadow-strong);
 }
+.auth-card-login {
+  text-align: center;
+  padding-top: 34px;
+}
 
 .auth-logo {
   display: block;
-  width: 72px;
-  height: 72px;
+  width: 108px;
+  height: 108px;
   object-fit: contain;
-  margin: 0 0 18px;
-  border-radius: 16px;
+  margin: 0 auto 20px;
+  filter: drop-shadow(0 18px 30px rgba(29, 78, 216, 0.16));
+}
+.auth-eyebrow {
+  text-align: center;
+}
+.auth-title {
+  margin: 2px 0 0;
+  font-size: 29px;
+  line-height: 1.08;
+  text-align: center;
 }
 
 .auth-card-compact {
@@ -224,6 +237,24 @@ label,
   display: grid;
   gap: 14px;
   margin-top: 20px;
+  text-align: left;
+}
+.auth-link-btn {
+  border: 0;
+  background: transparent;
+  color: var(--primary);
+  padding: 4px 0 0;
+  justify-self: start;
+  font-weight: 600;
+}
+.auth-link-btn:hover {
+  color: var(--primary-strong);
+}
+.auth-success {
+  margin: 0;
+}
+.auth-loading-block {
+  padding: 18px 0 6px;
 }
 
 .auth-form label {
@@ -1875,6 +1906,23 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
   flex-wrap: wrap;
   gap: 6px;
 }
+.modal-user-edit {
+  width: min(940px, 100%);
+}
+.user-edit-form {
+  display: grid;
+  gap: 14px;
+}
+.user-edit-form .form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.user-home-access {
+  padding: 14px;
+  background: var(--surface-soft);
+}
+.user-home-access .table-wrapper {
+  margin-top: 8px;
+}
 .modal-password-usuario {
   width: min(720px, 100%);
 }
@@ -2938,12 +2986,12 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
     border-radius: 18px;
   }
   .auth-logo {
-    width: 64px;
-    height: 64px;
+    width: 88px;
+    height: 88px;
     margin-bottom: 14px;
   }
-  .auth-card h1 {
-    font-size: 30px;
+  .auth-title {
+    font-size: 25px;
   }
   .menu-brand-text span {
     display: none;
