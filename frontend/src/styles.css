@@ -2001,6 +2001,22 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
   border: 1px solid var(--border);
   border-radius: 16px;
   background: var(--surface-solid);
+  display: grid;
+  gap: 14px;
+}
+.password-inline-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.password-inline-grid label {
+  display: grid;
+  gap: 6px;
+}
+.password-inline-grid small {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.4;
 }
 .password-setup-form {
   display: grid;
@@ -2048,6 +2064,9 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
   padding-top: 14px;
   border-top: 1px solid var(--border);
   background: linear-gradient(180deg, rgba(15, 23, 42, 0) 0%, var(--surface) 22%);
+}
+.modal-footer-actions .btn-inline {
+  min-width: 150px;
 }
 .force-password-modal {
   width: min(540px, 100%);
@@ -3077,7 +3096,8 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
     font-size: 25px;
   }
   .user-edit-layout,
-  .user-edit-form .form-grid {
+  .user-edit-form .form-grid,
+  .password-inline-grid {
     grid-template-columns: 1fr;
   }
   .modal-user-edit {

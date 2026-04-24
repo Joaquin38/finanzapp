@@ -248,11 +248,34 @@ async function buscarPasswordResetToken(client, token, options = {}) {
   return rows[0] || null;
 }
 
-function getPasswordResetUrl(token) {
-  if (!FRONTEND_URL) {
+function getFrontendUrlFromRequest(req) {
+  const origin = String(req.headers.origin || '').trim().replace(/\/+$/, '');
+  if (origin) return origin;
+
+  const referer = String(req.headers.referer || '').trim();
+  if (referer) {
+    try {
+      return new URL(referer).origin;
+    } catch {
+      return '';
+    }
+  }
+
+  const corsOrigins = String(process.env.CORS_ORIGIN || '')
+    .split(',')
+    .map((value) => value.trim().replace(/\/+$/, ''))
+    .filter(Boolean)
+    .filter((value) => value !== '*');
+
+  return corsOrigins[0] || '';
+}
+
+function resolvePasswordResetUrl(req, token) {
+  const frontendUrl = FRONTEND_URL || getFrontendUrlFromRequest(req);
+  if (!frontendUrl) {
     throw new Error('FRONTEND_URL no esta configurada');
   }
-  return `${FRONTEND_URL}/reset-password?token=${encodeURIComponent(token)}`;
+  return `${frontendUrl}/reset-password?token=${encodeURIComponent(token)}`;
 }
 
 function getSmtpTransport() {
@@ -1528,7 +1551,7 @@ app.post('/auth/forgot-password', async (req, res) => {
 
     await enviarEmailResetPassword({
       to: usuario.correo,
-      resetUrl: getPasswordResetUrl(tokenPlano)
+      resetUrl: resolvePasswordResetUrl(req, tokenPlano)
     });
 
     return res.status(200).json(genericResponse);

@@ -12,7 +12,6 @@ import {
   updateMiembroHogar,
   vincularAdminUsuarioHogar
 } from '../services/api.js';
-import PasswordSetupForm from './PasswordSetupForm.jsx';
 
 const roles = [
   { value: 'hogar_admin', label: 'Hogar admin' },
@@ -46,6 +45,15 @@ function formatDateTime(value) {
     dateStyle: 'short',
     timeStyle: 'short'
   });
+}
+
+function validatePasswordDraft(value) {
+  const password = String(value || '');
+  if (password.length < 8) return 'La password debe tener al menos 8 caracteres.';
+  if (!/[a-z]/.test(password)) return 'La password debe incluir una minuscula.';
+  if (!/[A-Z]/.test(password)) return 'La password debe incluir una mayuscula.';
+  if (!/\d/.test(password)) return 'La password debe incluir un numero.';
+  return '';
 }
 
 function ActionIcon({ type }) {
@@ -87,6 +95,8 @@ export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHoga
   const [usuarioEditandoOriginal, setUsuarioEditandoOriginal] = useState(null);
   const [passwordChangeNow, setPasswordChangeNow] = useState(false);
   const [passwordForceChange, setPasswordForceChange] = useState(false);
+  const [passwordDraft, setPasswordDraft] = useState('');
+  const [passwordConfirmDraft, setPasswordConfirmDraft] = useState('');
   const [nuevoUsuario, setNuevoUsuario] = useState(crearUsuarioInicial);
   const [vinculo, setVinculo] = useState({
     hogar_id: '',
@@ -248,10 +258,13 @@ export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHoga
     setUsuarioEditandoOriginal({
       id: Number(usuario.id),
       correo: usuario.correo || '',
+      force_password_change: Boolean(usuario.force_password_change),
       hogares: hogaresUsuario
     });
     setPasswordChangeNow(false);
     setPasswordForceChange(Boolean(usuario.force_password_change));
+    setPasswordDraft('');
+    setPasswordConfirmDraft('');
     setError('');
     setModal('editar-usuario');
   };
@@ -264,6 +277,8 @@ export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHoga
     setUsuarioEditandoOriginal(null);
     setPasswordChangeNow(false);
     setPasswordForceChange(false);
+    setPasswordDraft('');
+    setPasswordConfirmDraft('');
   };
 
   const crearHogar = async (event) => {
@@ -408,12 +423,23 @@ export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHoga
       setError('');
       setMensaje('');
 
+      const wantsPasswordUpdate = Boolean(passwordChangeNow);
+      const forcePasswordChanged =
+        Boolean(passwordForceChange) !== Boolean(usuarioEditandoOriginal?.force_password_change);
+
+      if (wantsPasswordUpdate) {
+        const formatError = validatePasswordDraft(passwordDraft);
+        if (formatError) throw new Error(formatError);
+        if (passwordDraft !== passwordConfirmDraft) {
+          throw new Error('Las passwords no coinciden.');
+        }
+      }
+
       await updateAdminUsuario(usuarioEditando.id, {
         nombre: usuarioEditando.nombre.trim(),
         email: usuarioEditando.correo.trim(),
         rol_global: usuarioEditando.rol_global,
-        activo: Boolean(usuarioEditando.activo),
-        force_password_change: Boolean(passwordForceChange)
+        activo: Boolean(usuarioEditando.activo)
       });
 
       const originales = new Map((usuarioEditandoOriginal?.hogares || []).map((hogar) => [Number(hogar.id), hogar]));
@@ -439,43 +465,15 @@ export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHoga
         }
       }
 
+      if (wantsPasswordUpdate || forcePasswordChanged) {
+        await updateAdminUsuarioPassword(usuarioEditando.id, {
+          password: wantsPasswordUpdate ? passwordDraft : '',
+          force_password_change: Boolean(passwordForceChange)
+        });
+      }
+
       setMensaje('Usuario actualizado correctamente.');
-      setUsuarioEditandoOriginal({
-        id: Number(usuarioEditando.id),
-        correo: usuarioEditando.correo.trim(),
-        hogares: (usuarioEditando.hogares || [])
-          .filter((hogar) => hogar.asignado)
-          .map((hogar) => ({
-            id: Number(hogar.id),
-            nombre: hogar.nombre,
-            rol: hogar.rol || 'hogar_member'
-          }))
-      });
-      await cargarAdmin();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const guardarPasswordUsuario = async ({ password }) => {
-    if (!usuarioEditando?.id) return;
-    if (!passwordChangeNow && !passwordForceChange) {
-      setError('Elegí al menos una acción para la password.');
-      return;
-    }
-
-    try {
-      setLoading(true);
-      setError('');
-      setMensaje('');
-      await updateAdminUsuarioPassword(usuarioEditando.id, {
-        password: passwordChangeNow ? password : '',
-        force_password_change: passwordForceChange
-      });
-      setMensaje('Configuracion de password actualizada.');
-      setPasswordChangeNow(false);
+      cerrarModal();
       await cargarAdmin();
     } catch (err) {
       setError(err.message);
@@ -1040,7 +1038,7 @@ export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHoga
                 <div className="admin-card-header">
                   <div>
                     <h3>Password</h3>
-                    <small>Redefine la clave o deja preparado el cambio para el proximo ingreso.</small>
+                    <small>Todo se guarda junto con el resto de cambios del usuario.</small>
                   </div>
                 </div>
 
@@ -1066,30 +1064,35 @@ export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHoga
                   </label>
                 </div>
 
-                {passwordChangeNow ? (
-                  <div className="password-admin-form-card">
-                    <PasswordSetupForm
-                      title="Nueva password"
-                      subtitle="La clave se guarda directamente para este usuario."
-                      submitLabel="Guardar password"
-                      loading={loading}
-                      error={error}
-                      onSubmit={guardarPasswordUsuario}
-                    />
-                  </div>
-                ) : (
-                  <div className="password-admin-actions">
-                    <p>Si no cambias la clave ahora, igual puedes guardar solo el cambio forzado.</p>
-                    <button
-                      type="button"
-                      className="btn-inline success"
-                      disabled={loading || !passwordForceChange}
-                      onClick={() => guardarPasswordUsuario({ password: '' })}
-                    >
-                      Guardar configuracion de password
-                    </button>
-                  </div>
-                )}
+                <div className="password-admin-form-card">
+                  {passwordChangeNow ? (
+                    <div className="password-inline-grid">
+                      <label>
+                        Nueva password
+                        <input
+                          type="password"
+                          value={passwordDraft}
+                          onChange={(event) => setPasswordDraft(event.target.value)}
+                          placeholder="Nueva password"
+                        />
+                        <small>Minimo 8 caracteres, con mayuscula, minuscula y numero.</small>
+                      </label>
+                      <label>
+                        Repetir password
+                        <input
+                          type="password"
+                          value={passwordConfirmDraft}
+                          onChange={(event) => setPasswordConfirmDraft(event.target.value)}
+                          placeholder="Repeti la password"
+                        />
+                      </label>
+                    </div>
+                  ) : (
+                    <div className="password-admin-actions">
+                      <p>Si no defines una nueva clave, solo se aplicara el cambio forzado si lo marcaste.</p>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
