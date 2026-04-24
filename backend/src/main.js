@@ -371,6 +371,20 @@ function exigirGestionHogar(req, res, next) {
   return next();
 }
 
+function exigirOperacionHogar(req, res, next) {
+  const hogarId = Number(req.query.hogar_id || req.body?.hogar_id);
+
+  if (!hogarId) {
+    return res.status(400).json({ error: 'hogar_id es obligatorio' });
+  }
+
+  if (!puedeOperarHogar(req.usuario, hogarId)) {
+    return res.status(403).json({ error: 'No tenes permisos para operar en este hogar' });
+  }
+
+  return next();
+}
+
 function exigirSuperadmin(req, res, next) {
   if (req.usuario?.rol_global !== 'superadmin') {
     return res.status(403).json({ error: 'Solo superadmin puede realizar esta accion' });
@@ -2701,7 +2715,7 @@ app.get('/gastos-fijos', async (req, res) => {
   }
 });
 
-app.post('/gastos-fijos', exigirGestionHogar, async (req, res) => {
+app.post('/gastos-fijos', exigirOperacionHogar, async (req, res) => {
   const { hogar_id, categoria_id, descripcion, moneda, monto_base, dia_vencimiento, ciclo_desde, ciclo_hasta } = req.body;
 
   if (!hogar_id || !categoria_id || !descripcion || !moneda || !monto_base) {
@@ -2782,8 +2796,8 @@ app.patch('/gastos-fijos/:id', async (req, res) => {
     if (permisoRows.length === 0) {
       return res.status(404).json({ error: 'Valor fijo no encontrado' });
     }
-    if (!puedeGestionarHogar(req.usuario, Number(permisoRows[0].hogar_id))) {
-      return res.status(403).json({ error: 'No tenes permisos para gestionar valores fijos' });
+    if (!puedeOperarHogar(req.usuario, Number(permisoRows[0].hogar_id))) {
+      return res.status(403).json({ error: 'No tenes permisos para operar valores fijos' });
     }
 
     if (categoria_id) {
@@ -2869,7 +2883,7 @@ app.delete('/gastos-fijos/:id', async (req, res) => {
     if (permisoRows.length === 0) {
       return res.status(404).json({ error: 'Valor fijo no encontrado' });
     }
-    if (!puedeGestionarHogar(req.usuario, Number(permisoRows[0].hogar_id))) {
+    if (!puedeOperarHogar(req.usuario, Number(permisoRows[0].hogar_id))) {
       return res.status(403).json({ error: 'No tenes permisos para finalizar valores fijos' });
     }
 
@@ -3107,7 +3121,7 @@ app.post('/gastos-fijos/:id/ajustes', async (req, res) => {
     if (permisoRows.length === 0) {
       return res.status(404).json({ error: 'Valor fijo no encontrado' });
     }
-    if (!puedeGestionarHogar(req.usuario, Number(permisoRows[0].hogar_id))) {
+    if (!puedeOperarHogar(req.usuario, Number(permisoRows[0].hogar_id))) {
       return res.status(403).json({ error: 'No tenes permisos para ajustar valores fijos' });
     }
 

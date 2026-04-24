@@ -161,6 +161,7 @@ export default function App() {
   const rolActivo = session?.usuario?.rol_global === 'superadmin' ? 'superadmin' : hogarActivo?.rol || session?.usuario?.rol;
   const canManageHome = rolActivo === 'superadmin' || rolActivo === 'hogar_admin';
   const canOperateHome = canManageHome || rolActivo === 'hogar_member';
+  const canAccessFixedValues = canOperateHome;
   const canSwitchHogar = hogaresContexto.length > 1;
   const mostrarAccionesCiclo = seccionActiva === 'dashboard' || seccionActiva === 'movimientos';
 
@@ -430,7 +431,7 @@ export default function App() {
   }, [hogarId]);
 
   useEffect(() => {
-    if (!canManageHome && seccionActiva === 'gastos_fijos') {
+    if (!canAccessFixedValues && seccionActiva === 'gastos_fijos') {
       setSeccionActiva('dashboard');
     }
     if (!isSuperadmin && seccionActiva === 'superadmin') {
@@ -439,7 +440,7 @@ export default function App() {
     if (!canManageHome && seccionActiva === 'mi_hogar') {
       setSeccionActiva('dashboard');
     }
-  }, [canManageHome, isSuperadmin, seccionActiva]);
+  }, [canAccessFixedValues, canManageHome, isSuperadmin, seccionActiva]);
 
   const handleLogin = async ({ email, password }) => {
     try {
@@ -510,6 +511,7 @@ export default function App() {
     setEstadoOverrides({});
     setAuthError('');
     setPasswordUpdateError('');
+    setForgotPasswordMessage('');
   };
 
   const handleForcePasswordChange = async ({ password }) => {
@@ -572,7 +574,7 @@ export default function App() {
   };
 
   const handleCrearGastoFijo = async (payload) => {
-    if (!canManageHome) {
+    if (!canAccessFixedValues) {
       setError('Tu rol no permite gestionar valores fijos');
       return;
     }
@@ -588,7 +590,7 @@ export default function App() {
   };
 
   const handleEditarGastoFijo = async (id, payload) => {
-    if (!canManageHome) {
+    if (!canAccessFixedValues) {
       setError('Tu rol no permite gestionar valores fijos');
       return;
     }
@@ -603,7 +605,7 @@ export default function App() {
   };
 
   const handleAjustarGastoFijo = async (id, payload) => {
-    if (!canManageHome) {
+    if (!canAccessFixedValues) {
       setError('Tu rol no permite ajustar valores fijos');
       return;
     }
@@ -618,7 +620,7 @@ export default function App() {
   };
 
   const handleEliminarGastoFijoEnCiclo = async (id, cicloFinalizacion = cicloSeleccionado) => {
-    if (!canManageHome) {
+    if (!canAccessFixedValues) {
       setError('Tu rol no permite finalizar valores fijos');
       return;
     }
@@ -643,7 +645,7 @@ export default function App() {
   };
 
   const handleEditarFijoEnGrilla = async (movimiento) => {
-    if (!canManageHome) {
+    if (!canAccessFixedValues) {
       setError('Tu rol no permite editar valores fijos');
       return;
     }
@@ -1145,6 +1147,31 @@ export default function App() {
     );
   }
 
+  if (session?.usuario?.force_password_change) {
+    return (
+      <main className="auth-shell force-password-shell">
+        <section className="auth-card auth-card-wide force-password-screen">
+          <div className="force-password-intro">
+            <p className="eyebrow">FinanzApp</p>
+            <h1>Actualiza tu password</h1>
+            <p className="subtitle">Antes de entrar a la app necesitamos que definas una nueva clave.</p>
+          </div>
+
+          <PasswordSetupForm
+            title="Cambio obligatorio"
+            subtitle="La nueva password reemplaza la actual y te deja entrar al hogar normalmente."
+            submitLabel="Guardar password"
+            cancelLabel="Volver al login"
+            loading={authLoading}
+            error={passwordUpdateError}
+            onCancel={handleLogout}
+            onSubmit={handleForcePasswordChange}
+          />
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className={`container ${menuCollapsed ? 'menu-colapsado' : ''}`}>
       <MenuLateral
@@ -1153,6 +1180,7 @@ export default function App() {
         active={seccionActiva}
         onSelect={setSeccionActiva}
         canManageHome={canManageHome}
+        canAccessFixedValues={canAccessFixedValues}
         isSuperadmin={isSuperadmin}
       />
 
@@ -1314,7 +1342,7 @@ export default function App() {
                 canCreate={canOperateHome}
                 canEdit={canManageHome}
                 canDelete={canManageHome}
-                canManageFixedValues={canManageHome}
+                canManageFixedValues={canAccessFixedValues}
                 canToggleEstado={canOperateHome}
                 mostrarEliminados={mostrarEliminados}
                 onToggleEliminados={setMostrarEliminados}
@@ -1340,7 +1368,7 @@ export default function App() {
               categorias={categorias}
               ciclo={cicloSeleccionado}
               onCicloChange={setCicloSeleccionado}
-              readOnly={!canManageHome}
+              readOnly={!canAccessFixedValues}
               onCrear={handleCrearGastoFijo}
               onEditar={handleEditarGastoFijo}
               onAjustar={handleAjustarGastoFijo}
@@ -1403,21 +1431,6 @@ export default function App() {
           onClose={() => setGastoRapidoAbierto(false)}
           onSubmit={handleCrearGastoRapido}
         />
-      )}
-
-      {session?.usuario?.force_password_change && (
-        <div className="modal-overlay" role="dialog" aria-modal="true">
-          <div className="modal-content modal-compact force-password-modal">
-            <PasswordSetupForm
-              title="Actualiza tu password"
-              subtitle="Tu cuenta requiere una nueva password antes de seguir usando la app."
-              submitLabel="Guardar password"
-              loading={authLoading}
-              error={passwordUpdateError}
-              onSubmit={handleForcePasswordChange}
-            />
-          </div>
-        </div>
       )}
 
       {openModal && (

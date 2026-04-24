@@ -13,11 +13,13 @@ export default function PasswordSetupForm({
   title,
   subtitle,
   submitLabel = 'Guardar',
+  cancelLabel = '',
   loading = false,
   error = '',
   requireCurrentPassword = false,
   currentPasswordLabel = 'Password actual',
   currentPasswordPlaceholder = 'Ingresa tu password actual',
+  onCancel,
   onSubmit
 }) {
   const [currentPassword, setCurrentPassword] = useState('');
@@ -69,32 +71,39 @@ export default function PasswordSetupForm({
         </label>
       )}
 
-      <label>
-        Nueva password
-        <input
-          type="password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          placeholder="Nueva password"
-          required
-        />
-        <small>{formatHint}</small>
-      </label>
+      <div className="password-setup-grid">
+        <label>
+          Nueva password
+          <input
+            type="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            placeholder="Nueva password"
+            required
+          />
+          <small>{formatHint}</small>
+        </label>
 
-      <label>
-        Repetir password
-        <input
-          type="password"
-          value={passwordConfirm}
-          onChange={(event) => setPasswordConfirm(event.target.value)}
-          placeholder="Repeti la password"
-          required
-        />
-      </label>
+        <label>
+          Repetir password
+          <input
+            type="password"
+            value={passwordConfirm}
+            onChange={(event) => setPasswordConfirm(event.target.value)}
+            placeholder="Repeti la password"
+            required
+          />
+        </label>
+      </div>
 
       {(localError || error) && <p className="error full-width">{localError || error}</p>}
 
-      <div className="confirm-actions full-width">
+      <div className="confirm-actions full-width password-setup-actions">
+        {onCancel && (
+          <button type="button" className="btn-inline secondary" onClick={onCancel} disabled={loading}>
+            {cancelLabel || 'Cancelar'}
+          </button>
+        )}
         <button type="submit" className="btn-inline success" disabled={loading}>
           {submitLabel}
         </button>
