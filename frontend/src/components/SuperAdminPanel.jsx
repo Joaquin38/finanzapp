@@ -1038,7 +1038,6 @@ export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHoga
                 <div className="admin-card-header">
                   <div>
                     <h3>Password</h3>
-                    <small>Todo se guarda junto con el resto de cambios del usuario.</small>
                   </div>
                 </div>
 
@@ -1046,8 +1045,7 @@ export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHoga
                   <label className="password-admin-toggle">
                     <input type="checkbox" checked={passwordChangeNow} onChange={(event) => setPasswordChangeNow(event.target.checked)} />
                     <span>
-                      <strong>Definir nueva password</strong>
-                      <small>Guarda una clave nueva ahora mismo.</small>
+                      <strong>Definir nueva</strong>
                     </span>
                   </label>
 
@@ -1059,26 +1057,24 @@ export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHoga
                     />
                     <span>
                       <strong>Forzar cambio al ingresar</strong>
-                      <small>Le pedira actualizar la clave en el proximo login.</small>
                     </span>
                   </label>
                 </div>
 
-                <div className="password-admin-form-card">
-                  {passwordChangeNow ? (
+                {passwordChangeNow && (
+                  <div className="password-admin-form-card">
                     <div className="password-inline-grid">
                       <label>
-                        Nueva password
+                        Nueva
                         <input
                           type="password"
                           value={passwordDraft}
                           onChange={(event) => setPasswordDraft(event.target.value)}
                           placeholder="Nueva password"
                         />
-                        <small>Minimo 8 caracteres, con mayuscula, minuscula y numero.</small>
                       </label>
                       <label>
-                        Repetir password
+                        Repetir
                         <input
                           type="password"
                           value={passwordConfirmDraft}
@@ -1087,12 +1083,8 @@ export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHoga
                         />
                       </label>
                     </div>
-                  ) : (
-                    <div className="password-admin-actions">
-                      <p>Si no defines una nueva clave, solo se aplicara el cambio forzado si lo marcaste.</p>
-                    </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             </div>
 
