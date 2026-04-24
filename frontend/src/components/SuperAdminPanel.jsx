@@ -936,150 +936,168 @@ export default function SuperAdminPanel({ hogarActivoId, onHogaresChange, onHoga
               <small>Creado: {formatDateTime(usuarioEditando.creado_en)}</small>
             </div>
 
-            <form className="user-edit-form" onSubmit={guardarUsuarioEditado}>
-              <div className="form-grid">
-                <label>
-                  Nombre
-                  <input
-                    value={usuarioEditando.nombre}
-                    onChange={(event) => actualizarUsuarioEditando('nombre', event.target.value)}
-                  />
-                </label>
-                <label>
-                  Email
-                  <input
-                    type="email"
-                    value={usuarioEditando.correo}
-                    onChange={(event) => actualizarUsuarioEditando('correo', event.target.value)}
-                  />
-                </label>
-                <label>
-                  Rol global
-                  <select
-                    value={usuarioEditando.rol_global}
-                    onChange={(event) => actualizarUsuarioEditando('rol_global', event.target.value)}
-                  >
-                    {userGlobalRoles.map((rol) => (
-                      <option key={rol.value} value={rol.value}>
-                        {rol.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Estado
-                  <select
-                    value={usuarioEditando.activo ? 'true' : 'false'}
-                    onChange={(event) => actualizarUsuarioEditando('activo', event.target.value === 'true')}
-                  >
-                    <option value="true">Activo</option>
-                    <option value="false">Inactivo</option>
-                  </select>
-                </label>
-              </div>
-
-              <div className="admin-card compact-table user-home-access">
+            <div className="user-edit-layout">
+              <form id="user-edit-form" className="user-edit-form admin-surface-card" onSubmit={guardarUsuarioEditado}>
                 <div className="admin-card-header">
                   <div>
-                    <h3>Hogares</h3>
-                    <small>Marcá a qué hogares pertenece y con qué rol opera en cada uno.</small>
+                    <h3>Datos del usuario</h3>
+                    <small>Edita identidad, estado y acceso general.</small>
                   </div>
                 </div>
-                <div className="table-wrapper">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Asignado</th>
-                        <th>Hogar</th>
-                        <th>Rol</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(usuarioEditando.hogares || []).map((hogar) => (
-                        <tr key={hogar.id}>
-                          <td>
-                            <input
-                              type="checkbox"
-                              checked={Boolean(hogar.asignado)}
-                              onChange={(event) => actualizarHogarUsuarioEditando(hogar.id, { asignado: event.target.checked })}
-                            />
-                          </td>
-                          <td>{hogar.nombre}</td>
-                          <td>
-                            <select
-                              value={hogar.rol}
-                              disabled={!hogar.asignado}
-                              onChange={(event) => actualizarHogarUsuarioEditando(hogar.id, { rol: event.target.value })}
-                            >
-                              {roles.map((rol) => (
-                                <option key={rol.value} value={rol.value}>
-                                  {rol.label}
-                                </option>
-                              ))}
-                            </select>
-                          </td>
-                        </tr>
+
+                <div className="form-grid">
+                  <label>
+                    Nombre
+                    <input
+                      value={usuarioEditando.nombre}
+                      onChange={(event) => actualizarUsuarioEditando('nombre', event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Email
+                    <input
+                      type="email"
+                      value={usuarioEditando.correo}
+                      onChange={(event) => actualizarUsuarioEditando('correo', event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Rol global
+                    <select
+                      value={usuarioEditando.rol_global}
+                      onChange={(event) => actualizarUsuarioEditando('rol_global', event.target.value)}
+                    >
+                      {userGlobalRoles.map((rol) => (
+                        <option key={rol.value} value={rol.value}>
+                          {rol.label}
+                        </option>
                       ))}
-                    </tbody>
-                  </table>
+                    </select>
+                  </label>
+                  <label>
+                    Estado
+                    <select
+                      value={usuarioEditando.activo ? 'true' : 'false'}
+                      onChange={(event) => actualizarUsuarioEditando('activo', event.target.value === 'true')}
+                    >
+                      <option value="true">Activo</option>
+                      <option value="false">Inactivo</option>
+                    </select>
+                  </label>
                 </div>
-              </div>
 
-              <div className="confirm-actions full-width">
-                <button type="button" className="btn-inline secondary" onClick={cerrarModal}>Cancelar</button>
-                <button type="submit" className="btn-inline success" disabled={loading}>
-                  Guardar usuario
-                </button>
-              </div>
-            </form>
-
-            <div className="password-admin-shell">
-              <div className="admin-card-header">
-                <div>
-                  <h3>Password</h3>
-                  <small>Podés redefinirla ahora o forzar el cambio en el próximo ingreso.</small>
+                <div className="admin-card compact-table user-home-access">
+                  <div className="admin-card-header">
+                    <div>
+                      <h3>Hogares</h3>
+                      <small>Marca a que hogares pertenece y con que rol opera en cada uno.</small>
+                    </div>
+                  </div>
+                  <div className="table-wrapper">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Asignado</th>
+                          <th>Hogar</th>
+                          <th>Rol</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(usuarioEditando.hogares || []).map((hogar) => (
+                          <tr key={hogar.id}>
+                            <td>
+                              <label className="home-access-check">
+                                <input
+                                  type="checkbox"
+                                  checked={Boolean(hogar.asignado)}
+                                  onChange={(event) => actualizarHogarUsuarioEditando(hogar.id, { asignado: event.target.checked })}
+                                />
+                              </label>
+                            </td>
+                            <td>{hogar.nombre}</td>
+                            <td>
+                              <select
+                                value={hogar.rol}
+                                disabled={!hogar.asignado}
+                                onChange={(event) => actualizarHogarUsuarioEditando(hogar.id, { rol: event.target.value })}
+                              >
+                                {roles.map((rol) => (
+                                  <option key={rol.value} value={rol.value}>
+                                    {rol.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </div>
+              </form>
 
-              <label className="password-admin-toggle">
-                <input type="checkbox" checked={passwordChangeNow} onChange={(event) => setPasswordChangeNow(event.target.checked)} />
-                <span>Definir una nueva password ahora</span>
-              </label>
+              <div className="password-admin-shell admin-surface-card">
+                <div className="admin-card-header">
+                  <div>
+                    <h3>Password</h3>
+                    <small>Redefine la clave o deja preparado el cambio para el proximo ingreso.</small>
+                  </div>
+                </div>
 
-              <label className="password-admin-toggle">
-                <input
-                  type="checkbox"
-                  checked={passwordForceChange}
-                  onChange={(event) => setPasswordForceChange(event.target.checked)}
-                />
-                <span>Forzar cambio de password en el proximo login</span>
-              </label>
+                <div className="password-admin-option-list">
+                  <label className="password-admin-toggle">
+                    <input type="checkbox" checked={passwordChangeNow} onChange={(event) => setPasswordChangeNow(event.target.checked)} />
+                    <span>
+                      <strong>Definir nueva password</strong>
+                      <small>Guarda una clave nueva ahora mismo.</small>
+                    </span>
+                  </label>
 
-              {passwordChangeNow ? (
-                <PasswordSetupForm
-                  title="Nueva password"
-                  subtitle="La password se guarda directamente para este usuario."
-                  submitLabel="Guardar password"
-                  loading={loading}
-                  error={error}
-                  onSubmit={guardarPasswordUsuario}
-                />
-              ) : (
-                <div className="password-admin-actions">
-                  <p>Podés dejar la password actual y solo marcar el cambio forzado.</p>
-                  <div className="confirm-actions">
-                    <button type="button" className="btn-inline secondary" onClick={cerrarModal}>Cerrar</button>
+                  <label className="password-admin-toggle">
+                    <input
+                      type="checkbox"
+                      checked={passwordForceChange}
+                      onChange={(event) => setPasswordForceChange(event.target.checked)}
+                    />
+                    <span>
+                      <strong>Forzar cambio al ingresar</strong>
+                      <small>Le pedira actualizar la clave en el proximo login.</small>
+                    </span>
+                  </label>
+                </div>
+
+                {passwordChangeNow ? (
+                  <div className="password-admin-form-card">
+                    <PasswordSetupForm
+                      title="Nueva password"
+                      subtitle="La clave se guarda directamente para este usuario."
+                      submitLabel="Guardar password"
+                      loading={loading}
+                      error={error}
+                      onSubmit={guardarPasswordUsuario}
+                    />
+                  </div>
+                ) : (
+                  <div className="password-admin-actions">
+                    <p>Si no cambias la clave ahora, igual puedes guardar solo el cambio forzado.</p>
                     <button
                       type="button"
                       className="btn-inline success"
                       disabled={loading || !passwordForceChange}
                       onClick={() => guardarPasswordUsuario({ password: '' })}
                     >
-                      Guardar password
+                      Guardar configuracion de password
                     </button>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
+            </div>
+
+            <div className="modal-footer-actions">
+              <button type="button" className="btn-inline secondary" onClick={cerrarModal}>Cancelar</button>
+              <button type="submit" form="user-edit-form" className="btn-inline success" disabled={loading}>
+                Guardar cambios
+              </button>
             </div>
           </div>
         </div>

@@ -1908,6 +1908,14 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
 }
 .modal-user-edit {
   width: min(940px, 100%);
+  display: grid;
+  gap: 16px;
+  max-height: min(88vh, 960px);
+  overflow: auto;
+}
+.user-edit-layout {
+  display: grid;
+  gap: 16px;
 }
 .user-edit-form {
   display: grid;
@@ -1920,8 +1928,21 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
   padding: 14px;
   background: var(--surface-soft);
 }
+.admin-surface-card {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface-soft);
+}
 .user-home-access .table-wrapper {
   margin-top: 8px;
+}
+.home-access-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
 }
 .modal-password-usuario {
   width: min(720px, 100%);
@@ -1929,6 +1950,10 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
 .password-admin-shell {
   display: grid;
   gap: 14px;
+}
+.password-admin-option-list {
+  display: grid;
+  gap: 10px;
 }
 .password-admin-summary {
   display: grid;
@@ -1946,9 +1971,9 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
 }
 .password-admin-toggle {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--surface-solid);
@@ -1956,6 +1981,26 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
 .password-admin-toggle input {
   width: 16px;
   height: 16px;
+  margin-top: 2px;
+}
+.password-admin-toggle span {
+  display: grid;
+  gap: 3px;
+}
+.password-admin-toggle span strong {
+  color: var(--text-primary);
+  font-size: 14px;
+}
+.password-admin-toggle span small {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.password-admin-form-card {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface-solid);
 }
 .password-setup-form {
   display: grid;
@@ -1986,6 +2031,23 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
 .password-admin-actions {
   display: grid;
   gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface-solid);
+}
+.password-admin-actions .btn-inline {
+  justify-self: end;
+}
+.modal-footer-actions {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0) 0%, var(--surface) 22%);
 }
 .force-password-modal {
   width: min(540px, 100%);
@@ -2992,6 +3054,21 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   }
   .auth-title {
     font-size: 25px;
+  }
+  .user-edit-layout,
+  .user-edit-form .form-grid {
+    grid-template-columns: 1fr;
+  }
+  .modal-user-edit {
+    max-height: 92vh;
+  }
+  .modal-footer-actions {
+    flex-direction: column-reverse;
+  }
+  .modal-footer-actions .btn-inline,
+  .password-admin-actions .btn-inline {
+    width: 100%;
+    justify-self: stretch;
   }
   .menu-brand-text span {
     display: none;
