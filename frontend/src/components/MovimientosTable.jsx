@@ -42,12 +42,6 @@ export default function MovimientosTable({
     if (mov.tipo_movimiento === 'ingreso' && estado === 'registrado') return 'cobrado';
     return estado;
   };
-  const ayudasEstado = [
-    { tipo: 'egreso', estados: ['pendiente', 'pagado'] },
-    { tipo: 'ingreso', estados: ['proyectado', 'cobrado'] },
-    { tipo: 'ahorro', estados: ['proyectado', 'registrado'] }
-  ];
-  const badgeEstadoClass = (estado) => `badge-estado-${estado === 'cobrado' ? 'registrado' : estado}`;
   const etiquetaOrigen = (mov) => (mov.esProyectado ? 'fijo' : 'manual');
   const etiquetaEspecial = (mov) =>
     mov.clasificacion_movimiento === 'saldo_inicial'
@@ -136,19 +130,6 @@ export default function MovimientosTable({
           </select>
         </label>
       </div>
-      <div className="table-state-help" aria-label="Referencia de estados">
-        {ayudasEstado.map((item) => (
-          <div key={item.tipo} className="state-help-item">
-            <span className={`badge badge-${item.tipo}`}>{item.tipo}</span>
-            {item.estados.map((estado) => (
-              <span key={`${item.tipo}-${estado}`} className={`badge ${badgeEstadoClass(estado)}`}>
-                {estado}
-              </span>
-            ))}
-          </div>
-        ))}
-      </div>
-
       <div className="table-wrapper">
         <table>
           <thead>

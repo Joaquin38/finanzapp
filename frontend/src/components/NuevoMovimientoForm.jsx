@@ -41,9 +41,9 @@ export default function NuevoMovimientoForm({ categorias, onCrear, loading, modo
           : initialValues.tipo_movimiento === 'ahorro'
           ? 3
           : 2,
-      categoria_id: initialValues.categoria_id || '',
+      categoria_id: initialValues.categoria_id ? String(initialValues.categoria_id) : '',
       descripcion: initialValues.descripcion || '',
-      monto_ars: Number(initialValues.monto_ars || 0),
+      monto_ars: String(initialValues.monto_ars ?? ''),
       moneda_original: initialState.moneda_original,
       usa_ahorro: Boolean(initialValues.usa_ahorro)
     });
@@ -108,7 +108,7 @@ export default function NuevoMovimientoForm({ categorias, onCrear, loading, modo
           <input
             ref={montoRef}
             type="number"
-            min="1"
+            min="0.01"
             step="0.01"
             value={form.monto_ars}
             onChange={(e) => handleChange('monto_ars', e.target.value)}

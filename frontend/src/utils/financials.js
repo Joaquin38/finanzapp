@@ -69,6 +69,9 @@ export function construirMovimientosConsolidadosDelCiclo({
         id: `valor-fijo-${item.id}`,
         gasto_fijo_id: item.id,
         fecha: getFechaProyectada(ciclo, item.dia_vencimiento),
+        tipo_movimiento_id:
+          item.tipo_movimiento === 'ingreso' ? 1 : item.tipo_movimiento === 'ahorro' ? 3 : 2,
+        categoria_id: item.categoria_id ?? null,
         tipo_movimiento: item.tipo_movimiento,
         categoria: item.categoria,
         descripcion: item.descripcion,

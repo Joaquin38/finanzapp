@@ -136,7 +136,7 @@ export default function App() {
   const [ordenGrilla, setOrdenGrilla] = useState({
     campo: 'fecha',
     direccion: 'desc',
-    manual: false
+    manual: true
   });
   const [estadoOverrides, setEstadoOverrides] = useState({});
   const [reporteActivo, setReporteActivo] = useState('mensual');
@@ -550,9 +550,14 @@ export default function App() {
           throw new Error('Tu rol no permite editar movimientos');
         }
         await updateMovimiento(movimientoEditando.id, {
+          fecha: payload.fecha,
+          tipo_movimiento_id: payload.tipo_movimiento_id,
           descripcion: payload.descripcion,
           categoria_id: payload.categoria_id,
-          cuenta_id: payload.cuenta_id
+          cuenta_id: payload.cuenta_id,
+          monto_original: payload.monto_original,
+          monto_ars: payload.monto_ars,
+          usa_ahorro: payload.usa_ahorro
         });
       } else {
         await createMovimiento({
@@ -832,11 +837,6 @@ export default function App() {
     const { campo, direccion } = ordenGrilla;
     const factor = direccion === 'asc' ? 1 : -1;
     items.sort((a, b) => {
-      if (!ordenGrilla.manual) {
-        if (a.esProyectado && !b.esProyectado) return -1;
-        if (!a.esProyectado && b.esProyectado) return 1;
-      }
-
       const normalize = (item) => {
         if (campo === 'estado') return item.estado_consolidado || getEstadoMovimiento(item);
         return item[campo] ?? '';
