@@ -25,7 +25,7 @@ const REPORTES_BASE = [
 ];
 
 function formatMoney(value) {
-  return `$${Number(value || 0).toLocaleString('es-AR')}`;
+  return `$${Number(value || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function formatVariation(value) {

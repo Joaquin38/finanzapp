@@ -52,6 +52,11 @@ import {
 
 const THEME_STORAGE_KEY = 'finanzapp_theme';
 const DASHBOARD_AMOUNTS_HIDDEN_STORAGE_KEY = 'finanzapp_dashboard_amounts_hidden';
+const MONEY_FORMAT = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
+
+function formatMoneyText(value) {
+  return `$${Number(value || 0).toLocaleString('es-AR', MONEY_FORMAT)}`;
+}
 
 function getStoredTheme() {
   try {
@@ -890,18 +895,18 @@ export default function App() {
     const diferenciaAbs = Math.abs(diferenciaBalance);
     const diferenciaTexto =
       diferenciaBalance > 0
-        ? `Podés cerrar el ciclo ${diferenciaAbs.toLocaleString('es-AR')} arriba si confirmás lo pendiente.`
+        ? `Podés cerrar el ciclo ${formatMoneyText(diferenciaAbs)} arriba si confirmás lo pendiente.`
         : diferenciaBalance < 0
-          ? `El proyectado ya quedó ${diferenciaAbs.toLocaleString('es-AR')} por debajo del real. Revisá desvíos.`
+          ? `El proyectado ya quedó ${formatMoneyText(diferenciaAbs)} por debajo del real. Revisá desvíos.`
           : 'El balance real ya coincide con el proyectado.';
 
     return [
       montoPendiente > 0
-        ? `Te quedan $${montoPendiente.toLocaleString('es-AR')} pendientes de pago en el ciclo.`
+        ? `Te quedan ${formatMoneyText(montoPendiente)} pendientes de pago en el ciclo.`
         : 'No tenés egresos pendientes en el ciclo.',
       diferenciaTexto,
       categoriaMayorGasto
-        ? `${categoriaMayorGasto.categoria} lidera el gasto confirmado con $${Number(categoriaMayorGasto.total).toLocaleString('es-AR')}.`
+        ? `${categoriaMayorGasto.categoria} lidera el gasto confirmado con ${formatMoneyText(categoriaMayorGasto.total)}.`
         : 'Todavía no hay una categoría líder en gastos confirmados.'
     ];
   }, [movimientosConsolidados, resumenFinanciero, resumenOperativo]);
@@ -916,19 +921,19 @@ export default function App() {
 
     if (montoPendiente > 0) {
       insights.push(
-        `Paga o reprograma $${montoPendiente.toLocaleString('es-AR')} pendientes: si se confirman, el balance final queda en $${balanceProyectado.toLocaleString('es-AR')}.`
+        `Paga o reprograma ${formatMoneyText(montoPendiente)} pendientes: si se confirman, el balance final queda en ${formatMoneyText(balanceProyectado)}.`
       );
     } else {
-      insights.push(`Sin egresos pendientes: podes cerrar el ciclo con balance real de $${balanceActual.toLocaleString('es-AR')}.`);
+      insights.push(`Sin egresos pendientes: podes cerrar el ciclo con balance real de ${formatMoneyText(balanceActual)}.`);
     }
 
     if (diferenciaBalance < 0) {
       insights.push(
-        `El proyectado empeora el balance en $${Math.abs(diferenciaBalance).toLocaleString('es-AR')}. Revisa gastos pendientes antes de cerrar.`
+        `El proyectado empeora el balance en ${formatMoneyText(Math.abs(diferenciaBalance))}. Revisa gastos pendientes antes de cerrar.`
       );
     } else if (diferenciaBalance > 0) {
       insights.push(
-        `Confirmar lo restante mejora el balance final en $${diferenciaBalance.toLocaleString('es-AR')}. Valida ingresos pendientes primero.`
+        `Confirmar lo restante mejora el balance final en ${formatMoneyText(diferenciaBalance)}. Valida ingresos pendientes primero.`
       );
     } else {
       insights.push('Balance real y proyectado coinciden: no hay impacto adicional pendiente.');
@@ -936,7 +941,7 @@ export default function App() {
 
     if (categoriaMayorGasto) {
       insights.push(
-        `Revisa ${categoriaMayorGasto.categoria}: concentra $${Number(categoriaMayorGasto.total).toLocaleString('es-AR')} confirmados y puede mover el cierre.`
+        `Revisa ${categoriaMayorGasto.categoria}: concentra ${formatMoneyText(categoriaMayorGasto.total)} confirmados y puede mover el cierre.`
       );
     }
 
@@ -1286,7 +1291,7 @@ export default function App() {
               <section className="panel operational-summary">
                 <div className="operational-item">
                   <span className="operational-label">Total de egresos pendientes</span>
-                  <strong>${Number(resumenOperativo.montoPendienteEgresos || 0).toLocaleString('es-AR')}</strong>
+                  <strong>{formatMoneyText(resumenOperativo.montoPendienteEgresos)}</strong>
                 </div>
                 <div className="operational-item">
                   <span className="operational-label">Egresos pagados del ciclo</span>
@@ -1575,7 +1580,7 @@ export default function App() {
               <article className="cycle-close-card">
                 <span>Balance calculado del ciclo</span>
                 <strong className={balanceCalculadoCiclo >= 0 ? 'positivo' : 'negativo'}>
-                  ${balanceCalculadoCiclo.toLocaleString('es-AR')}
+                  {formatMoneyText(balanceCalculadoCiclo)}
                 </strong>
               </article>
 
@@ -1586,7 +1591,7 @@ export default function App() {
                   step="0.01"
                   value={saldoRealFinal}
                   onChange={(e) => setSaldoRealFinal(e.target.value)}
-                  placeholder={`Si lo dejás vacío usa $${balanceCalculadoCiclo.toLocaleString('es-AR')}`}
+                  placeholder={`Si lo dejás vacío usa ${formatMoneyText(balanceCalculadoCiclo)}`}
                   autoFocus
                 />
                 <small className="field-helper">
@@ -1608,7 +1613,7 @@ export default function App() {
               <article className="cycle-close-card cycle-close-diff">
                 <span>Diferencia</span>
                 <strong className={diferenciaCierreCiclo == null ? '' : diferenciaCierreCiclo >= 0 ? 'positivo' : 'negativo'}>
-                  {diferenciaCierreCiclo == null ? '—' : `$${diferenciaCierreCiclo.toLocaleString('es-AR')}`}
+                  {diferenciaCierreCiclo == null ? '—' : formatMoneyText(diferenciaCierreCiclo)}
                 </strong>
                 {diferenciaCierreCiclo != null && diferenciaCierreCiclo !== 0 && (
                   <small>

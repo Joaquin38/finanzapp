@@ -14,6 +14,10 @@ function formatFecha(fecha) {
   return `${dia}/${mes}/${anio}`;
 }
 
+function formatMoney(value) {
+  return `$${Number(value || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 export default function MovimientosTable({
   movimientos,
   categoriasDisponibles = [],
@@ -90,7 +94,7 @@ export default function MovimientosTable({
             placeholder="Ej: supermercado, nafta, farmacia"
           />
         </label>
-        <label>
+        <label className="table-date-filter">
           Desde
           <input
             type="date"
@@ -98,7 +102,7 @@ export default function MovimientosTable({
             onChange={(e) => onFiltrosChange((prev) => ({ ...prev, fechaDesde: e.target.value }))}
           />
         </label>
-        <label>
+        <label className="table-date-filter">
           Hasta
           <input
             type="date"
@@ -106,7 +110,7 @@ export default function MovimientosTable({
             onChange={(e) => onFiltrosChange((prev) => ({ ...prev, fechaHasta: e.target.value }))}
           />
         </label>
-        <label>
+        <label className="table-select-filter">
           Tipo
           <select
             value={filtros.tipoMovimiento}
@@ -118,7 +122,7 @@ export default function MovimientosTable({
             <option value="ahorro">Ahorro</option>
           </select>
         </label>
-        <label>
+        <label className="table-select-filter">
           Categoria
           <select value={filtros.categoria} onChange={(e) => onFiltrosChange((prev) => ({ ...prev, categoria: e.target.value }))}>
             <option value="">Todas</option>
@@ -164,7 +168,7 @@ export default function MovimientosTable({
                     </div>
                   )}
                 </td>
-                <td>${Number(mov.monto_ars).toLocaleString('es-AR')}</td>
+                <td>{formatMoney(mov.monto_ars)}</td>
                 <td>
                   <span className={`badge badge-estado-${resolverEstado(mov)}`}>
                     {etiquetaEstado(mov)}

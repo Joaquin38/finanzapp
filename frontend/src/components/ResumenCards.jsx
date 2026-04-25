@@ -6,7 +6,11 @@ function FormattedAmount({ value, hidden }) {
     return <strong className="amount-hidden">$ ••••••</strong>;
   }
 
-  return <strong>${Number(value || 0).toLocaleString('es-AR')}</strong>;
+  return (
+    <strong>
+      ${Number(value || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+    </strong>
+  );
 }
 
 export default function ResumenCards({ resumen, amountsHidden = false, onToggleAmountsHidden }) {

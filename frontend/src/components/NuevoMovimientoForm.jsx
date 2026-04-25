@@ -20,6 +20,12 @@ function normalizeInputDate(value) {
   return value;
 }
 
+function parseMonto(value) {
+  const raw = String(value ?? '').trim();
+  const normalized = raw.includes(',') ? raw.replace(/\./g, '').replace(',', '.') : raw;
+  return Number(normalized);
+}
+
 export default function NuevoMovimientoForm({ categorias, onCrear, loading, modo = 'crear', initialValues = null }) {
   const [form, setForm] = useState(initialState);
   const montoRef = useRef(null);
@@ -33,21 +39,31 @@ export default function NuevoMovimientoForm({ categorias, onCrear, loading, modo
       return;
     }
 
+    const tipoMovimientoId =
+      initialValues.tipo_movimiento === 'ingreso'
+        ? 1
+        : initialValues.tipo_movimiento === 'ahorro'
+        ? 3
+        : 2;
+    const categoriaActual =
+      initialValues.categoria_id ||
+      categorias.find(
+        (categoria) =>
+          categoria.nombre === initialValues.categoria &&
+          (Number(categoria.tipo_movimiento_id) === tipoMovimientoId || categoria.tipo_movimiento === initialValues.tipo_movimiento)
+      )?.id ||
+      '';
+
     setForm({
       fecha: normalizeInputDate(initialValues.fecha),
-      tipo_movimiento_id:
-        initialValues.tipo_movimiento === 'ingreso'
-          ? 1
-          : initialValues.tipo_movimiento === 'ahorro'
-          ? 3
-          : 2,
-      categoria_id: initialValues.categoria_id ? String(initialValues.categoria_id) : '',
+      tipo_movimiento_id: tipoMovimientoId,
+      categoria_id: categoriaActual ? String(categoriaActual) : '',
       descripcion: initialValues.descripcion || '',
       monto_ars: String(initialValues.monto_ars ?? ''),
       moneda_original: initialState.moneda_original,
       usa_ahorro: Boolean(initialValues.usa_ahorro)
     });
-  }, [initialValues]);
+  }, [initialValues, categorias]);
 
   useEffect(() => {
     if (!form.categoria_id && categoriasFiltradas.length > 0 && modo === 'crear') {
@@ -75,6 +91,7 @@ export default function NuevoMovimientoForm({ categorias, onCrear, loading, modo
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    const monto = parseMonto(form.monto_ars);
 
     await onCrear({
       hogar_id: 1,
@@ -84,8 +101,8 @@ export default function NuevoMovimientoForm({ categorias, onCrear, loading, modo
       fecha: form.fecha,
       descripcion: form.descripcion,
       moneda_original: form.moneda_original,
-      monto_original: Number(form.monto_ars),
-      monto_ars: Number(form.monto_ars),
+      monto_original: monto,
+      monto_ars: monto,
       usa_ahorro: Number(form.tipo_movimiento_id) === 2 ? Boolean(form.usa_ahorro) : false,
       creado_por_usuario_id: 1
     });
