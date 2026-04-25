@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-const AGRUPAR_CATEGORIAS_CHICAS = false;
+const AGRUPAR_CATEGORIAS_CHICAS = true;
 const UMBRAL_OTROS_PORCENTAJE = 4;
 
 const REPORTES_BASE = [
@@ -104,7 +104,10 @@ function prepararCategoriasReportes(categorias = [], { agruparChicas = false, um
   if (categoriasChicas.length < 2) return ordenadas;
 
   const totalOtros = categoriasChicas.reduce((acc, item) => acc + Number(item.total || 0), 0);
-  return [...categoriasGrandes, { categoria: 'Otros', total: totalOtros, agrupada: true, cantidadCategorias: categoriasChicas.length }];
+  return [
+    ...categoriasGrandes,
+    { categoria: 'Otras categorias', total: totalOtros, agrupada: true, cantidadCategorias: categoriasChicas.length }
+  ];
 }
 
 export default function ReportesPanel({

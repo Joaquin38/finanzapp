@@ -562,7 +562,15 @@ export default function App() {
           cuenta_id: payload.cuenta_id,
           monto_original: payload.monto_original,
           monto_ars: payload.monto_ars,
-          usa_ahorro: payload.usa_ahorro
+          usa_ahorro: payload.usa_ahorro,
+          estado_egreso:
+            Number(payload.tipo_movimiento_id) === 2
+              ? movimientoEditando.estado_egreso || getEstadoMovimiento(movimientoEditando)
+              : null,
+          estado_ingreso:
+            [1, 3].includes(Number(payload.tipo_movimiento_id))
+              ? movimientoEditando.estado_ingreso || getEstadoMovimiento(movimientoEditando)
+              : null
         });
       } else {
         await createMovimiento({

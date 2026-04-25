@@ -1004,6 +1004,8 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
 .dashboard-cards-block .card {
   position: relative;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
   min-height: 116px;
   border-color: var(--dashboard-card-border);
   background: var(--dashboard-card-bg);
@@ -1021,8 +1023,13 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
 .dashboard-cards-block .card small {
   position: relative;
   z-index: 1;
+  min-height: 38px;
+  margin-bottom: 4px;
   color: var(--dashboard-card-title);
   font-weight: 700;
+}
+.dashboard-cards-block .card-subtitle-spacer {
+  visibility: hidden;
 }
 .dashboard-cards-block .card p {
   position: relative;
