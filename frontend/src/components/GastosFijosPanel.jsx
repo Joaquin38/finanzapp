@@ -252,7 +252,7 @@ export default function GastosFijosPanel({
             <div className="modal-header">
               <h3>Editar valor fijo</h3>
               <button type="button" className="close-btn" onClick={() => setGastoEditando(null)}>
-                ✕
+                x
               </button>
             </div>
             <form className="form-grid" onSubmit={(e) => { e.preventDefault(); confirmarEdicion(); }}>
@@ -318,7 +318,7 @@ export default function GastosFijosPanel({
             <div className="modal-header">
               <h3>Nuevo valor fijo</h3>
               <button type="button" className="close-btn" onClick={() => setMostrarAlta(false)}>
-                âœ•
+                x
               </button>
             </div>
             <form className="form-grid" onSubmit={handleSubmit}>
@@ -392,7 +392,7 @@ export default function GastosFijosPanel({
             <div className="modal-header">
               <h3>Ajuste de valor fijo</h3>
               <button type="button" className="close-btn" onClick={() => setGastoAjustando(null)}>
-                ✕
+                x
               </button>
             </div>
             <form className="form-grid" onSubmit={(e) => { e.preventDefault(); confirmarAjuste(); }}>
@@ -492,7 +492,7 @@ export default function GastosFijosPanel({
             <div className="modal-header">
               <h3>Finalizar valor fijo</h3>
               <button type="button" className="close-btn" onClick={() => setGastoFinalizando(null)}>
-                ✕
+                x
               </button>
             </div>
             <div className="confirm-copy">
