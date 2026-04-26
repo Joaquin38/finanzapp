@@ -6,7 +6,11 @@ function FormattedAmount({ value, hidden }) {
     return <strong className="amount-hidden">$ ••••••</strong>;
   }
 
-  return <strong>${Number(value || 0).toLocaleString('es-AR')}</strong>;
+  return (
+    <strong>
+      ${Number(value || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+    </strong>
+  );
 }
 
 export default function ResumenCards({ resumen, amountsHidden = false, onToggleAmountsHidden }) {
@@ -33,6 +37,9 @@ export default function ResumenCards({ resumen, amountsHidden = false, onToggleA
       <div className="cards-grid">
         <article className="card card-income">
           <h3>Ingresos</h3>
+          <small className="card-subtitle-spacer" aria-hidden="true">
+            &nbsp;
+          </small>
           <p>
             <FormattedAmount value={ingresos} hidden={amountsHidden} />
           </p>
@@ -40,6 +47,9 @@ export default function ResumenCards({ resumen, amountsHidden = false, onToggleA
 
         <article className="card card-expense">
           <h3>Egresos</h3>
+          <small className="card-subtitle-spacer" aria-hidden="true">
+            &nbsp;
+          </small>
           <p>
             <FormattedAmount value={egresos} hidden={amountsHidden} />
           </p>

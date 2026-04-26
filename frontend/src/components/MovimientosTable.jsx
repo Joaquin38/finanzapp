@@ -14,6 +14,10 @@ function formatFecha(fecha) {
   return `${dia}/${mes}/${anio}`;
 }
 
+function formatMoney(value) {
+  return `$${Number(value || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 export default function MovimientosTable({
   movimientos,
   categoriasDisponibles = [],
@@ -42,12 +46,6 @@ export default function MovimientosTable({
     if (mov.tipo_movimiento === 'ingreso' && estado === 'registrado') return 'cobrado';
     return estado;
   };
-  const ayudasEstado = [
-    { tipo: 'egreso', estados: ['pendiente', 'pagado'] },
-    { tipo: 'ingreso', estados: ['proyectado', 'cobrado'] },
-    { tipo: 'ahorro', estados: ['proyectado', 'registrado'] }
-  ];
-  const badgeEstadoClass = (estado) => `badge-estado-${estado === 'cobrado' ? 'registrado' : estado}`;
   const etiquetaOrigen = (mov) => (mov.esProyectado ? 'fijo' : 'manual');
   const etiquetaEspecial = (mov) =>
     mov.clasificacion_movimiento === 'saldo_inicial'
@@ -96,7 +94,7 @@ export default function MovimientosTable({
             placeholder="Ej: supermercado, nafta, farmacia"
           />
         </label>
-        <label>
+        <label className="table-date-filter">
           Desde
           <input
             type="date"
@@ -104,7 +102,7 @@ export default function MovimientosTable({
             onChange={(e) => onFiltrosChange((prev) => ({ ...prev, fechaDesde: e.target.value }))}
           />
         </label>
-        <label>
+        <label className="table-date-filter">
           Hasta
           <input
             type="date"
@@ -112,7 +110,7 @@ export default function MovimientosTable({
             onChange={(e) => onFiltrosChange((prev) => ({ ...prev, fechaHasta: e.target.value }))}
           />
         </label>
-        <label>
+        <label className="table-select-filter">
           Tipo
           <select
             value={filtros.tipoMovimiento}
@@ -124,7 +122,7 @@ export default function MovimientosTable({
             <option value="ahorro">Ahorro</option>
           </select>
         </label>
-        <label>
+        <label className="table-select-filter">
           Categoria
           <select value={filtros.categoria} onChange={(e) => onFiltrosChange((prev) => ({ ...prev, categoria: e.target.value }))}>
             <option value="">Todas</option>
@@ -136,19 +134,6 @@ export default function MovimientosTable({
           </select>
         </label>
       </div>
-      <div className="table-state-help" aria-label="Referencia de estados">
-        {ayudasEstado.map((item) => (
-          <div key={item.tipo} className="state-help-item">
-            <span className={`badge badge-${item.tipo}`}>{item.tipo}</span>
-            {item.estados.map((estado) => (
-              <span key={`${item.tipo}-${estado}`} className={`badge ${badgeEstadoClass(estado)}`}>
-                {estado}
-              </span>
-            ))}
-          </div>
-        ))}
-      </div>
-
       <div className="table-wrapper">
         <table>
           <thead>
@@ -183,7 +168,7 @@ export default function MovimientosTable({
                     </div>
                   )}
                 </td>
-                <td>${Number(mov.monto_ars).toLocaleString('es-AR')}</td>
+                <td>{formatMoney(mov.monto_ars)}</td>
                 <td>
                   <span className={`badge badge-estado-${resolverEstado(mov)}`}>
                     {etiquetaEstado(mov)}

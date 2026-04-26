@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
 import MonthPicker from './MonthPicker.jsx';
 
+function formatMoney(value) {
+  return `$${Number(value || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 export default function GastosFijosPanel({
   gastos,
   categorias,
@@ -172,7 +176,7 @@ export default function GastosFijosPanel({
   const detalleResultado =
     formAjuste.tipo_ajuste === 'porcentaje'
       ? `${valorAjuste >= 0 ? '+' : ''}${valorAjuste.toLocaleString('es-AR')}% sobre el valor actual`
-      : `${valorAjuste >= 0 ? '+' : ''}$${valorAjuste.toLocaleString('es-AR')} sobre el valor actual`;
+      : `${valorAjuste >= 0 ? '+' : ''}${formatMoney(valorAjuste)} sobre el valor actual`;
 
   return (
     <section className="panel">
@@ -211,8 +215,8 @@ export default function GastosFijosPanel({
                 <td>{gasto.descripcion}</td>
                 <td>{gasto.categoria}</td>
                 <td>{gasto.moneda}</td>
-                <td>{Number(gasto.monto_base).toLocaleString('es-AR')}</td>
-                <td>{Number(gasto.monto_vigente ?? gasto.monto_base).toLocaleString('es-AR')}</td>
+                <td>{formatMoney(gasto.monto_base)}</td>
+                <td>{formatMoney(gasto.monto_vigente ?? gasto.monto_base)}</td>
                 <td>{formatVigencia(gasto)}</td>
                 <td>{gasto.dia_vencimiento ? `Dia ${gasto.dia_vencimiento}` : 'Sin dia'}</td>
                 <td>
@@ -252,7 +256,7 @@ export default function GastosFijosPanel({
             <div className="modal-header">
               <h3>Editar valor fijo</h3>
               <button type="button" className="close-btn" onClick={() => setGastoEditando(null)}>
-                ✕
+                x
               </button>
             </div>
             <form className="form-grid" onSubmit={(e) => { e.preventDefault(); confirmarEdicion(); }}>
@@ -318,7 +322,7 @@ export default function GastosFijosPanel({
             <div className="modal-header">
               <h3>Nuevo valor fijo</h3>
               <button type="button" className="close-btn" onClick={() => setMostrarAlta(false)}>
-                âœ•
+                x
               </button>
             </div>
             <form className="form-grid" onSubmit={handleSubmit}>
@@ -392,7 +396,7 @@ export default function GastosFijosPanel({
             <div className="modal-header">
               <h3>Ajuste de valor fijo</h3>
               <button type="button" className="close-btn" onClick={() => setGastoAjustando(null)}>
-                ✕
+                x
               </button>
             </div>
             <form className="form-grid" onSubmit={(e) => { e.preventDefault(); confirmarAjuste(); }}>
@@ -404,12 +408,12 @@ export default function GastosFijosPanel({
                 <div className="adjustment-preview-grid">
                   <div className="adjustment-preview-item">
                     <small>Valor actual</small>
-                    <strong>${montoActualAjuste.toLocaleString('es-AR')}</strong>
+                    <strong>{formatMoney(montoActualAjuste)}</strong>
                     <span>Vigente en {ciclo}</span>
                   </div>
                   <div className="adjustment-preview-item adjustment-preview-emphasis">
                     <small>Valor resultante estimado</small>
-                    <strong>${montoEstimado.toLocaleString('es-AR')}</strong>
+                    <strong>{formatMoney(montoEstimado)}</strong>
                     <span>{detalleResultado}</span>
                   </div>
                 </div>
@@ -492,7 +496,7 @@ export default function GastosFijosPanel({
             <div className="modal-header">
               <h3>Finalizar valor fijo</h3>
               <button type="button" className="close-btn" onClick={() => setGastoFinalizando(null)}>
-                ✕
+                x
               </button>
             </div>
             <div className="confirm-copy">

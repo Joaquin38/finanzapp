@@ -1,7 +1,7 @@
 export default function CotizacionesPanel({ cotizaciones, onRefrescar }) {
   const cotizacionOficial = cotizaciones[0] || null;
   const valorOficial = Number(cotizacionOficial?.venta || 0);
-  const valorAstropay = valorOficial > 0 ? valorOficial * 1.04 : 0;
+  const valorAstropay = valorOficial > 0 ? valorOficial * 1.041 : 0;
 
   return (
     <section className="panel cotizaciones-panel">
@@ -27,7 +27,7 @@ export default function CotizacionesPanel({ cotizaciones, onRefrescar }) {
             </article>
 
             <article className="cotizacion-item cotizacion-item-accent">
-              <span className="cotizacion-kicker">Oficial + 4%</span>
+              <span className="cotizacion-kicker">Oficial + 4.1%</span>
               <h4>Dolar Astropay</h4>
               <p className="cotizacion-price">${valorAstropay.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
             </article>

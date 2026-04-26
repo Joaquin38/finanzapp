@@ -278,6 +278,15 @@ function resolvePasswordResetUrl(req, token) {
   return `${frontendUrl}/reset-password?token=${encodeURIComponent(token)}`;
 }
 
+function escapeHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function getSmtpTransport() {
   if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS || !SMTP_FROM) {
     throw new Error('Faltan variables SMTP para enviar email');
@@ -296,15 +305,57 @@ function getSmtpTransport() {
 
 async function enviarEmailResetPassword({ to, resetUrl }) {
   const transporter = getSmtpTransport();
+  const safeResetUrl = escapeHtml(resetUrl);
+  const ttlLabel = PASSWORD_RESET_TTL_MINUTES === 1 ? '1 minuto' : `${PASSWORD_RESET_TTL_MINUTES} minutos`;
+
   await transporter.sendMail({
     from: SMTP_FROM,
     to,
-    subject: 'Restablecer password',
-    text: `Recibimos una solicitud para restablecer tu password.\n\nUsa este link:\n${resetUrl}\n\nSi no fuiste vos, ignora este mensaje.`,
+    subject: 'Restablece tu password de FinanzApp',
+    text: `Recibimos una solicitud para restablecer la password de tu cuenta en FinanzApp.\n\nAbri este enlace para crear una nueva password:\n${resetUrl}\n\nEl enlace vence en ${ttlLabel}. Si no solicitaste este cambio, podes ignorar este email.`,
     html: `
-      <p>Recibimos una solicitud para restablecer tu password.</p>
-      <p><a href="${resetUrl}">Restablecer password</a></p>
-      <p>Si no fuiste vos, ignora este mensaje.</p>
+      <!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>Restablecer password</title>
+        </head>
+        <body style="margin:0;padding:0;background:#eef4ff;font-family:Inter,Manrope,Arial,sans-serif;color:#0f172a;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef4ff;margin:0;padding:28px 14px;">
+            <tr>
+              <td align="center">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border:1px solid #dbe7ff;border-radius:18px;overflow:hidden;box-shadow:0 18px 44px rgba(15,23,42,0.12);">
+                  <tr>
+                    <td style="padding:24px 26px 18px;background:linear-gradient(135deg,#2563eb,#14b8a6);">
+                      <div style="font-size:13px;line-height:1.3;font-weight:700;color:#dbeafe;text-transform:uppercase;">FinanzApp</div>
+                      <h1 style="margin:10px 0 0;font-size:24px;line-height:1.18;color:#ffffff;font-weight:700;">Restablecer password</h1>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding:26px;">
+                      <p style="margin:0 0 14px;font-size:16px;line-height:1.55;color:#334155;">Recibimos una solicitud para cambiar la password de tu cuenta.</p>
+                      <p style="margin:0 0 22px;font-size:15px;line-height:1.55;color:#475569;">Usa el boton de abajo para crear una nueva password. El enlace vence en <strong style="color:#0f172a;">${ttlLabel}</strong>.</p>
+                      <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 22px;">
+                        <tr>
+                          <td style="border-radius:999px;background:linear-gradient(135deg,#3b82f6,#14b8a6);">
+                            <a href="${safeResetUrl}" style="display:inline-block;padding:13px 22px;color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;">Crear nueva password</a>
+                          </td>
+                        </tr>
+                      </table>
+                      <p style="margin:0 0 8px;font-size:13px;line-height:1.5;color:#64748b;">Si el boton no funciona, copia y pega este enlace en tu navegador:</p>
+                      <p style="margin:0 0 22px;word-break:break-all;font-size:12px;line-height:1.5;color:#2563eb;">${safeResetUrl}</p>
+                      <div style="border-top:1px solid #e2e8f0;padding-top:16px;">
+                        <p style="margin:0;font-size:13px;line-height:1.5;color:#64748b;">Si no pediste este cambio, ignora este email. Tu password actual se mantiene igual.</p>
+                      </div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </body>
+      </html>
     `
   });
 }
@@ -1998,6 +2049,7 @@ app.get('/movimientos', async (req, res) => {
           m.id,
           m.fecha,
           m.descripcion,
+          m.categoria_id,
           m.moneda_original,
           m.monto_original,
           m.cotizacion_aplicada,
@@ -2036,6 +2088,7 @@ app.get('/movimientos', async (req, res) => {
           m.id,
           m.fecha,
           m.descripcion,
+          m.categoria_id,
           m.moneda_original,
           m.monto_original,
           m.cotizacion_aplicada,
@@ -2224,7 +2277,20 @@ app.post('/movimientos', async (req, res) => {
 
 app.patch('/movimientos/:id', async (req, res) => {
   const movimientoId = Number(req.params.id);
-  const { descripcion, categoria_id, cuenta_id, estado_egreso, estado_ingreso } = req.body;
+  const {
+    descripcion,
+    categoria_id,
+    cuenta_id,
+    fecha,
+    tipo_movimiento_id,
+    monto_original,
+    monto_ars,
+    usa_ahorro,
+    estado_egreso,
+    estado_ingreso
+  } = req.body;
+  const payload = req.body || {};
+  const hasField = (field) => Object.prototype.hasOwnProperty.call(payload, field);
 
   if (!movimientoId) {
     return res.status(400).json({ error: 'id inválido' });
@@ -2234,7 +2300,7 @@ app.patch('/movimientos/:id', async (req, res) => {
     await asegurarColumnasEstadoMovimientos();
 
     const { rows: movimientoRows } = await pool.query(
-      'SELECT hogar_id FROM movimientos WHERE id = $1',
+      'SELECT hogar_id, tipo_movimiento_id FROM movimientos WHERE id = $1',
       [movimientoId]
     );
     if (movimientoRows.length === 0) {
@@ -2242,6 +2308,7 @@ app.patch('/movimientos/:id', async (req, res) => {
     }
 
     const hogarMovimientoId = Number(movimientoRows[0].hogar_id);
+    const tipoMovimientoActual = Number(movimientoRows[0].tipo_movimiento_id);
     if (!puedeOperarHogar(req.usuario, hogarMovimientoId)) {
       return res.status(403).json({ error: 'No tenes acceso a este movimiento' });
     }
@@ -2249,30 +2316,87 @@ app.patch('/movimientos/:id', async (req, res) => {
       return res.status(403).json({ error: 'Tu rol solo permite cambiar estados de movimientos' });
     }
 
+    const tipoMovimientoFinal = hasField('tipo_movimiento_id') ? Number(tipo_movimiento_id) : tipoMovimientoActual;
+
+    if (hasField('tipo_movimiento_id') && ![1, 2, 3].includes(tipoMovimientoFinal)) {
+      return res.status(400).json({ error: 'tipo_movimiento_id debe ser 1, 2 o 3' });
+    }
+
+    if (hasField('fecha') && !parseFecha(fecha)) {
+      return res.status(400).json({ error: 'fecha debe tener formato YYYY-MM-DD' });
+    }
+
+    if (hasField('monto_original') && !esNumeroPositivo(monto_original)) {
+      return res.status(400).json({ error: 'monto_original debe ser mayor a 0' });
+    }
+
+    if (hasField('monto_ars') && !esNumeroPositivo(monto_ars)) {
+      return res.status(400).json({ error: 'monto_ars debe ser mayor a 0' });
+    }
+
     if (categoria_id) {
       const { rows: categoriaRows } = await pool.query(
-        'SELECT id FROM categorias WHERE id = $1 AND hogar_id = $2 AND activo = true',
+        'SELECT id, tipo_movimiento_id FROM categorias WHERE id = $1 AND hogar_id = $2 AND activo = true',
         [categoria_id, hogarMovimientoId]
       );
       if (categoriaRows.length === 0) {
         return res.status(400).json({ error: 'La categoria no existe para este hogar' });
       }
+      if (Number(categoriaRows[0].tipo_movimiento_id) !== tipoMovimientoFinal) {
+        return res.status(400).json({ error: 'La categoría no corresponde al tipo de movimiento seleccionado' });
+      }
     }
+
+    const estadoEgresoFinal =
+      hasField('estado_egreso') || hasField('tipo_movimiento_id')
+        ? (tipoMovimientoFinal === 2 ? (estado_egreso ?? null) : null)
+        : undefined;
+    const estadoIngresoFinal =
+      hasField('estado_ingreso') || hasField('tipo_movimiento_id')
+        ? ([1, 3].includes(tipoMovimientoFinal) ? (estado_ingreso ?? null) : null)
+        : undefined;
 
     let rows = [];
     try {
       const result = await pool.query(
         `
         UPDATE movimientos
-        SET descripcion = COALESCE($1, descripcion),
-            categoria_id = COALESCE($2, categoria_id),
-            cuenta_id = COALESCE($3, cuenta_id),
-            estado_egreso = COALESCE($4, estado_egreso),
-            estado_ingreso = COALESCE($5, estado_ingreso)
-        WHERE id = $6 AND activo = true
-        RETURNING id, fecha, descripcion, categoria_id, cuenta_id, estado_egreso, estado_ingreso, activo
+        SET descripcion = CASE WHEN $1 THEN $2 ELSE descripcion END,
+            categoria_id = CASE WHEN $3 THEN $4 ELSE categoria_id END,
+            cuenta_id = CASE WHEN $5 THEN $6 ELSE cuenta_id END,
+            fecha = CASE WHEN $7 THEN $8 ELSE fecha END,
+            tipo_movimiento_id = CASE WHEN $9 THEN $10 ELSE tipo_movimiento_id END,
+            monto_original = CASE WHEN $11 THEN $12 ELSE monto_original END,
+            monto_ars = CASE WHEN $13 THEN $14 ELSE monto_ars END,
+            usa_ahorro = CASE WHEN $15 THEN $16 ELSE usa_ahorro END,
+            estado_egreso = CASE WHEN $17 THEN $18 ELSE estado_egreso END,
+            estado_ingreso = CASE WHEN $19 THEN $20 ELSE estado_ingreso END
+        WHERE id = $21 AND activo = true
+        RETURNING id, fecha, descripcion, categoria_id, cuenta_id, tipo_movimiento_id, monto_original, monto_ars, usa_ahorro, estado_egreso, estado_ingreso, activo
         `,
-        [descripcion ?? null, categoria_id ?? null, cuenta_id ?? null, estado_egreso ?? null, estado_ingreso ?? null, movimientoId]
+        [
+          hasField('descripcion'),
+          descripcion ?? null,
+          hasField('categoria_id'),
+          categoria_id ?? null,
+          hasField('cuenta_id'),
+          cuenta_id ?? null,
+          hasField('fecha'),
+          fecha ?? null,
+          hasField('tipo_movimiento_id'),
+          tipoMovimientoFinal,
+          hasField('monto_original'),
+          monto_original ?? null,
+          hasField('monto_ars'),
+          monto_ars ?? null,
+          hasField('usa_ahorro'),
+          Boolean(usa_ahorro),
+          hasField('estado_egreso') || hasField('tipo_movimiento_id'),
+          estadoEgresoFinal,
+          hasField('estado_ingreso') || hasField('tipo_movimiento_id'),
+          estadoIngresoFinal,
+          movimientoId
+        ]
       );
       rows = result.rows;
     } catch (queryError) {
@@ -2280,13 +2404,33 @@ app.patch('/movimientos/:id', async (req, res) => {
       const resultFallback = await pool.query(
         `
         UPDATE movimientos
-        SET descripcion = COALESCE($1, descripcion),
-            categoria_id = COALESCE($2, categoria_id),
-            cuenta_id = COALESCE($3, cuenta_id)
-        WHERE id = $4 AND activo = true
-        RETURNING id, fecha, descripcion, categoria_id, cuenta_id, activo
+        SET descripcion = CASE WHEN $1 THEN $2 ELSE descripcion END,
+            categoria_id = CASE WHEN $3 THEN $4 ELSE categoria_id END,
+            cuenta_id = CASE WHEN $5 THEN $6 ELSE cuenta_id END,
+            fecha = CASE WHEN $7 THEN $8 ELSE fecha END,
+            tipo_movimiento_id = CASE WHEN $9 THEN $10 ELSE tipo_movimiento_id END,
+            monto_original = CASE WHEN $11 THEN $12 ELSE monto_original END,
+            monto_ars = CASE WHEN $13 THEN $14 ELSE monto_ars END
+        WHERE id = $15 AND activo = true
+        RETURNING id, fecha, descripcion, categoria_id, cuenta_id, tipo_movimiento_id, monto_original, monto_ars, activo
         `,
-        [descripcion ?? null, categoria_id ?? null, cuenta_id ?? null, movimientoId]
+        [
+          hasField('descripcion'),
+          descripcion ?? null,
+          hasField('categoria_id'),
+          categoria_id ?? null,
+          hasField('cuenta_id'),
+          cuenta_id ?? null,
+          hasField('fecha'),
+          fecha ?? null,
+          hasField('tipo_movimiento_id'),
+          tipoMovimientoFinal,
+          hasField('monto_original'),
+          monto_original ?? null,
+          hasField('monto_ars'),
+          monto_ars ?? null,
+          movimientoId
+        ]
       );
       rows = resultFallback.rows;
     }
