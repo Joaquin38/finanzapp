@@ -1316,8 +1316,8 @@ export default function App() {
                 </div>
                 <div className="cycle-insights-collapse" aria-hidden={!insightsExpanded}>
                   <div className="cycle-insights-list">
-                    {insightsDashboard.map((insight) => (
-                      <p key={insight} className="cycle-insight-item">
+                    {insightsDashboard.map((insight, index) => (
+                      <p key={insight} className={`cycle-insight-item insight-${['info', 'warning', 'success'][index] || 'info'}`}>
                         {insight}
                       </p>
                     ))}
