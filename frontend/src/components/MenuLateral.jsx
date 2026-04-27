@@ -65,15 +65,19 @@ const items = [
   { key: 'dashboard', label: 'Dashboard', icon: icons.dashboard },
   { key: 'movimientos', label: 'Movimientos', icon: icons.movimientos },
   { key: 'gastos_fijos', label: 'Valores fijos', icon: icons.gastos_fijos },
+  { key: 'categorias', label: 'Categorias', icon: icons.configuracion },
   { key: 'cotizacion', label: 'Cotizacion dolar', icon: icons.cotizacion },
   { key: 'ahorros', label: 'Ahorros', icon: icons.ahorros },
   { key: 'reportes', label: 'Reportes', icon: icons.reportes },
+  { key: 'mi_hogar', label: 'Mi hogar', icon: icons.configuracion },
   { key: 'superadmin', label: 'Superadmin', icon: icons.superadmin }
 ];
 
-const configChildren = [
-  { key: 'mi_hogar', label: 'Mi hogar' },
-  { key: 'categorias', label: 'Categorias' }
+const menuGroups = [
+  { title: 'GENERAL', keys: ['dashboard', 'movimientos'] },
+  { title: 'GESTION', keys: ['gastos_fijos', 'categorias'] },
+  { title: 'FINANZAS', keys: ['cotizacion', 'ahorros', 'reportes'] },
+  { title: 'ADMIN', keys: ['mi_hogar', 'superadmin'] }
 ];
 
 export default function MenuLateral({
@@ -83,14 +87,40 @@ export default function MenuLateral({
   onSelect,
   canManageHome = true,
   canAccessFixedValues = true,
-  isSuperadmin = false
+  isSuperadmin = false,
+  userName = 'Usuario',
+  userRole = '',
+  theme = 'light',
+  accountMenuOpen = false,
+  accountMenuRef = null,
+  canSwitchHogar = false,
+  hogaresContexto = [],
+  hogarId = '',
+  hogarActivo = null,
+  cicloCerrado = false,
+  onAccountMenuToggle,
+  onAccountMenuClose,
+  onThemeToggle,
+  onHogarChange,
+  onLogout
 }) {
   const visibleItems = items.filter((item) => {
     if (!canAccessFixedValues && item.key === 'gastos_fijos') return false;
     if (!isSuperadmin && item.key === 'superadmin') return false;
+    if (!canManageHome && ['categorias', 'mi_hogar'].includes(item.key)) return false;
     return true;
   });
-  const configActive = configChildren.some((item) => item.key === active);
+  const visibleGroups = menuGroups
+    .map((group) => ({
+      ...group,
+      items: group.keys.map((key) => visibleItems.find((item) => item.key === key)).filter(Boolean)
+    }))
+    .filter((group) => group.items.length > 0);
+  const accountInitial = (userName || 'U').trim().charAt(0).toUpperCase();
+  const goToConfig = () => {
+    onSelect('mi_hogar');
+    onAccountMenuClose?.();
+  };
 
   return (
     <aside className={`menu-shell ${collapsed ? 'collapsed' : ''}`}>
@@ -112,61 +142,105 @@ export default function MenuLateral({
       </div>
 
       <nav>
-        {visibleItems.map((item) => (
-          <button
-            key={item.key}
-            className={`menu-item ${active === item.key ? 'activo' : ''}`}
-            type="button"
-            title={item.label}
-            onClick={() => onSelect(item.key)}
-          >
-            <span className="menu-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" role="img">
-                {item.icon}
-              </svg>
-            </span>
-            {!collapsed && <span>{item.label}</span>}
-          </button>
+        {visibleGroups.map((group) => (
+          <div className="menu-section" key={group.title}>
+            {!collapsed && <span className="menu-section-title">{group.title}</span>}
+            {group.items.map((item) => (
+              <button
+                key={item.key}
+                className={`menu-item ${active === item.key ? 'activo' : ''}`}
+                type="button"
+                title={item.label}
+                onClick={() => onSelect(item.key)}
+              >
+                <span className="menu-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" role="img">
+                    {item.icon}
+                  </svg>
+                </span>
+                {!collapsed && <span>{item.label}</span>}
+              </button>
+            ))}
+          </div>
         ))}
-        {canManageHome && (
-          <div className={`menu-tree ${configActive ? 'is-open' : ''}`}>
-            <button
-              className={`menu-item menu-parent ${configActive ? 'activo' : ''}`}
-              type="button"
-              title="Configuracion"
-              onClick={() => onSelect(configActive ? active : 'mi_hogar')}
-            >
-              <span className="menu-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" role="img">
-                  {icons.configuracion}
-                </svg>
-              </span>
-              {!collapsed && (
+      </nav>
+
+      <div className="sidebar-account account-menu" ref={accountMenuRef}>
+        <button
+          type="button"
+          className="account-menu-trigger sidebar-account-trigger"
+          onClick={onAccountMenuToggle}
+          aria-expanded={accountMenuOpen}
+          aria-haspopup="menu"
+          title="Cuenta"
+        >
+          <span className="account-avatar" aria-hidden="true">{accountInitial}</span>
+          {!collapsed && (
+            <span className="account-trigger-copy">
+              <strong>{userName}</strong>
+              <small>{userRole || 'sin rol'}</small>
+            </span>
+          )}
+          {!collapsed && <span className="account-chevron" aria-hidden="true" />}
+        </button>
+
+        {accountMenuOpen && (
+          <div className="account-dropdown sidebar-account-dropdown" role="menu">
+            <div className="account-dropdown-section">
+              <span>Usuario</span>
+              <strong>{userName}</strong>
+              <small>{userRole || 'sin rol'}</small>
+            </div>
+
+            <div className="account-dropdown-section">
+              {canSwitchHogar ? (
+                <label className="selector-ciclo selector-hogar">
+                  Hogar actual
+                  <select value={String(hogarId)} onChange={onHogarChange}>
+                    {hogaresContexto.map((hogar) => (
+                      <option key={hogar.id} value={hogar.id}>
+                        {hogar.nombre} #{hogar.id}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
                 <>
-                  <span>Configuracion</span>
-                  <span className="menu-tree-caret" aria-hidden="true">
-                    {configActive ? '⌃' : '⌄'}
-                  </span>
+                  <span>Hogar actual</span>
+                  <strong>{hogarActivo?.nombre || 'Hogar'} #{hogarId}</strong>
                 </>
               )}
-            </button>
-            {!collapsed && (
-              <div className="menu-subitems">
-                {configChildren.map((item) => (
-                  <button
-                    key={item.key}
-                    className={`menu-subitem ${active === item.key ? 'activo' : ''}`}
-                    type="button"
-                    onClick={() => onSelect(item.key)}
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </div>
+            </div>
+
+            {cicloCerrado && <span className="pill success account-status-pill">Ciclo cerrado</span>}
+
+            <div className="account-dropdown-divider" />
+
+            <label className="account-theme-switch">
+              <span>
+                <strong>Modo oscuro</strong>
+                <small>{theme === 'dark' ? 'Activado' : 'Desactivado'}</small>
+              </span>
+              <input type="checkbox" checked={theme === 'dark'} onChange={onThemeToggle} />
+              <span className="account-switch-track" aria-hidden="true">
+                <span className="account-switch-thumb" />
+              </span>
+            </label>
+
+            {canManageHome && (
+              <button type="button" className="account-action-btn" onClick={goToConfig}>
+                Configuracion
+              </button>
             )}
+
+            <div className="account-dropdown-divider" />
+
+            <button type="button" className="session-logout account-logout" onClick={onLogout}>
+              Cerrar sesion
+            </button>
           </div>
         )}
-      </nav>
+      </div>
     </aside>
   );
 }

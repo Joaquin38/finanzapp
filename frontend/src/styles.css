@@ -309,12 +309,12 @@ label,
 
 .container {
   min-height: 100vh;
-  padding-left: 248px;
+  padding-left: 268px;
   transition: padding-left 0.2s ease;
 }
 
 .container.menu-colapsado {
-  padding-left: 86px;
+  padding-left: 92px;
 }
 
 .contenido-principal { padding: 28px; max-width: 1200px; }
@@ -324,7 +324,7 @@ label,
   left: 0;
   top: 0;
   bottom: 0;
-  width: 220px;
+  width: 240px;
   background: rgba(15, 23, 42, 0.98);
   color: #e2e8f0;
   padding: 14px 12px;
@@ -332,10 +332,12 @@ label,
   transition: width 0.2s ease;
   z-index: 30;
   box-shadow: none;
+  display: flex;
+  flex-direction: column;
 }
 
 .menu-shell.collapsed {
-  width: 58px;
+  width: 64px;
 }
 
 .menu-brand {
@@ -382,10 +384,18 @@ label,
 .menu-top h3 { margin: 0; }
 .toggle-menu { background: transparent; border: 1px solid rgba(148, 163, 184, 0.18); color: #cbd5e1; border-radius: 8px; padding: 6px 8px; }
 
-.menu-shell nav { display: grid; gap: 5px; margin-top: 14px; }
+.menu-shell nav {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  margin-top: 16px;
+  flex: 1;
+  min-height: 0;
+}
 .menu-item {
   text-align: left;
-  padding: 8px 9px;
+  min-height: 42px;
+  padding: 9px 10px;
   border-radius: 8px;
   border: 1px solid transparent;
   background: transparent;
@@ -393,15 +403,28 @@ label,
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 11px;
   font-weight: 400;
+  opacity: 0.78;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
 }
-.menu-item:hover { background: rgba(148, 163, 184, 0.08); color: #f8fafc; }
-.menu-item.activo { background: rgba(37, 99, 235, 0.16); border-color: rgba(96, 165, 250, 0.22); color: white; font-weight: 500; }
+.menu-item:hover {
+  background: rgba(148, 163, 184, 0.12);
+  color: #f8fafc;
+  opacity: 0.96;
+}
+.menu-item.activo {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.36), rgba(20, 184, 166, 0.24));
+  border-color: rgba(125, 211, 252, 0.42);
+  color: #ffffff;
+  font-weight: 500;
+  opacity: 1;
+  box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.12), 0 10px 24px rgba(37, 99, 235, 0.18);
+}
 .menu-icon {
-  width: 26px;
-  min-width: 26px;
-  height: 26px;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -420,8 +443,28 @@ label,
   stroke-linejoin: round;
 }
 .menu-item.activo .menu-icon {
-  background: rgba(96, 165, 250, 0.16);
-  color: #93c5fd;
+  background: rgba(96, 165, 250, 0.22);
+  border-color: rgba(191, 219, 254, 0.34);
+  color: #dbeafe;
+}
+.menu-section {
+  display: grid;
+  gap: 6px;
+  padding-top: 14px;
+  margin-top: 10px;
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+}
+.menu-section:first-child {
+  padding-top: 0;
+  margin-top: 0;
+  border-top: 0;
+}
+.menu-section-title {
+  padding: 0 10px 2px;
+  color: rgba(203, 213, 225, 0.54);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0;
 }
 .menu-tree {
   display: grid;
@@ -468,11 +511,65 @@ label,
 }
 .menu-shell.collapsed .menu-brand-text,
 .menu-shell.collapsed .menu-top h3,
+.menu-shell.collapsed .menu-section-title,
 .menu-shell.collapsed .menu-item > span:last-child {
   display: none;
 }
+.menu-shell.collapsed .menu-section {
+  padding-top: 10px;
+  margin-top: 8px;
+}
 
-.hero { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 20px; }
+.sidebar-account {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(148, 163, 184, 0.16);
+}
+.sidebar-account-trigger {
+  width: 100%;
+  max-width: none;
+  justify-content: flex-start;
+  background: rgba(15, 23, 42, 0.76);
+  border-color: rgba(148, 163, 184, 0.18);
+  color: #e2e8f0;
+  box-shadow: none;
+}
+.sidebar-account-trigger .account-trigger-copy {
+  flex: 1;
+}
+.sidebar-account-trigger .account-trigger-copy small {
+  color: #94a3b8;
+}
+.sidebar-account-dropdown {
+  left: 0;
+  right: auto;
+  bottom: calc(100% + 10px);
+  top: auto;
+  width: min(320px, calc(100vw - 24px));
+}
+.account-action-btn {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-soft);
+  color: var(--text-primary);
+  text-align: left;
+}
+.account-action-btn:hover {
+  background: #eef2ff;
+  color: #1d4ed8;
+}
+.menu-shell.collapsed .sidebar-account {
+  padding-top: 10px;
+}
+.menu-shell.collapsed .sidebar-account-trigger {
+  justify-content: center;
+  padding: 8px;
+}
+
+.hero { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; margin-bottom: 20px; }
 .eyebrow { text-transform: uppercase; font-size: 12px; letter-spacing: 1.4px; color: var(--primary); margin: 0; }
 h1 { margin: 4px 0; font-size: 34px; font-weight: 700; }
 .subtitle { margin: 0; color: var(--text-muted); }
@@ -766,6 +863,7 @@ h1 { margin: 4px 0; font-size: 34px; font-weight: 700; }
   color: #64748b;
   font-size: 12px;
   padding-right: 4px;
+  white-space: nowrap;
 }
 .last-update { font-size: 12px; color: #64748b; }
 .selector-ciclo { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #475569; }
@@ -3416,6 +3514,12 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   .menu-shell nav::-webkit-scrollbar {
     display: none;
   }
+  .menu-section {
+    display: contents;
+  }
+  .menu-section-title {
+    display: none;
+  }
   .menu-item,
   .menu-shell.collapsed .menu-item {
     flex: 0 0 auto;
@@ -3439,6 +3543,15 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   .menu-subitem {
     flex: 0 0 auto;
     white-space: nowrap;
+  }
+  .sidebar-account {
+    margin-top: 8px;
+    padding-top: 8px;
+  }
+  .sidebar-account-dropdown {
+    top: calc(100% + 8px);
+    bottom: auto;
+    left: 0;
   }
   .contenido-principal { padding: 14px 12px 88px; max-width: none; }
   .cards-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -3539,9 +3652,9 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
     font-size: 13px;
   }
   .menu-icon {
-    width: 26px;
-    min-width: 26px;
-    height: 26px;
+    width: 28px;
+    min-width: 28px;
+    height: 28px;
   }
   .hero {
     flex-direction: column;

@@ -833,6 +833,17 @@ export default function App() {
   };
 
   const ultimaActualizacion = useMemo(() => new Date().toLocaleString('es-AR'), [movimientos, cotizaciones, gastosFijos]);
+  const tituloPantalla = {
+    dashboard: 'Dashboard',
+    movimientos: 'Movimientos',
+    gastos_fijos: 'Valores fijos',
+    categorias: 'Categorias',
+    cotizacion: 'Cotizacion dolar',
+    ahorros: 'Ahorros',
+    reportes: 'Reportes',
+    mi_hogar: 'Mi hogar',
+    superadmin: 'Superadmin'
+  }[seccionActiva] || 'Panel mensual';
   const cicloActual = useMemo(
     () => {
       const label = new Date(`${cicloSeleccionado}-01T00:00:00`).toLocaleDateString('es-AR', {
@@ -1223,89 +1234,28 @@ export default function App() {
         canManageHome={canManageHome}
         canAccessFixedValues={canAccessFixedValues}
         isSuperadmin={isSuperadmin}
+        userName={session.usuario?.nombre || session.usuario?.email}
+        userRole={rolActivo}
+        theme={theme}
+        accountMenuOpen={accountMenuOpen}
+        accountMenuRef={accountMenuRef}
+        canSwitchHogar={canSwitchHogar}
+        hogaresContexto={hogaresContexto}
+        hogarId={hogarId}
+        hogarActivo={hogarActivo}
+        cicloCerrado={estadoCierreCiclo.cerrado}
+        onAccountMenuToggle={() => setAccountMenuOpen((current) => !current)}
+        onAccountMenuClose={() => setAccountMenuOpen(false)}
+        onThemeToggle={toggleTheme}
+        onHogarChange={handleCambiarHogar}
+        onLogout={handleLogout}
       />
 
       <div className="contenido-principal">
         <header className="hero">
-          <div>
-            <p className="eyebrow">FinanzApp</p>
-            <h1>Panel mensual</h1>
-          </div>
-          <div className="hero-meta">
-            <div className="account-menu" ref={accountMenuRef}>
-              <button
-                type="button"
-                className="account-menu-trigger"
-                onClick={() => setAccountMenuOpen((current) => !current)}
-                aria-expanded={accountMenuOpen}
-                aria-haspopup="menu"
-              >
-                <span className="account-avatar" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" role="img">
-                    <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm0 2c-4.4 0-8 2.2-8 5v1h16v-1c0-2.8-3.6-5-8-5Z" />
-                  </svg>
-                </span>
-                <span className="account-trigger-copy">
-                  <strong>Cuenta</strong>
-                  <small>{session.usuario?.nombre || session.usuario?.email}</small>
-                </span>
-                <span className="account-chevron" aria-hidden="true" />
-              </button>
-
-              {accountMenuOpen && (
-                <div className="account-dropdown" role="menu">
-                  <div className="account-dropdown-section">
-                    <span>Usuario</span>
-                    <strong>{session.usuario?.nombre || session.usuario?.email}</strong>
-                    <small>{rolActivo || 'sin rol'}</small>
-                  </div>
-
-                  <div className="account-dropdown-section">
-                    {canSwitchHogar ? (
-                      <label className="selector-ciclo selector-hogar">
-                        Hogar actual
-                        <select value={String(hogarId)} onChange={handleCambiarHogar}>
-                          {hogaresContexto.map((hogar) => (
-                            <option key={hogar.id} value={hogar.id}>
-                              {hogar.nombre} #{hogar.id}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    ) : (
-                      <>
-                        <span>Hogar actual</span>
-                        <strong>{hogarActivo?.nombre || 'Hogar'} #{hogarId}</strong>
-                      </>
-                    )}
-                  </div>
-
-                  {estadoCierreCiclo.cerrado && <span className="pill success account-status-pill">Ciclo cerrado</span>}
-
-                  <div className="account-dropdown-divider" />
-
-                  <label className="account-theme-switch">
-                    <span>
-                      <strong>Modo oscuro</strong>
-                      <small>{theme === 'dark' ? 'Activado' : 'Desactivado'}</small>
-                    </span>
-                    <input type="checkbox" checked={theme === 'dark'} onChange={toggleTheme} />
-                    <span className="account-switch-track" aria-hidden="true">
-                      <span className="account-switch-thumb" />
-                    </span>
-                  </label>
-
-                  <div className="account-dropdown-divider" />
-
-                  <button type="button" className="session-logout account-logout" onClick={handleLogout}>
-                    Cerrar sesion
-                  </button>
-                </div>
-              )}
-            </div>
-            <div className="header-submeta">
-              <span>Actualizado: {ultimaActualizacion}</span>
-            </div>
+          <h1>{tituloPantalla}</h1>
+          <div className="header-submeta">
+            <span>Actualizado: {ultimaActualizacion}</span>
           </div>
         </header>
 
