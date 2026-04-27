@@ -11,7 +11,7 @@ const rolesHogar = [
   { value: 'hogar_member', label: 'Hogar member' }
 ];
 
-export default function HogarAdminPanel({ hogarId, hogarNombre, usuarioActualId }) {
+export default function HogarAdminPanel({ hogarId, hogarNombre, usuarioActualId, compact = false }) {
   const [miembros, setMiembros] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -97,9 +97,9 @@ export default function HogarAdminPanel({ hogarId, hogarNombre, usuarioActualId 
   };
 
   return (
-    <section className="panel hogar-admin-panel">
+    <section className={compact ? 'hogar-admin-panel hogar-admin-embedded' : 'panel hogar-admin-panel'}>
       <div className="panel-header">
-        <h2>Mi hogar</h2>
+        <h2>{compact ? 'Miembros del hogar' : 'Mi hogar'}</h2>
         <p>Gestion simple de miembros y roles para {hogarNombre || 'este hogar'}.</p>
       </div>
 
