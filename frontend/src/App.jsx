@@ -36,6 +36,7 @@ import CotizacionesPanel from './components/CotizacionesPanel.jsx';
 import GastosFijosPanel from './components/GastosFijosPanel.jsx';
 import ReportesPanel from './components/ReportesPanel.jsx';
 import AhorrosPanel from './components/AhorrosPanel.jsx';
+import DecisionesPanel from './components/DecisionesPanel.jsx';
 import LoginPanel from './components/LoginPanel.jsx';
 import PasswordSetupForm from './components/PasswordSetupForm.jsx';
 import ResetPasswordPanel from './components/ResetPasswordPanel.jsx';
@@ -840,6 +841,7 @@ export default function App() {
     categorias: 'Categorias',
     cotizacion: 'Cotizacion dolar',
     ahorros: 'Ahorros',
+    decisiones: 'Decisiones',
     reportes: 'Reportes',
     mi_hogar: 'Mi hogar',
     superadmin: 'Superadmin'
@@ -932,12 +934,16 @@ export default function App() {
   );
 
   const resumenOperativo = useMemo(() => derivarResumenOperativo(movimientosConsolidados), [movimientosConsolidados]);
+  const categoriaMayorGastoConfirmado = useMemo(
+    () => agruparEgresosConfirmadosPorCategoria(movimientosConsolidados)[0],
+    [movimientosConsolidados]
+  );
 
   const insightsCiclo = useMemo(() => {
     const balanceActual = Number(resumenFinanciero.balanceActual || 0);
     const balanceProyectado = Number(resumenFinanciero.balanceProyectado || 0);
     const diferenciaBalance = balanceProyectado - balanceActual;
-    const categoriaMayorGasto = agruparEgresosConfirmadosPorCategoria(movimientosConsolidados)[0];
+    const categoriaMayorGasto = categoriaMayorGastoConfirmado;
     const montoPendiente = Number(resumenOperativo.montoPendienteEgresos || 0);
     const diferenciaAbs = Math.abs(diferenciaBalance);
     const diferenciaTexto =
@@ -956,13 +962,13 @@ export default function App() {
         ? `${categoriaMayorGasto.categoria} lidera el gasto confirmado con ${formatMoneyText(categoriaMayorGasto.total)}.`
         : 'Todavía no hay una categoría líder en gastos confirmados.'
     ];
-  }, [movimientosConsolidados, resumenFinanciero, resumenOperativo]);
+  }, [categoriaMayorGastoConfirmado, resumenFinanciero, resumenOperativo]);
 
   const insightsDashboard = useMemo(() => {
     const balanceActual = Number(resumenFinanciero.balanceActual || 0);
     const balanceProyectado = Number(resumenFinanciero.balanceProyectado || 0);
     const diferenciaBalance = balanceProyectado - balanceActual;
-    const categoriaMayorGasto = agruparEgresosConfirmadosPorCategoria(movimientosConsolidados)[0];
+    const categoriaMayorGasto = categoriaMayorGastoConfirmado;
     const montoPendiente = Number(resumenOperativo.montoPendienteEgresos || 0);
     const insights = [];
 
@@ -993,7 +999,7 @@ export default function App() {
     }
 
     return insights.slice(0, 3);
-  }, [movimientosConsolidados, resumenFinanciero, resumenOperativo]);
+  }, [categoriaMayorGastoConfirmado, resumenFinanciero, resumenOperativo]);
 
   const alertaDashboard = useMemo(() => {
     const ingresos = Number(resumenFinanciero.ingresosConfirmados || 0);
@@ -1376,6 +1382,19 @@ export default function App() {
               ciclo={cicloSeleccionado}
               loading={loading}
               onCrearAhorro={handleCrearAhorro}
+            />
+          )}
+
+          {seccionActiva === 'decisiones' && (
+            <DecisionesPanel
+              resumen={resumenCalculado}
+              operativo={resumenOperativo}
+              categoriaPrincipal={categoriaMayorGastoConfirmado}
+              categorias={reporteCategorias}
+              serieMensual={reporteEvolucionMensual}
+              movimientos={movimientosConsolidados}
+              ciclo={cicloSeleccionado}
+              formatMoney={formatMoneyText}
             />
           )}
 

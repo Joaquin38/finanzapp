@@ -38,6 +38,14 @@ const icons = {
       <path d="M16 14h.01" />
     </>
   ),
+  decisiones: (
+    <>
+      <path d="M6 5h12v14H6z" />
+      <path d="M9 9h6" />
+      <path d="M9 13h3" />
+      <path d="M14 15l2 2 3-4" />
+    </>
+  ),
   reportes: (
     <>
       <path d="M5 19V5" />
@@ -68,6 +76,7 @@ const items = [
   { key: 'categorias', label: 'Categorias', icon: icons.configuracion },
   { key: 'cotizacion', label: 'Cotizacion dolar', icon: icons.cotizacion },
   { key: 'ahorros', label: 'Ahorros', icon: icons.ahorros },
+  { key: 'decisiones', label: 'Decisiones', icon: icons.decisiones },
   { key: 'reportes', label: 'Reportes', icon: icons.reportes },
   { key: 'mi_hogar', label: 'Mi hogar', icon: icons.configuracion },
   { key: 'superadmin', label: 'Superadmin', icon: icons.superadmin }
@@ -76,7 +85,7 @@ const items = [
 const menuGroups = [
   { title: 'GENERAL', keys: ['dashboard', 'movimientos'] },
   { title: 'GESTION', keys: ['gastos_fijos', 'categorias'] },
-  { title: 'FINANZAS', keys: ['cotizacion', 'ahorros', 'reportes'] },
+  { title: 'FINANZAS', keys: ['cotizacion', 'ahorros', 'decisiones', 'reportes'] },
   { title: 'ADMIN', keys: ['mi_hogar', 'superadmin'] }
 ];
 
