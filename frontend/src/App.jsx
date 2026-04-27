@@ -833,6 +833,17 @@ export default function App() {
     return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
   };
 
+  const getCicloAnterior = (ciclo) => {
+    const [anioTexto, mesTexto] = String(ciclo || '').split('-');
+    const anio = Number(anioTexto);
+    const mes = Number(mesTexto) - 2;
+    if (!Number.isInteger(anio) || !Number.isInteger(mes)) {
+      return new Date().toISOString().slice(0, 7);
+    }
+    const fecha = new Date(anio, mes, 1);
+    return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
+  };
+
   const ultimaActualizacion = useMemo(() => new Date().toLocaleString('es-AR'), [movimientos, cotizaciones, gastosFijos]);
   const tituloPantalla = {
     dashboard: 'Dashboard',
@@ -866,6 +877,17 @@ export default function App() {
         estadoOverrides
       }),
     [movimientos, gastosFijos, cotizaciones, cicloSeleccionado, estadoOverrides]
+  );
+  const cicloAnteriorSeleccionado = useMemo(() => getCicloAnterior(cicloSeleccionado), [cicloSeleccionado]);
+  const movimientosConsolidadosCicloAnterior = useMemo(
+    () =>
+      construirMovimientosConsolidadosDelCiclo({
+        movimientos: movimientosHistoricos.filter((mov) => String(mov.fecha || '').startsWith(cicloAnteriorSeleccionado)),
+        gastosFijos: gastosFijosHistoricosPorCiclo[cicloAnteriorSeleccionado] || [],
+        cotizaciones,
+        ciclo: cicloAnteriorSeleccionado
+      }),
+    [cicloAnteriorSeleccionado, cotizaciones, gastosFijosHistoricosPorCiclo, movimientosHistoricos]
   );
 
   const movimientosFiltradosYOrdenados = useMemo(() => {
@@ -1393,6 +1415,7 @@ export default function App() {
               categorias={reporteCategorias}
               serieMensual={reporteEvolucionMensual}
               movimientos={movimientosConsolidados}
+              movimientosMesAnterior={movimientosConsolidadosCicloAnterior}
               ciclo={cicloSeleccionado}
               formatMoney={formatMoneyText}
             />

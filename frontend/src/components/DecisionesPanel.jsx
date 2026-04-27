@@ -247,11 +247,32 @@ function WeeklyDistributionCard({ movimientos, formatMoney }) {
   );
 }
 
-function ProjectionByPaceCard({ movimientos, resumen, ciclo, formatMoney }) {
+function getWeeklyDistributionPercentages(movimientos) {
+  const totals = [0, 0, 0, 0];
+  getConfirmedExpenses(movimientos).forEach((mov) => {
+    totals[getWeekIndex(mov.fecha)] += Number(mov.monto_ars || 0);
+  });
+  const total = totals.reduce((acc, value) => acc + value, 0);
+  return {
+    total,
+    percentages: totals.map((value) => (total > 0 ? value / total : 0))
+  };
+}
+
+function ProjectionByPaceCard({ movimientos, movimientosMesAnterior = [], resumen, ciclo, formatMoney }) {
   const { dayCurrent, daysTotal } = getCycleProgress(ciclo);
+  const currentWeekIndex = dayCurrent <= 7 ? 0 : dayCurrent <= 14 ? 1 : dayCurrent <= 21 ? 2 : 3;
   const egresosConfirmados = getConfirmedExpenses(movimientos).reduce((acc, mov) => acc + Number(mov.monto_ars || 0), 0);
-  const promedioDiario = egresosConfirmados / dayCurrent;
-  const egresoProyectado = promedioDiario * daysTotal;
+  const previousDistribution = getWeeklyDistributionPercentages(movimientosMesAnterior);
+  const hasHistoricalPattern = previousDistribution.total > 0;
+  const expectedProgress = hasHistoricalPattern
+    ? previousDistribution.percentages.slice(0, currentWeekIndex + 1).reduce((acc, value) => acc + value, 0)
+    : dayCurrent / daysTotal;
+  const safeProgress = Math.max(expectedProgress, 0.01);
+  const projectedByPattern = egresosConfirmados / safeProgress;
+  const fallbackProjection = (egresosConfirmados / dayCurrent) * daysTotal;
+  const rawProjection = hasHistoricalPattern ? projectedByPattern : fallbackProjection;
+  const egresoProyectado = egresosConfirmados > 0 ? Math.min(rawProjection, egresosConfirmados * 2) : 0;
   const ingresosDelCiclo = Number(resumen?.ingresos || 0);
   const balanceEstimado = ingresosDelCiclo - egresoProyectado;
   const margenRatio = ingresosDelCiclo > 0 ? balanceEstimado / ingresosDelCiclo : 0;
@@ -270,19 +291,19 @@ function ProjectionByPaceCard({ movimientos, resumen, ciclo, formatMoney }) {
       <em className={`decision-status ${tone}`}>{estado}</em>
       <div className="decision-comparison-grid">
         <div className="decision-comparison-row">
-          <span>Gasto promedio diario</span>
-          <strong>{formatMoney(promedioDiario)}</strong>
-          <small>Dia {dayCurrent} de {daysTotal}</small>
+          <span>Egresos actuales</span>
+          <strong>{formatMoney(egresosConfirmados)}</strong>
+          <small>Confirmados hasta hoy</small>
         </div>
         <div className="decision-comparison-row">
-          <span>Egreso proyectado al cierre</span>
+          <span>Porcentaje esperado</span>
+          <strong>{Math.round(safeProgress * 100)}%</strong>
+          <small>{hasHistoricalPattern ? 'Proyección basada en tu comportamiento histórico' : 'Fallback por promedio diario'}</small>
+        </div>
+        <div className="decision-comparison-row">
+          <span>Proyeccion corregida</span>
           <strong>{formatMoney(egresoProyectado)}</strong>
-          <small>Si se mantiene el ritmo</small>
-        </div>
-        <div className="decision-comparison-row">
-          <span>Balance estimado al cierre</span>
-          <strong>{formatMoney(balanceEstimado)}</strong>
-          <small>Ingresos del ciclo - proyeccion</small>
+          <small>Balance estimado: {formatMoney(balanceEstimado)}</small>
         </div>
       </div>
       <strong>{recommendation}</strong>
@@ -419,6 +440,7 @@ export default function DecisionesPanel({
   categorias = [],
   serieMensual = [],
   movimientos = [],
+  movimientosMesAnterior = [],
   ciclo = '',
   formatMoney
 }) {
@@ -469,7 +491,13 @@ export default function DecisionesPanel({
         <ComparisonCard serieMensual={serieMensual} formatMoney={formatMoney} />
         <RhythmCard movimientos={movimientos} ciclo={ciclo} serieMensual={serieMensual} formatMoney={formatMoney} />
         <WeeklyDistributionCard movimientos={movimientos} formatMoney={formatMoney} />
-        <ProjectionByPaceCard movimientos={movimientos} resumen={resumen} ciclo={ciclo} formatMoney={formatMoney} />
+        <ProjectionByPaceCard
+          movimientos={movimientos}
+          movimientosMesAnterior={movimientosMesAnterior}
+          resumen={resumen}
+          ciclo={ciclo}
+          formatMoney={formatMoney}
+        />
         <CriticalCategoriesCard categorias={categorias} formatMoney={formatMoney} />
         <SavingOpportunityCard resumen={resumen} operativo={operativo} ciclo={ciclo} formatMoney={formatMoney} />
         {cards.map((card) => (
