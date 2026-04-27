@@ -530,6 +530,62 @@ export async function getCategorias(hogarId = 1) {
   }
 }
 
+export async function createCategoria(payload) {
+  try {
+    const response = await fetch(`${API_URL}/categorias`, {
+      method: 'POST',
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.error || 'No se pudo crear la categoría');
+    }
+
+    return response.json();
+  } catch (error) {
+    throw new Error(normalizeFetchError(error));
+  }
+}
+
+export async function updateCategoria(categoriaId, payload) {
+  try {
+    const response = await fetch(`${API_URL}/categorias/${categoriaId}`, {
+      method: 'PATCH',
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.error || 'No se pudo actualizar la categoría');
+    }
+
+    return response.json();
+  } catch (error) {
+    throw new Error(normalizeFetchError(error));
+  }
+}
+
+export async function deleteCategoria(categoriaId) {
+  try {
+    const response = await fetch(`${API_URL}/categorias/${categoriaId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders()
+    });
+
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.error || 'No se pudo eliminar la categoría');
+    }
+
+    return response.json();
+  } catch (error) {
+    throw new Error(normalizeFetchError(error));
+  }
+}
+
 export async function getCotizaciones(fecha) {
   const url = fecha ? `${API_URL}/cotizaciones?fecha=${fecha}` : `${API_URL}/cotizaciones`;
 

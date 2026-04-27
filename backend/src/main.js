@@ -2498,7 +2498,7 @@ app.get('/categorias', async (req, res) => {
 
     const { rows } = await pool.query(
       `
-      SELECT c.id, c.nombre, tm.codigo AS tipo_movimiento
+      SELECT c.id, c.nombre, c.tipo_movimiento_id, tm.codigo AS tipo_movimiento
       FROM categorias c
       JOIN tipos_movimiento tm ON tm.id = c.tipo_movimiento_id
       WHERE c.hogar_id = $1 AND c.activo = true
@@ -2535,6 +2535,88 @@ app.post('/categorias', exigirGestionHogar, async (req, res) => {
     return res.status(201).json({ ok: true, categoria: rows[0] });
   } catch (error) {
     return res.status(500).json({ error: 'Error creando categoría', detalle: error.message });
+  }
+});
+
+app.patch('/categorias/:id', async (req, res) => {
+  const categoriaId = Number(req.params.id);
+  const { nombre, tipo_movimiento_id } = req.body || {};
+
+  if (!categoriaId) {
+    return res.status(400).json({ error: 'id inválido' });
+  }
+
+  if (!nombre?.trim() || ![1, 2, 3].includes(Number(tipo_movimiento_id))) {
+    return res.status(400).json({ error: 'nombre y tipo_movimiento_id válido son obligatorios' });
+  }
+
+  try {
+    const { rows: categoriaRows } = await pool.query('SELECT hogar_id FROM categorias WHERE id = $1', [categoriaId]);
+    if (categoriaRows.length === 0) {
+      return res.status(404).json({ error: 'Categoría no encontrada' });
+    }
+
+    const hogarId = Number(categoriaRows[0].hogar_id);
+    if (!puedeGestionarHogar(req.usuario, hogarId)) {
+      return res.status(403).json({ error: 'No tenes permisos para gestionar este hogar' });
+    }
+
+    const { rows: duplicadas } = await pool.query(
+      `
+      SELECT id
+      FROM categorias
+      WHERE hogar_id = $1
+        AND nombre = $2
+        AND tipo_movimiento_id = $3
+        AND id <> $4
+      `,
+      [hogarId, nombre.trim(), tipo_movimiento_id, categoriaId]
+    );
+
+    if (duplicadas.length > 0) {
+      return res.status(409).json({ error: 'Ya existe una categoría con ese nombre y tipo' });
+    }
+
+    const { rows } = await pool.query(
+      `
+      UPDATE categorias
+      SET nombre = $1,
+          tipo_movimiento_id = $2,
+          activo = true
+      WHERE id = $3
+      RETURNING id, hogar_id, nombre, tipo_movimiento_id
+      `,
+      [nombre.trim(), tipo_movimiento_id, categoriaId]
+    );
+
+    return res.status(200).json({ ok: true, categoria: rows[0] });
+  } catch (error) {
+    return res.status(500).json({ error: 'Error actualizando categoría', detalle: error.message });
+  }
+});
+
+app.delete('/categorias/:id', async (req, res) => {
+  const categoriaId = Number(req.params.id);
+
+  if (!categoriaId) {
+    return res.status(400).json({ error: 'id inválido' });
+  }
+
+  try {
+    const { rows: categoriaRows } = await pool.query('SELECT hogar_id, nombre FROM categorias WHERE id = $1', [categoriaId]);
+    if (categoriaRows.length === 0) {
+      return res.status(404).json({ error: 'Categoría no encontrada' });
+    }
+
+    const hogarId = Number(categoriaRows[0].hogar_id);
+    if (!puedeGestionarHogar(req.usuario, hogarId)) {
+      return res.status(403).json({ error: 'No tenes permisos para gestionar este hogar' });
+    }
+
+    await pool.query('UPDATE categorias SET activo = false WHERE id = $1', [categoriaId]);
+    return res.status(200).json({ ok: true, eliminado_id: categoriaId });
+  } catch (error) {
+    return res.status(500).json({ error: 'Error eliminando categoría', detalle: error.message });
   }
 });
 

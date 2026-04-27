@@ -47,12 +47,10 @@ const icons = {
       <path d="M16 15v-6" />
     </>
   ),
-  mi_hogar: (
+  configuracion: (
     <>
-      <path d="M4 11.5 12 5l8 6.5" />
-      <path d="M6.5 10.5V19h11v-8.5" />
-      <path d="M9 19v-4h6v4" />
-      <path d="M9 10h6" />
+      <path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z" />
+      <path d="M19.4 15a8 8 0 0 0 .1-1l2-1.5-2-3.5-2.4 1a7 7 0 0 0-1.7-1L15 6.5h-4L10.6 9a7 7 0 0 0-1.7 1l-2.4-1-2 3.5 2 1.5a8 8 0 0 0 .1 1l-2 1.5 2 3.5 2.4-1a7 7 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7 7 0 0 0 1.7-1l2.4 1 2-3.5-2.2-1.5Z" />
     </>
   ),
   superadmin: (
@@ -70,7 +68,7 @@ const items = [
   { key: 'cotizacion', label: 'Cotizacion dolar', icon: icons.cotizacion },
   { key: 'ahorros', label: 'Ahorros', icon: icons.ahorros },
   { key: 'reportes', label: 'Reportes', icon: icons.reportes },
-  { key: 'mi_hogar', label: 'Mi hogar', icon: icons.mi_hogar },
+  { key: 'configuracion', label: 'Configuracion', icon: icons.configuracion },
   { key: 'superadmin', label: 'Superadmin', icon: icons.superadmin }
 ];
 
@@ -85,7 +83,7 @@ export default function MenuLateral({
 }) {
   const visibleItems = items.filter((item) => {
     if (!canAccessFixedValues && item.key === 'gastos_fijos') return false;
-    if (!canManageHome && item.key === 'mi_hogar') return false;
+    if (!canManageHome && item.key === 'configuracion') return false;
     if (!isSuperadmin && item.key === 'superadmin') return false;
     return true;
   });

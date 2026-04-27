@@ -39,7 +39,7 @@ import LoginPanel from './components/LoginPanel.jsx';
 import PasswordSetupForm from './components/PasswordSetupForm.jsx';
 import ResetPasswordPanel from './components/ResetPasswordPanel.jsx';
 import SuperAdminPanel from './components/SuperAdminPanel.jsx';
-import HogarAdminPanel from './components/HogarAdminPanel.jsx';
+import ConfiguracionPanel from './components/ConfiguracionPanel.jsx';
 import GastoRapidoModal from './components/GastoRapidoModal.jsx';
 import {
   agruparEgresosConfirmadosPorCategoria,
@@ -442,7 +442,10 @@ export default function App() {
     if (!isSuperadmin && seccionActiva === 'superadmin') {
       setSeccionActiva('dashboard');
     }
-    if (!canManageHome && seccionActiva === 'mi_hogar') {
+    if (seccionActiva === 'mi_hogar') {
+      setSeccionActiva(canManageHome ? 'configuracion' : 'dashboard');
+    }
+    if (!canManageHome && seccionActiva === 'configuracion') {
       setSeccionActiva('dashboard');
     }
   }, [canAccessFixedValues, canManageHome, isSuperadmin, seccionActiva]);
@@ -1415,11 +1418,13 @@ export default function App() {
             />
           )}
 
-          {seccionActiva === 'mi_hogar' && canManageHome && (
-            <HogarAdminPanel
+          {seccionActiva === 'configuracion' && canManageHome && (
+            <ConfiguracionPanel
               hogarId={hogarId}
               hogarNombre={hogarActivo?.nombre}
               usuarioActualId={usuarioId}
+              categorias={categorias}
+              onCategoriasChange={cargarDatos}
             />
           )}
         </div>
