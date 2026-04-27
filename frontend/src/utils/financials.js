@@ -22,6 +22,10 @@ function esMovimientoConfirmado(movimiento) {
   return false;
 }
 
+function esEgresoDeBalance(movimiento) {
+  return ['egreso', 'ahorro'].includes(movimiento.tipo_movimiento);
+}
+
 export function getEstadoMovimientoConsolidado(movimiento, estadoOverrides = {}) {
   const override = estadoOverrides[movimiento.id];
   if (override) return override;
@@ -105,7 +109,12 @@ export function derivarResumenFinanciero(movimientos = []) {
     .reduce((acc, mov) => acc + Number(mov.monto_ars || 0), 0);
 
   const egresosConfirmados = movimientos
-    .filter((mov) => mov.tipo_movimiento === 'egreso' && esMovimientoOperativo(mov) && mov.estado_consolidado === 'pagado')
+    .filter(
+      (mov) =>
+        esEgresoDeBalance(mov) &&
+        esMovimientoOperativo(mov) &&
+        (mov.tipo_movimiento === 'ahorro' ? ESTADOS_INGRESO_CONFIRMADOS.has(mov.estado_consolidado) : mov.estado_consolidado === 'pagado')
+    )
     .reduce((acc, mov) => acc + Number(mov.monto_ars || 0), 0);
 
   const ingresosTotales = movimientos
@@ -113,7 +122,7 @@ export function derivarResumenFinanciero(movimientos = []) {
     .reduce((acc, mov) => acc + Number(mov.monto_ars || 0), 0);
 
   const egresosTotales = movimientos
-    .filter((mov) => mov.tipo_movimiento === 'egreso')
+    .filter((mov) => esEgresoDeBalance(mov))
     .reduce((acc, mov) => acc + Number(mov.monto_ars || 0), 0);
 
   const ingresosConfirmadosBalance = movimientos
@@ -121,7 +130,7 @@ export function derivarResumenFinanciero(movimientos = []) {
     .reduce((acc, mov) => acc + Number(mov.monto_ars || 0), 0);
 
   const egresosConfirmadosBalance = movimientos
-    .filter((mov) => mov.tipo_movimiento === 'egreso' && esMovimientoConfirmado(mov))
+    .filter((mov) => esEgresoDeBalance(mov) && esMovimientoConfirmado(mov))
     .reduce((acc, mov) => acc + Number(mov.monto_ars || 0), 0);
 
   return {
@@ -133,11 +142,13 @@ export function derivarResumenFinanciero(movimientos = []) {
 }
 
 export function derivarResumenOperativo(movimientos = []) {
-  const egresos = movimientos.filter((mov) => mov.tipo_movimiento === 'egreso' && esMovimientoOperativo(mov));
-  const egresosPagados = egresos.filter((mov) => mov.estado_consolidado === 'pagado').length;
+  const egresos = movimientos.filter((mov) => esEgresoDeBalance(mov) && esMovimientoOperativo(mov));
+  const egresosPagados = egresos.filter((mov) =>
+    mov.tipo_movimiento === 'ahorro' ? ESTADOS_INGRESO_CONFIRMADOS.has(mov.estado_consolidado) : mov.estado_consolidado === 'pagado'
+  ).length;
   const pendientes = movimientos.filter((mov) => esMovimientoOperativo(mov) && ESTADOS_PENDIENTES.has(mov.estado_consolidado)).length;
   const montoPendienteEgresos = egresos
-    .filter((mov) => mov.estado_consolidado === 'pendiente')
+    .filter((mov) => mov.tipo_movimiento === 'egreso' && mov.estado_consolidado === 'pendiente')
     .reduce((acc, mov) => acc + Number(mov.monto_ars || 0), 0);
 
   return {

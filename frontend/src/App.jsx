@@ -35,11 +35,13 @@ import MonthPicker from './components/MonthPicker.jsx';
 import CotizacionesPanel from './components/CotizacionesPanel.jsx';
 import GastosFijosPanel from './components/GastosFijosPanel.jsx';
 import ReportesPanel from './components/ReportesPanel.jsx';
+import AhorrosPanel from './components/AhorrosPanel.jsx';
 import LoginPanel from './components/LoginPanel.jsx';
 import PasswordSetupForm from './components/PasswordSetupForm.jsx';
 import ResetPasswordPanel from './components/ResetPasswordPanel.jsx';
 import SuperAdminPanel from './components/SuperAdminPanel.jsx';
 import ConfiguracionPanel from './components/ConfiguracionPanel.jsx';
+import HogarAdminPanel from './components/HogarAdminPanel.jsx';
 import GastoRapidoModal from './components/GastoRapidoModal.jsx';
 import {
   agruparEgresosConfirmadosPorCategoria,
@@ -442,10 +444,10 @@ export default function App() {
     if (!isSuperadmin && seccionActiva === 'superadmin') {
       setSeccionActiva('dashboard');
     }
-    if (seccionActiva === 'mi_hogar') {
-      setSeccionActiva(canManageHome ? 'configuracion' : 'dashboard');
+    if (canManageHome && seccionActiva === 'configuracion') {
+      setSeccionActiva('mi_hogar');
     }
-    if (!canManageHome && seccionActiva === 'configuracion') {
+    if (!canManageHome && ['configuracion', 'mi_hogar', 'categorias'].includes(seccionActiva)) {
       setSeccionActiva('dashboard');
     }
   }, [canAccessFixedValues, canManageHome, isSuperadmin, seccionActiva]);
@@ -755,6 +757,29 @@ export default function App() {
       });
       await cargarDatos();
       setGastoRapidoAbierto(false);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCrearAhorro = async (payload) => {
+    if (!canOperateHome) {
+      setError('Tu rol no permite operar en este hogar');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError('');
+      await createMovimiento({
+        ...payload,
+        hogar_id: hogarId,
+        cuenta_id: 1,
+        creado_por_usuario_id: usuarioId
+      });
+      await cargarDatos();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -1393,10 +1418,15 @@ export default function App() {
           )}
 
           {seccionActiva === 'ahorros' && (
-            <section className="panel">
-              <h2>🏦 Ahorros</h2>
-              <p>Próximo paso: vista dedicada para evolución de ahorro en ARS/USD.</p>
-            </section>
+            <AhorrosPanel
+              movimientos={movimientosConsolidados}
+              movimientosHistoricos={movimientosHistoricos}
+              cotizaciones={cotizaciones}
+              categorias={categorias}
+              ciclo={cicloSeleccionado}
+              loading={loading}
+              onCrearAhorro={handleCrearAhorro}
+            />
           )}
 
           {seccionActiva === 'reportes' && (
@@ -1418,11 +1448,18 @@ export default function App() {
             />
           )}
 
-          {seccionActiva === 'configuracion' && canManageHome && (
-            <ConfiguracionPanel
+          {seccionActiva === 'mi_hogar' && canManageHome && (
+            <HogarAdminPanel
               hogarId={hogarId}
               hogarNombre={hogarActivo?.nombre}
               usuarioActualId={usuarioId}
+            />
+          )}
+
+          {seccionActiva === 'categorias' && canManageHome && (
+            <ConfiguracionPanel
+              hogarId={hogarId}
+              hogarNombre={hogarActivo?.nombre}
               categorias={categorias}
               onCategoriasChange={cargarDatos}
             />

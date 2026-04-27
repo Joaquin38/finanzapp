@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createCategoria, deleteCategoria, updateCategoria } from '../services/api.js';
-import HogarAdminPanel from './HogarAdminPanel.jsx';
 
 const tiposCategoria = [
   { id: 2, value: 'egreso', label: 'Egreso' },
@@ -21,7 +20,6 @@ function getTipoId(categoria) {
 export default function ConfiguracionPanel({
   hogarId,
   hogarNombre,
-  usuarioActualId,
   categorias = [],
   onCategoriasChange
 }) {
@@ -119,107 +117,103 @@ export default function ConfiguracionPanel({
       <div className="panel config-hero-panel">
         <div className="panel-header">
           <p className="eyebrow">Configuración</p>
-          <h2>{hogarNombre || 'Hogar'}</h2>
-          <p>Parámetros propios del hogar: categorías, miembros y permisos.</p>
+          <h2>Categorías</h2>
+          <p>Administración de categorías para {hogarNombre || 'este hogar'}.</p>
         </div>
       </div>
 
       {error && <p className="error">{error}</p>}
       {mensaje && <p className="success-message">{mensaje}</p>}
 
-      <div className="config-grid">
-        <form className="admin-card config-category-form" onSubmit={guardarCategoria}>
-          <div className="admin-card-header">
-            <div>
-              <h3>{editandoId ? 'Editar categoría' : 'Nueva categoría'}</h3>
-              <small>Se crea solo para este hogar.</small>
-            </div>
-          </div>
-
-          <label>
-            Nombre
-            <input
-              value={form.nombre}
-              onChange={(event) => setForm((prev) => ({ ...prev, nombre: event.target.value }))}
-              placeholder="Ej: Veterinaria"
-              required
-            />
-          </label>
-
-          <label>
-            Tipo
-            <select
-              value={form.tipo_movimiento_id}
-              onChange={(event) => setForm((prev) => ({ ...prev, tipo_movimiento_id: Number(event.target.value) }))}
-            >
-              {tiposCategoria.map((tipo) => (
-                <option key={tipo.id} value={tipo.id}>
-                  {tipo.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <div className="config-form-actions">
-            {editandoId && (
-              <button type="button" className="ghost-btn" onClick={limpiarForm}>
-                Cancelar
-              </button>
-            )}
-            <button type="submit" disabled={loading || !form.nombre.trim()}>
-              {editandoId ? 'Guardar cambios' : 'Crear categoría'}
-            </button>
-          </div>
-        </form>
-
-        <div className="admin-card config-category-list">
-          <div className="admin-card-header">
-            <div>
-              <h3>Categorías del hogar</h3>
-              <small>{categoriasOrdenadas.length} activas</small>
-            </div>
-          </div>
-
-          <div className="table-wrapper">
-            <table>
-              <thead>
-                <tr>
-                  <th>Nombre</th>
-                  <th>Tipo</th>
-                  <th>Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {categoriasOrdenadas.map((categoria) => (
-                  <tr key={categoria.id}>
-                    <td>{categoria.nombre}</td>
-                    <td>
-                      <span className={`badge badge-${categoria.tipo_movimiento}`}>{categoria.tipo_movimiento}</span>
-                    </td>
-                    <td>
-                      <div className="acciones-inline">
-                        <button type="button" className="btn-inline secondary" onClick={() => editarCategoria(categoria)} title="Editar">
-                          ✎
-                        </button>
-                        <button type="button" className="btn-inline danger" onClick={() => eliminarCategoria(categoria)} title="Eliminar">
-                          ×
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {categoriasOrdenadas.length === 0 && (
-                  <tr>
-                    <td colSpan={3}>No hay categorías activas.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+      <form className="admin-card config-category-form" onSubmit={guardarCategoria}>
+        <div className="admin-card-header">
+          <div>
+            <h3>{editandoId ? 'Editar categoría' : 'Nueva categoría'}</h3>
+            <small>Se crea solo para este hogar.</small>
           </div>
         </div>
-      </div>
 
-      <HogarAdminPanel hogarId={hogarId} hogarNombre={hogarNombre} usuarioActualId={usuarioActualId} compact />
+        <label>
+          Nombre
+          <input
+            value={form.nombre}
+            onChange={(event) => setForm((prev) => ({ ...prev, nombre: event.target.value }))}
+            placeholder="Ej: Veterinaria"
+            required
+          />
+        </label>
+
+        <label>
+          Tipo
+          <select
+            value={form.tipo_movimiento_id}
+            onChange={(event) => setForm((prev) => ({ ...prev, tipo_movimiento_id: Number(event.target.value) }))}
+          >
+            {tiposCategoria.map((tipo) => (
+              <option key={tipo.id} value={tipo.id}>
+                {tipo.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <div className="config-form-actions">
+          {editandoId && (
+            <button type="button" className="ghost-btn" onClick={limpiarForm}>
+              Cancelar
+            </button>
+          )}
+          <button type="submit" disabled={loading || !form.nombre.trim()}>
+            {editandoId ? 'Guardar cambios' : 'Crear categoría'}
+          </button>
+        </div>
+      </form>
+
+      <div className="admin-card config-category-list">
+        <div className="admin-card-header">
+          <div>
+            <h3>Categorías del hogar</h3>
+            <small>{categoriasOrdenadas.length} activas</small>
+          </div>
+        </div>
+
+        <div className="table-wrapper config-category-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Nombre</th>
+                <th>Tipo</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {categoriasOrdenadas.map((categoria) => (
+                <tr key={categoria.id}>
+                  <td>{categoria.nombre}</td>
+                  <td>
+                    <span className={`badge badge-${categoria.tipo_movimiento}`}>{categoria.tipo_movimiento}</span>
+                  </td>
+                  <td>
+                    <div className="acciones-inline">
+                      <button type="button" className="btn-inline secondary" onClick={() => editarCategoria(categoria)} title="Editar">
+                        ✎
+                      </button>
+                      <button type="button" className="btn-inline danger" onClick={() => eliminarCategoria(categoria)} title="Eliminar">
+                        ×
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {categoriasOrdenadas.length === 0 && (
+                <tr>
+                  <td colSpan={3}>No hay categorías activas.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </section>
   );
 }

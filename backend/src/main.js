@@ -2163,7 +2163,7 @@ app.post('/movimientos', async (req, res) => {
     const estadoEgresoFinal =
       Number(tipo_movimiento_id) === 2 ? (estado_egreso || 'pendiente') : null;
     const estadoIngresoFinal =
-      Number(tipo_movimiento_id) === 1 ? (estado_ingreso || 'registrado') : null;
+      [1, 3].includes(Number(tipo_movimiento_id)) ? (estado_ingreso || 'registrado') : null;
 
     if (clasificacion_movimiento && !['normal', 'ajuste_cierre', 'saldo_inicial'].includes(clasificacion_movimiento)) {
       return res.status(400).json({ error: "clasificacion_movimiento debe ser 'normal', 'ajuste_cierre' o 'saldo_inicial'" });
@@ -2686,7 +2686,7 @@ app.get('/dashboard/resumen', async (req, res) => {
           `
           SELECT
             COALESCE(SUM(CASE WHEN tm.codigo = 'ingreso' AND m.fecha BETWEEN $2 AND $3 THEN m.monto_ars END), 0) AS ingresos,
-            COALESCE(SUM(CASE WHEN tm.codigo = 'egreso' AND m.fecha BETWEEN $2 AND $3 THEN m.monto_ars END), 0) AS egresos,
+            COALESCE(SUM(CASE WHEN tm.codigo IN ('egreso', 'ahorro') AND m.fecha BETWEEN $2 AND $3 THEN m.monto_ars END), 0) AS egresos,
             COALESCE(SUM(CASE WHEN tm.codigo = 'egreso' AND m.usa_ahorro = true AND m.fecha BETWEEN $2 AND $3 THEN m.monto_ars END), 0) AS egresos_desde_ahorro,
             COALESCE(SUM(CASE WHEN tm.codigo = 'ahorro' AND m.fecha <= $3 THEN m.monto_ars END), 0) AS ahorros_acumulados,
             COALESCE(SUM(CASE WHEN tm.codigo = 'egreso' AND m.usa_ahorro = true AND m.fecha <= $3 THEN m.monto_ars END), 0) AS egresos_desde_ahorro_acumulados,
@@ -2706,7 +2706,7 @@ app.get('/dashboard/resumen', async (req, res) => {
           `
           SELECT
             COALESCE(SUM(CASE WHEN tm.codigo = 'ingreso' AND m.fecha BETWEEN $2 AND $3 THEN m.monto_ars END), 0) AS ingresos,
-            COALESCE(SUM(CASE WHEN tm.codigo = 'egreso' AND m.fecha BETWEEN $2 AND $3 THEN m.monto_ars END), 0) AS egresos,
+            COALESCE(SUM(CASE WHEN tm.codigo IN ('egreso', 'ahorro') AND m.fecha BETWEEN $2 AND $3 THEN m.monto_ars END), 0) AS egresos,
             0 AS egresos_desde_ahorro,
             COALESCE(SUM(CASE WHEN tm.codigo = 'ahorro' AND m.fecha <= $3 THEN m.monto_ars END), 0) AS ahorros_acumulados,
             0 AS egresos_desde_ahorro_acumulados,

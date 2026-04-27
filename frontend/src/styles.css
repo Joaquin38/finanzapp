@@ -423,6 +423,45 @@ label,
   background: rgba(96, 165, 250, 0.16);
   color: #93c5fd;
 }
+.menu-tree {
+  display: grid;
+  gap: 4px;
+}
+.menu-parent {
+  width: 100%;
+}
+.menu-parent .menu-tree-caret {
+  margin-left: auto;
+  color: #94a3b8;
+  font-size: 12px;
+}
+.menu-subitems {
+  display: grid;
+  gap: 3px;
+  margin-left: 36px;
+  padding-left: 10px;
+  border-left: 1px solid rgba(148, 163, 184, 0.16);
+}
+.menu-subitem {
+  min-height: 30px;
+  padding: 5px 9px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 13px;
+  font-weight: 400;
+  text-align: left;
+}
+.menu-subitem:hover {
+  background: rgba(148, 163, 184, 0.08);
+  color: #f8fafc;
+}
+.menu-subitem.activo {
+  background: rgba(96, 165, 250, 0.13);
+  color: #dbeafe;
+  border-color: rgba(96, 165, 250, 0.18);
+}
 .menu-shell.collapsed .menu-item {
   justify-content: center;
   padding: 9px;
@@ -1803,12 +1842,28 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
 }
 .config-grid {
   display: grid;
-  grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.2fr);
+  grid-template-columns: 1fr;
   gap: 12px;
   align-items: start;
 }
 .config-category-form {
-  align-content: start;
+  grid-template-columns: minmax(180px, 0.8fr) minmax(220px, 1.2fr) minmax(150px, 0.6fr) auto;
+  align-items: end;
+}
+.config-category-form .admin-card-header {
+  align-self: center;
+}
+.config-category-list {
+  padding-bottom: 10px;
+}
+.config-category-scroll {
+  max-height: 360px;
+  overflow: auto;
+}
+.config-category-scroll table th,
+.config-category-scroll table td {
+  padding-top: 8px;
+  padding-bottom: 8px;
 }
 .config-form-actions {
   display: flex;
@@ -2585,6 +2640,98 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   font-weight: 700;
   color: var(--text-primary);
 }
+
+.ahorros-panel {
+  display: grid;
+  gap: 14px;
+}
+.ahorros-hero {
+  display: grid;
+  gap: 16px;
+}
+.ahorros-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.ahorros-summary-grid article,
+.ahorro-form-preview {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-soft);
+  padding: 14px;
+}
+.ahorros-summary-grid article {
+  display: grid;
+  gap: 8px;
+}
+.ahorros-summary-grid span,
+.ahorro-form-preview span,
+.ahorro-evolution-row span {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.ahorros-summary-grid strong {
+  font-size: clamp(24px, 3vw, 34px);
+  line-height: 1;
+  color: var(--text-primary);
+}
+.ahorro-form {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(120px, 0.55fr) minmax(150px, 0.7fr) minmax(200px, 1.1fr) minmax(170px, 0.8fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+.ahorro-form .panel-header {
+  align-self: center;
+}
+.ahorro-form-preview {
+  display: grid;
+  gap: 5px;
+  min-height: 70px;
+}
+.ahorro-form-preview strong {
+  color: var(--text-primary);
+}
+.ahorro-evolution {
+  display: grid;
+  gap: 12px;
+}
+.ahorro-evolution-list {
+  display: grid;
+  gap: 8px;
+}
+.ahorro-evolution-row {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.8fr) minmax(180px, 1fr) minmax(120px, auto);
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+.ahorro-evolution-row > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+.ahorro-evolution-bar {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--surface-subtle);
+  overflow: hidden;
+}
+.ahorro-evolution-bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #3b82f6, #14b8a6);
+}
+.ahorro-evolution-row > strong {
+  justify-self: end;
+  color: var(--text-primary);
+}
 .card small { display: block; color: #64748b; margin-bottom: 6px; }
 
 .modal-overlay {
@@ -2895,6 +3042,9 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
 }
 :root[data-theme='dark'] .operational-summary,
 :root[data-theme='dark'] .operational-item,
+:root[data-theme='dark'] .ahorros-summary-grid article,
+:root[data-theme='dark'] .ahorro-form-preview,
+:root[data-theme='dark'] .ahorro-evolution-row,
 :root[data-theme='dark'] .cycle-insight-item,
 :root[data-theme='dark'] .reportes-nav-item,
 :root[data-theme='dark'] .reportes-category-item,
@@ -3280,9 +3430,24 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   .menu-shell.collapsed .menu-item > span:last-child {
     display: inline;
   }
+  .menu-subitems {
+    display: flex;
+    margin-left: 0;
+    padding-left: 0;
+    border-left: 0;
+  }
+  .menu-subitem {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
   .contenido-principal { padding: 14px 12px 88px; max-width: none; }
   .cards-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .cotizaciones-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ahorros-summary-grid,
+  .ahorro-form { grid-template-columns: 1fr 1fr; }
+  .ahorro-form .panel-header,
+  .ahorro-form-preview,
+  .ahorro-form button { grid-column: 1 / -1; }
   .cycle-control-panel { grid-template-columns: 1fr; align-items: stretch; }
   .cycle-control-actions { justify-content: flex-start; }
   .reportes-category-layout { grid-template-columns: 1fr; }
@@ -3296,6 +3461,9 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   .superadmin-grid,
   .hogar-admin-layout,
   .config-grid { grid-template-columns: 1fr; }
+  .config-category-form {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 640px) {
@@ -3463,7 +3631,14 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   .operational-label {
     font-size: 11px;
   }
-  .cards-grid, .form-grid, .cotizaciones-grid { grid-template-columns: 1fr; }
+  .cards-grid, .form-grid, .cotizaciones-grid, .ahorros-summary-grid, .ahorro-form { grid-template-columns: 1fr; }
+  .ahorro-evolution-row {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+  .ahorro-evolution-row > strong {
+    justify-self: start;
+  }
   .cycle-control-tools { justify-self: stretch; }
   .cycle-control-row { flex-direction: column; align-items: stretch; }
   .cycle-control-row input { width: 100%; min-width: 0; max-width: none; }

@@ -68,8 +68,12 @@ const items = [
   { key: 'cotizacion', label: 'Cotizacion dolar', icon: icons.cotizacion },
   { key: 'ahorros', label: 'Ahorros', icon: icons.ahorros },
   { key: 'reportes', label: 'Reportes', icon: icons.reportes },
-  { key: 'configuracion', label: 'Configuracion', icon: icons.configuracion },
   { key: 'superadmin', label: 'Superadmin', icon: icons.superadmin }
+];
+
+const configChildren = [
+  { key: 'mi_hogar', label: 'Mi hogar' },
+  { key: 'categorias', label: 'Categorias' }
 ];
 
 export default function MenuLateral({
@@ -83,10 +87,10 @@ export default function MenuLateral({
 }) {
   const visibleItems = items.filter((item) => {
     if (!canAccessFixedValues && item.key === 'gastos_fijos') return false;
-    if (!canManageHome && item.key === 'configuracion') return false;
     if (!isSuperadmin && item.key === 'superadmin') return false;
     return true;
   });
+  const configActive = configChildren.some((item) => item.key === active);
 
   return (
     <aside className={`menu-shell ${collapsed ? 'collapsed' : ''}`}>
@@ -124,6 +128,44 @@ export default function MenuLateral({
             {!collapsed && <span>{item.label}</span>}
           </button>
         ))}
+        {canManageHome && (
+          <div className={`menu-tree ${configActive ? 'is-open' : ''}`}>
+            <button
+              className={`menu-item menu-parent ${configActive ? 'activo' : ''}`}
+              type="button"
+              title="Configuracion"
+              onClick={() => onSelect(configActive ? active : 'mi_hogar')}
+            >
+              <span className="menu-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" role="img">
+                  {icons.configuracion}
+                </svg>
+              </span>
+              {!collapsed && (
+                <>
+                  <span>Configuracion</span>
+                  <span className="menu-tree-caret" aria-hidden="true">
+                    {configActive ? '⌃' : '⌄'}
+                  </span>
+                </>
+              )}
+            </button>
+            {!collapsed && (
+              <div className="menu-subitems">
+                {configChildren.map((item) => (
+                  <button
+                    key={item.key}
+                    className={`menu-subitem ${active === item.key ? 'activo' : ''}`}
+                    type="button"
+                    onClick={() => onSelect(item.key)}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </nav>
     </aside>
   );
