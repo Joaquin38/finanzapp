@@ -488,6 +488,55 @@ function calculateRealisticProjection({ movimientos, movimientosMesAnterior = []
   };
 }
 
+function buildDecisionContext({ resumen, realisticProjection }) {
+  const ingresos = Number(resumen?.ingresos || 0);
+  const balanceReal = Number(resumen?.balance_actual || 0);
+  const balanceProyectado = Number(resumen?.balance_proyectado || 0);
+  const colchonMinimo = Math.max(
+    ingresos * 0.1,
+    Number(realisticProjection?.egresosPendientes || 0),
+    Number(realisticProjection?.variablesEsperadosRestantes || 0)
+  );
+  const margenAhorroReal = Number(realisticProjection?.balanceEstimado || 0) - colchonMinimo;
+
+  if (margenAhorroReal <= 0) {
+    return {
+      balanceReal,
+      balanceProyectado,
+      margenDisponible: balanceReal,
+      margenAhorroReal,
+      colchonMinimo,
+      riesgo: balanceReal < 0 || balanceProyectado < 0 ? 'alto' : 'medio',
+      puedeAhorrar: false,
+      recomendacionPrincipal: 'No conviene ahorrar todavia'
+    };
+  }
+
+  if (ingresos > 0 && margenAhorroReal < ingresos * 0.1) {
+    return {
+      balanceReal,
+      balanceProyectado,
+      margenDisponible: balanceReal,
+      margenAhorroReal,
+      colchonMinimo,
+      riesgo: 'medio',
+      puedeAhorrar: true,
+      recomendacionPrincipal: 'Ahorro moderado o esperar'
+    };
+  }
+
+  return {
+    balanceReal,
+    balanceProyectado,
+    margenDisponible: balanceReal,
+    margenAhorroReal,
+    colchonMinimo,
+    riesgo: 'bajo',
+    puedeAhorrar: true,
+    recomendacionPrincipal: 'Conviene ahorrar o comprar USD'
+  };
+}
+
 function ProjectionByPaceCard({ movimientos, movimientosMesAnterior = [], resumen, ciclo, formatMoney }) {
   const { dayCurrent, daysTotal } = getCycleProgress(ciclo);
   const currentWeekIndex = dayCurrent <= 7 ? 0 : dayCurrent <= 14 ? 1 : dayCurrent <= 21 ? 2 : 3;
@@ -544,7 +593,7 @@ function ProjectionByPaceCard({ movimientos, movimientosMesAnterior = [], resume
   );
 }
 
-function ProjectionByFunctionalTypeCard({ movimientos, movimientosMesAnterior = [], resumen, ciclo, formatMoney }) {
+function ProjectionByFunctionalTypeCard({ movimientos, movimientosMesAnterior = [], resumen, ciclo, formatMoney, realisticProjection = null }) {
   const {
     byKind,
     fijoTotal,
@@ -557,7 +606,7 @@ function ProjectionByFunctionalTypeCard({ movimientos, movimientosMesAnterior = 
     safeProgress,
     hasVariableHistory,
     confianza
-  } = calculateRealisticProjection({ movimientos, movimientosMesAnterior, resumen, ciclo });
+  } = realisticProjection || calculateRealisticProjection({ movimientos, movimientosMesAnterior, resumen, ciclo });
   const margenRatio = ingresosDelCiclo > 0 ? balanceEstimado / ingresosDelCiclo : 0;
   const estado = balanceEstimado < 0 ? 'Riesgo de deficit' : margenRatio <= 0.1 ? 'Mes ajustado' : 'Margen positivo';
   const tone = balanceEstimado < 0 ? 'danger' : margenRatio <= 0.1 ? 'muted' : 'positive';
@@ -873,25 +922,18 @@ function RelevantDeviationsCard({ movimientos = [], movimientosMesAnterior = [],
   );
 }
 
-function SavingOpportunityCard({ resumen, movimientos = [], movimientosMesAnterior = [], ciclo, formatMoney }) {
+function SavingOpportunityCard({ realisticProjection, decisionContext, ciclo, formatMoney }) {
   const {
-    ingresosDelCiclo,
     balanceEstimado,
     egresosPendientes,
     variablesEsperadosRestantes
-  } = calculateRealisticProjection({ movimientos, movimientosMesAnterior, resumen, ciclo });
+  } = realisticProjection;
+  const { colchonMinimo, margenAhorroReal, puedeAhorrar, recomendacionPrincipal } = decisionContext;
   const { dayCurrent, daysTotal } = getCycleProgress(ciclo);
   const diasRestantes = Math.max(daysTotal - dayCurrent, 0);
-  const colchonMinimo = Math.max(ingresosDelCiclo * 0.1, egresosPendientes, variablesEsperadosRestantes);
-  const ahorroSugerido = balanceEstimado - colchonMinimo;
-  const tieneMargen = ahorroSugerido > 0;
-  const estado = tieneMargen ? 'Ahorro posible' : 'Sin margen sugerido';
-  const tone = tieneMargen ? 'positive' : 'muted';
-  const recommendation = !tieneMargen
-    ? 'No conviene separar ahorro todavia. Primero confirma pendientes y controla variables.'
-    : diasRestantes <= 7
-      ? 'Buen momento para separar ahorro o comprar USD si los pendientes estan cubiertos.'
-      : `Podrias separar hasta ${formatMoney(ahorroSugerido)}, manteniendo colchon para el resto del ciclo.`;
+  const estado = puedeAhorrar ? 'Ahorro posible' : 'Sin margen sugerido';
+  const tone = puedeAhorrar ? 'positive' : 'muted';
+  const recommendation = recomendacionPrincipal;
 
   return (
     <article className="card decision-card decision-comparison-card decision-card-primary">
@@ -913,7 +955,7 @@ function SavingOpportunityCard({ resumen, movimientos = [], movimientosMesAnteri
         </div>
         <div className="decision-comparison-row">
           <span>Monto sugerido para ahorro</span>
-          <strong>{formatMoney(Math.max(ahorroSugerido, 0))}</strong>
+          <strong>{formatMoney(Math.max(margenAhorroReal, 0))}</strong>
           <small>{diasRestantes} dias restantes</small>
         </div>
       </div>
@@ -926,7 +968,7 @@ function SavingOpportunityCard({ resumen, movimientos = [], movimientosMesAnteri
   );
 }
 
-function ExecutiveSummary({ resumen, operativo, categorias }) {
+function ExecutiveSummary({ resumen, operativo, categorias, decisionContext }) {
   const ingresos = Number(resumen?.ingresos || 0);
   const egresos = Number(resumen?.egresos || 0);
   const balanceProyectado = Number(resumen?.balance_proyectado || 0);
@@ -944,12 +986,13 @@ function ExecutiveSummary({ resumen, operativo, categorias }) {
         : topCategoriaPercent > 30
           ? 'Alta concentracion en una categoria'
           : 'Sin alertas relevantes';
-  const accion =
+  const accion = decisionContext?.recomendacionPrincipal || (
     balanceProyectado < 0
       ? 'Postergar gastos no esenciales'
       : estado === 'Mes ajustado'
         ? 'Esperar a confirmar pendientes antes de ahorrar'
-        : 'Evaluar separar ahorro o comprar USD';
+        : 'Evaluar separar ahorro o comprar USD'
+  );
 
   return (
     <div className="decision-executive-summary">
@@ -976,6 +1019,8 @@ export default function DecisionesPanel({
   const balanceProyectado = Number(resumen?.balance_proyectado || 0);
   const pendiente = Number(operativo?.montoPendienteEgresos || 0);
   const porcentajePagado = Number(operativo?.porcentajeEgresosPagados || 0);
+  const realisticProjection = calculateRealisticProjection({ movimientos, movimientosMesAnterior, resumen, ciclo });
+  const decisionContext = buildDecisionContext({ resumen, realisticProjection });
 
   const cards = [
     {
@@ -1014,7 +1059,7 @@ export default function DecisionesPanel({
         <h2>Decisiones del mes</h2>
         <p>Analisis y sugerencias basadas en tu comportamiento</p>
       </div>
-      <ExecutiveSummary resumen={resumen} operativo={operativo} categorias={categorias} />
+      <ExecutiveSummary resumen={resumen} operativo={operativo} categorias={categorias} decisionContext={decisionContext} />
       <DecisionSection title="Decision principal">
         <div className="decision-section-grid decision-main-grid">
           <ProjectionByFunctionalTypeCard
@@ -1023,11 +1068,11 @@ export default function DecisionesPanel({
             resumen={resumen}
             ciclo={ciclo}
             formatMoney={formatMoney}
+            realisticProjection={realisticProjection}
           />
           <SavingOpportunityCard
-            resumen={resumen}
-            movimientos={movimientos}
-            movimientosMesAnterior={movimientosMesAnterior}
+            realisticProjection={realisticProjection}
+            decisionContext={decisionContext}
             ciclo={ciclo}
             formatMoney={formatMoney}
           />
