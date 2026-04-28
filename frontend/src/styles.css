@@ -3974,7 +3974,7 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
     margin-top: 8px;
     padding-top: 8px;
   }
-  .sidebar-account-dropdown {
+  .account-dropdown.sidebar-account-dropdown {
     top: calc(100% + 8px);
     bottom: auto;
     left: 0;
@@ -4108,7 +4108,7 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   .account-menu-trigger { width: 100%; max-width: none; justify-content: space-between; }
   .account-trigger-copy { flex: 1; }
   .account-dropdown { left: 0; right: auto; width: min(100%, calc(100vw - 24px)); }
-  .sidebar-account-dropdown {
+  .account-dropdown.sidebar-account-dropdown {
     top: calc(100% + 8px);
     bottom: auto;
     max-height: calc(100vh - 150px);
