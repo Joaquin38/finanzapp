@@ -3975,9 +3975,11 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
     padding-top: 8px;
   }
   .sidebar-account-dropdown {
-    top: auto;
-    bottom: calc(100% + 8px);
+    top: calc(100% + 8px);
+    bottom: auto;
     left: 0;
+    max-height: calc(100vh - 140px);
+    overflow-y: auto;
   }
   .contenido-principal { padding: 14px 12px 88px; max-width: none; }
   .cards-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -4107,8 +4109,10 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   .account-trigger-copy { flex: 1; }
   .account-dropdown { left: 0; right: auto; width: min(100%, calc(100vw - 24px)); }
   .sidebar-account-dropdown {
-    top: auto;
-    bottom: calc(100% + 8px);
+    top: calc(100% + 8px);
+    bottom: auto;
+    max-height: calc(100vh - 150px);
+    overflow-y: auto;
   }
   .header-context-bar { width: 100%; justify-content: flex-start; }
   .header-context-item,
