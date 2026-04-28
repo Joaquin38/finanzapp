@@ -117,6 +117,10 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
       .map((item) => ({ ...item, cantidadConsumos: item.consumos.size }))
       .sort((a, b) => String(a.ciclo).localeCompare(String(b.ciclo)));
   }, [consumos]);
+  const previewCicloAsignado = useMemo(() => {
+    if (!form.fecha_compra || !cierreForm.fecha_cierre) return ciclo;
+    return form.fecha_compra <= cierreForm.fecha_cierre ? ciclo : addMonthsToCycle(ciclo, 1);
+  }, [form.fecha_compra, cierreForm.fecha_cierre, ciclo]);
   const resumenAnalisis = useMemo(() => {
     const actuales = consumos.filter((item) => item.ciclo_asignado === ciclo);
     const categorias = new Map();
@@ -299,18 +303,55 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
           <h2>{tarjetaActual?.nombre || 'Tarjeta principal'}</h2>
           <p>Resumen separado para consumos de tarjeta, sin impacto en movimientos.</p>
         </div>
-        <div className="tarjeta-cycle-summary">
-          <span>Ciclo</span>
-          <strong>{formatCycleLabel(ciclo)}</strong>
-          <small>Cierre: {cierreForm.fecha_cierre || getClosingDate(ciclo)}</small>
+      </div>
+
+      <section className="panel tarjeta-current-summary">
+        <div className="panel-header">
+          <div>
+            <p className="eyebrow">Resumen actual de tarjeta</p>
+            <h2>Resumen actual de tarjeta</h2>
+            <p>Los consumos se asignan automaticamente segun la fecha de compra y el cierre del resumen.</p>
+          </div>
           <em className={`tarjeta-cierre-status ${cierre?.estado === 'cerrado' ? 'cerrado' : 'abierto'}`}>
             {cierre?.estado === 'cerrado' ? 'Cerrado' : 'Abierto'}
           </em>
-          <button type="button" className="btn-inline secondary" onClick={handleToggleCierre} disabled={loading || !cierre?.id}>
-            {cierre?.estado === 'cerrado' ? 'Reabrir resumen' : 'Cerrar resumen'}
-          </button>
         </div>
-      </div>
+        <div className="tarjeta-current-grid">
+          <label>
+            Tarjeta seleccionada
+            <select value={form.tarjeta_id} onChange={(e) => handleChange('tarjeta_id', e.target.value)}>
+              {tarjetas.map((tarjeta) => (
+                <option key={tarjeta.id} value={tarjeta.id}>{tarjeta.nombre}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Ciclo / resumen actual
+            <input value={formatCycleLabel(ciclo)} readOnly />
+          </label>
+          <label>
+            Fecha de cierre del resumen
+            <input
+              type="date"
+              value={cierreForm.fecha_cierre}
+              disabled={cierre?.estado === 'cerrado'}
+              onChange={(e) => setCierreForm((prev) => ({ ...prev, fecha_cierre: e.target.value }))}
+            />
+          </label>
+          <label>
+            Fecha de vencimiento
+            <input
+              type="date"
+              value={cierreForm.fecha_vencimiento}
+              disabled={cierre?.estado === 'cerrado'}
+              onChange={(e) => setCierreForm((prev) => ({ ...prev, fecha_vencimiento: e.target.value }))}
+            />
+          </label>
+        </div>
+        <button type="button" className="btn-inline secondary tarjeta-close-action" onClick={handleToggleCierre} disabled={loading || !cierre?.id}>
+          {cierre?.estado === 'cerrado' ? 'Reabrir resumen' : 'Cerrar resumen'}
+        </button>
+      </section>
 
       <div className="tarjeta-summary-grid">
         {cards.map((card) => (
@@ -341,29 +382,9 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
       <section className="panel panel-form tarjeta-form-panel">
         <div className="panel-header">
           <h2>{editingId ? 'Editar consumo de tarjeta' : 'Nuevo consumo de tarjeta'}</h2>
-          <p>Se asigna automaticamente al resumen segun fecha de compra y cierre.</p>
+          <p>Este consumo se asignara automaticamente al resumen correspondiente.</p>
         </div>
         {error && <p className="error">{error}</p>}
-        <div className="tarjeta-cierre-form">
-          <label>
-            Fecha de cierre del resumen
-            <input
-              type="date"
-              value={cierreForm.fecha_cierre}
-              disabled={cierre?.estado === 'cerrado'}
-              onChange={(e) => setCierreForm((prev) => ({ ...prev, fecha_cierre: e.target.value }))}
-            />
-          </label>
-          <label>
-            Fecha de vencimiento
-            <input
-              type="date"
-              value={cierreForm.fecha_vencimiento}
-              disabled={cierre?.estado === 'cerrado'}
-              onChange={(e) => setCierreForm((prev) => ({ ...prev, fecha_vencimiento: e.target.value }))}
-            />
-          </label>
-        </div>
         <form className="form-grid tarjeta-consumo-form" onSubmit={handleSubmit}>
           <label>
             Fecha de compra
@@ -423,6 +444,9 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
           <button className="full-width movement-submit" type="submit" disabled={loading || tarjetas.length === 0}>
             {loading ? 'Guardando...' : editingId ? 'Guardar cambios' : 'Guardar consumo'}
           </button>
+          <div className="tarjeta-assignment-preview full-width">
+            Entrara en: <strong>{formatCycleLabel(previewCicloAsignado)}</strong>
+          </div>
           {editingId && (
             <button className="full-width btn-inline secondary" type="button" onClick={handleCancelEdit}>
               Cancelar edicion

@@ -3373,6 +3373,26 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   margin: 0;
   color: var(--text-muted);
 }
+.tarjeta-current-summary {
+  display: grid;
+  gap: 12px;
+}
+.tarjeta-current-summary .panel-header {
+  align-items: center;
+}
+.tarjeta-current-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.tarjeta-close-action {
+  justify-self: end;
+  min-width: 150px;
+}
+.tarjeta-current-summary .panel-header p:not(.eyebrow) {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+}
 .tarjeta-cycle-summary {
   display: grid;
   align-content: center;
@@ -3461,17 +3481,19 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   display: grid;
   gap: 12px;
 }
-.tarjeta-cierre-form {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  padding: 12px;
+.tarjeta-consumo-form {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.tarjeta-assignment-preview {
+  padding: 11px 12px;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--surface-soft);
+  color: var(--text-secondary);
+  font-weight: 700;
 }
-.tarjeta-consumo-form {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+.tarjeta-assignment-preview strong {
+  color: var(--text-primary);
 }
 .tarjeta-consumos-list {
   display: grid;
@@ -4502,7 +4524,7 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   .cotizaciones-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tarjeta-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tarjeta-closed-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .tarjeta-cierre-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tarjeta-current-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tarjeta-table-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tarjeta-analysis-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tarjeta-consumo-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -4763,7 +4785,8 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   .cards-grid, .form-grid, .cotizaciones-grid, .ahorros-summary-grid, .ahorro-form { grid-template-columns: 1fr; }
   .tarjeta-summary-grid { grid-template-columns: 1fr; }
   .tarjeta-closed-summary { grid-template-columns: 1fr; }
-  .tarjeta-cierre-form { grid-template-columns: 1fr; }
+  .tarjeta-current-grid { grid-template-columns: 1fr; }
+  .tarjeta-close-action { justify-self: stretch; width: 100%; }
   .tarjeta-table-filters,
   .tarjeta-analysis-grid,
   .tarjeta-detail-grid { grid-template-columns: 1fr; }
