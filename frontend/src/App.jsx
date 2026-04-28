@@ -889,6 +889,23 @@ export default function App() {
       }),
     [cicloAnteriorSeleccionado, cotizaciones, gastosFijosHistoricosPorCiclo, movimientosHistoricos]
   );
+  const movimientosConsolidadosHistorialDecisiones = useMemo(() => {
+    const [anioTexto, mesTexto] = String(cicloSeleccionado || '').split('-');
+    const anioBase = Number(anioTexto);
+    const mesBase = Number(mesTexto) - 1;
+    if (!Number.isFinite(anioBase) || !Number.isFinite(mesBase)) return [];
+
+    return Array.from({ length: 5 }, (_, index) => {
+      const fecha = new Date(anioBase, mesBase - 5 + index, 1);
+      const key = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
+      return construirMovimientosConsolidadosDelCiclo({
+        movimientos: movimientosHistoricos.filter((mov) => String(mov.fecha || '').startsWith(key)),
+        gastosFijos: gastosFijosHistoricosPorCiclo[key] || [],
+        cotizaciones,
+        ciclo: key
+      });
+    }).flat();
+  }, [cicloSeleccionado, cotizaciones, gastosFijosHistoricosPorCiclo, movimientosHistoricos]);
 
   const movimientosFiltradosYOrdenados = useMemo(() => {
     let items = [...movimientosConsolidados];
@@ -1416,6 +1433,7 @@ export default function App() {
               serieMensual={reporteEvolucionMensual}
               movimientos={movimientosConsolidados}
               movimientosMesAnterior={movimientosConsolidadosCicloAnterior}
+              movimientosHistoricos={movimientosConsolidadosHistorialDecisiones}
               ciclo={cicloSeleccionado}
               formatMoney={formatMoneyText}
             />

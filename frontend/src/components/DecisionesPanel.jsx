@@ -10,22 +10,33 @@ function DecisionCard({ title, metric, text, recommendation, tone = 'balance' })
 }
 
 const CATEGORY_KIND = {
-  Vivienda: 'fijo',
-  Servicios: 'fijo',
-  Prestamos: 'fijo',
-  Tarjeta: 'recurrente_variable',
-  Alimentos: 'variable',
-  Transporte: 'variable',
-  Mascotas: 'variable',
-  Salud: 'recurrente_variable',
-  Ocio: 'variable',
-  Herramientas: 'extraordinario',
-  Otros: 'extraordinario',
-  Ahorro: 'fijo'
+  vivienda: 'fijo',
+  servicios: 'fijo',
+  prestamos: 'fijo',
+  tarjeta: 'recurrente_variable',
+  alimentos: 'variable',
+  transporte: 'variable',
+  mascotas: 'variable',
+  salud: 'recurrente_variable',
+  ocio: 'variable',
+  herramientas: 'extraordinario',
+  otros: 'extraordinario',
+  ahorro: 'fijo',
+  'ajuste de cierre': 'extraordinario',
+  'arrastre de cierre': 'extraordinario',
+  sueldo: 'extraordinario'
 };
 
+function normalizeCategoryName(category) {
+  return String(category || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+}
+
 function getCategoryKind(category) {
-  return CATEGORY_KIND[category] || 'variable';
+  return CATEGORY_KIND[normalizeCategoryName(category)] || 'variable';
 }
 
 function getVariation(actual, anterior) {
@@ -132,21 +143,6 @@ function getCycleProgress(ciclo) {
   };
 }
 
-function getCurrentConfirmedExpensesUntilToday(movimientos, ciclo, dayCurrent) {
-  const limitDay = String(dayCurrent).padStart(2, '0');
-  const limitDate = `${ciclo}-${limitDay}`;
-
-  return movimientos
-    .filter((mov) => ['egreso', 'ahorro'].includes(mov.tipo_movimiento))
-    .filter((mov) =>
-      mov.tipo_movimiento === 'ahorro'
-        ? ['registrado', 'cobrado'].includes(mov.estado_consolidado)
-        : mov.estado_consolidado === 'pagado'
-    )
-    .filter((mov) => String(mov.fecha || '').slice(0, 10) <= limitDate)
-    .reduce((acc, mov) => acc + Number(mov.monto_ars || 0), 0);
-}
-
 function getConfirmedExpenses(movimientos) {
   return movimientos.filter((mov) =>
     ['egreso', 'ahorro'].includes(mov.tipo_movimiento) &&
@@ -156,15 +152,68 @@ function getConfirmedExpenses(movimientos) {
   );
 }
 
-function RhythmCard({ movimientos, ciclo, serieMensual, formatMoney }) {
-  const anterior = serieMensual?.[serieMensual.length - 2] || null;
-  const anteriorEgresos = Number(anterior?.egresos || 0);
+function isExpenseMovement(mov) {
+  return ['egreso', 'ahorro'].includes(mov.tipo_movimiento);
+}
+
+function isConfirmedExpense(mov) {
+  if (!isExpenseMovement(mov)) return false;
+  return mov.tipo_movimiento === 'ahorro'
+    ? ['registrado', 'cobrado'].includes(mov.estado_consolidado)
+    : mov.estado_consolidado === 'pagado';
+}
+
+function isPendingExpense(mov) {
+  return isExpenseMovement(mov) && !isConfirmedExpense(mov);
+}
+
+function getMovementCategory(mov) {
+  return mov.categoria || mov.categoria_nombre || mov.nombre_categoria || '';
+}
+
+function getExpenseKind(mov) {
+  return getCategoryKind(getMovementCategory(mov));
+}
+
+function isControllableExpense(mov) {
+  return ['variable', 'recurrente_variable'].includes(getExpenseKind(mov));
+}
+
+function getConfirmedExpensesUntilToday(movimientos, ciclo, dayCurrent, predicate = () => true) {
+  const limitDay = String(dayCurrent).padStart(2, '0');
+  const limitDate = `${ciclo}-${limitDay}`;
+  return getConfirmedExpenses(movimientos)
+    .filter(predicate)
+    .filter((mov) => String(mov.fecha || '').slice(0, 10) <= limitDate);
+}
+
+function RhythmCard({ movimientos, movimientosMesAnterior = [], ciclo, formatMoney }) {
   const { dayCurrent, daysTotal } = getCycleProgress(ciclo);
-  const actual = getCurrentConfirmedExpensesUntilToday(movimientos, ciclo, dayCurrent);
-  const esperado = anteriorEgresos > 0 ? anteriorEgresos * (dayCurrent / daysTotal) : 0;
+  const currentConfirmed = getConfirmedExpenses(movimientos);
+  const currentControlable = getConfirmedExpensesUntilToday(movimientos, ciclo, dayCurrent, isControllableExpense);
+  const variablesAcumulados = currentControlable
+    .filter((mov) => getExpenseKind(mov) === 'variable')
+    .reduce((acc, mov) => acc + Number(mov.monto_ars || 0), 0);
+  const recurrentesVariablesAcumulados = currentControlable
+    .filter((mov) => getExpenseKind(mov) === 'recurrente_variable')
+    .reduce((acc, mov) => acc + Number(mov.monto_ars || 0), 0);
+  const fijosPagados = currentConfirmed
+    .filter((mov) => getExpenseKind(mov) === 'fijo')
+    .reduce((acc, mov) => acc + Number(mov.monto_ars || 0), 0);
+  const fijosPendientes = movimientos
+    .filter(isPendingExpense)
+    .filter((mov) => getExpenseKind(mov) === 'fijo')
+    .reduce((acc, mov) => acc + Number(mov.monto_ars || 0), 0);
+  const actual = variablesAcumulados + recurrentesVariablesAcumulados;
+  const previousDistribution = getWeeklyDistributionPercentages(movimientosMesAnterior, isControllableExpense);
+  const historialControlable = previousDistribution.total;
+  const expectedProgress = historialControlable > 0
+    ? previousDistribution.percentages.slice(0, getWeekIndex(`${ciclo}-${String(dayCurrent).padStart(2, '0')}`) + 1).reduce((acc, value) => acc + value, 0)
+    : 0;
+  const esperado = historialControlable > 0 ? historialControlable * Math.max(expectedProgress, 0.01) : 0;
   const diferencia = actual - esperado;
   const variacion = getVariation(actual, esperado);
-  const sinHistorial = anteriorEgresos <= 0;
+  const sinHistorial = historialControlable <= 0;
   const status =
     sinHistorial ? 'Sin historial' : actual > esperado * 1.1 ? 'Ritmo alto' : actual < esperado * 0.9 ? 'Ritmo bajo' : 'Ritmo normal';
   const tone = sinHistorial ? 'muted' : status === 'Ritmo alto' ? 'warning' : status === 'Ritmo bajo' ? 'positive' : 'muted';
@@ -172,10 +221,10 @@ function RhythmCard({ movimientos, ciclo, serieMensual, formatMoney }) {
     sinHistorial
       ? 'Falta historial para calcular ritmo esperado.'
       : status === 'Ritmo alto'
-        ? 'Estas gastando mas rapido que el mes anterior. Conviene frenar gastos variables esta semana.'
+        ? 'El consumo controlable viene por encima del patron esperado.'
         : status === 'Ritmo bajo'
-          ? 'Venis gastando menos que el mes anterior. Podes evaluar separar ahorro o comprar USD si tu liquidez lo permite.'
-          : 'El gasto viene alineado al mes anterior. Mantene el seguimiento antes de tomar decisiones grandes.';
+          ? 'El consumo controlable viene por debajo del patron esperado.'
+          : 'El consumo controlable viene alineado al patron esperado.';
 
   return (
     <article className="card decision-card decision-comparison-card">
@@ -183,20 +232,26 @@ function RhythmCard({ movimientos, ciclo, serieMensual, formatMoney }) {
       <em className={`decision-status ${tone}`}>{status}</em>
       <div className="decision-comparison-grid">
         <div className="decision-comparison-row">
-          <span>Gastado hasta hoy</span>
+          <span>Consumo controlable</span>
           <strong>{formatMoney(actual)}</strong>
           <small>Dia {dayCurrent} de {daysTotal}</small>
         </div>
         <div className="decision-comparison-row">
-          <span>Esperado segun mes anterior</span>
+          <span>Esperado segun patron</span>
           <strong>{formatMoney(esperado)}</strong>
-          <small>Proyeccion al dia actual</small>
+          <small>Variables y recurrentes variables</small>
         </div>
         <div className="decision-comparison-row">
           <span>Diferencia</span>
           <strong>{formatMoney(diferencia)}</strong>
           <em className={`decision-variation ${tone}`}>{sinHistorial ? 'Sin referencia' : formatVariation(variacion)}</em>
         </div>
+      </div>
+      <div className="decision-composition-grid">
+        <span>Fijos pagados <strong>{formatMoney(fijosPagados)}</strong></span>
+        <span>Fijos pendientes <strong>{formatMoney(fijosPendientes)}</strong></span>
+        <span>Variables acumulados <strong>{formatMoney(variablesAcumulados)}</strong></span>
+        <span>Recurrentes variables <strong>{formatMoney(recurrentesVariablesAcumulados)}</strong></span>
       </div>
       <strong>{recommendation}</strong>
     </article>
@@ -266,15 +321,74 @@ function WeeklyDistributionCard({ movimientos, formatMoney }) {
   );
 }
 
-function getWeeklyDistributionPercentages(movimientos) {
+function getWeeklyDistributionPercentages(movimientos, predicate = () => true) {
   const totals = [0, 0, 0, 0];
-  getConfirmedExpenses(movimientos).forEach((mov) => {
+  getConfirmedExpenses(movimientos).filter(predicate).forEach((mov) => {
     totals[getWeekIndex(mov.fecha)] += Number(mov.monto_ars || 0);
   });
   const total = totals.reduce((acc, value) => acc + value, 0);
   return {
     total,
     percentages: totals.map((value) => (total > 0 ? value / total : 0))
+  };
+}
+
+function calculateRealisticProjection({ movimientos, movimientosMesAnterior = [], resumen, ciclo }) {
+  const { dayCurrent, daysTotal } = getCycleProgress(ciclo);
+  const currentWeekIndex = dayCurrent <= 7 ? 0 : dayCurrent <= 14 ? 1 : dayCurrent <= 21 ? 2 : 3;
+  const byKind = {
+    fijo: { confirmed: 0, pending: 0 },
+    recurrente_variable: { confirmed: 0, pending: 0 },
+    variable: { confirmed: 0, pending: 0 },
+    extraordinario: { confirmed: 0, pending: 0 }
+  };
+
+  movimientos.filter(isExpenseMovement).forEach((mov) => {
+    const kind = getExpenseKind(mov);
+    const bucket = byKind[kind] || byKind.variable;
+    if (isConfirmedExpense(mov)) bucket.confirmed += Number(mov.monto_ars || 0);
+    else if (isPendingExpense(mov)) bucket.pending += Number(mov.monto_ars || 0);
+  });
+
+  const isVariable = (mov) => getExpenseKind(mov) === 'variable';
+  const previousDistribution = getWeeklyDistributionPercentages(movimientosMesAnterior, isVariable);
+  const hasVariableHistory = previousDistribution.total > 0;
+  const expectedProgress = hasVariableHistory
+    ? previousDistribution.percentages.slice(0, currentWeekIndex + 1).reduce((acc, value) => acc + value, 0)
+    : dayCurrent / daysTotal;
+  const safeProgress = Math.max(expectedProgress, 0.01);
+  const variableProjectionSource = hasVariableHistory
+    ? byKind.variable.confirmed / safeProgress
+    : (byKind.variable.confirmed / dayCurrent) * daysTotal;
+  const variableProjection = Math.max(byKind.variable.confirmed, variableProjectionSource || 0);
+  const fijoTotal = byKind.fijo.confirmed + byKind.fijo.pending;
+  const recurrenteTotal = byKind.recurrente_variable.confirmed + byKind.recurrente_variable.pending;
+  const extraordinarioTotal = byKind.extraordinario.confirmed;
+  const egresoEstimado = fijoTotal + recurrenteTotal + variableProjection + extraordinarioTotal;
+  const ingresosDelCiclo = Number(resumen?.ingresos || 0);
+  const balanceEstimado = ingresosDelCiclo - egresoEstimado;
+  const egresosPendientes = movimientos.filter(isPendingExpense).reduce((acc, mov) => acc + Number(mov.monto_ars || 0), 0);
+  const variablesEsperadosRestantes = Math.max(variableProjection - byKind.variable.confirmed, 0);
+  const confianza = hasVariableHistory && byKind.variable.confirmed > 0
+    ? 'alta'
+    : hasVariableHistory || byKind.variable.confirmed > 0
+      ? 'media'
+      : 'baja';
+
+  return {
+    byKind,
+    fijoTotal,
+    recurrenteTotal,
+    extraordinarioTotal,
+    variableProjection,
+    egresoEstimado,
+    balanceEstimado,
+    ingresosDelCiclo,
+    egresosPendientes,
+    variablesEsperadosRestantes,
+    safeProgress,
+    hasVariableHistory,
+    confianza
   };
 }
 
@@ -330,6 +444,66 @@ function ProjectionByPaceCard({ movimientos, movimientosMesAnterior = [], resume
   );
 }
 
+function ProjectionByFunctionalTypeCard({ movimientos, movimientosMesAnterior = [], resumen, ciclo, formatMoney }) {
+  const {
+    byKind,
+    fijoTotal,
+    recurrenteTotal,
+    extraordinarioTotal,
+    variableProjection,
+    egresoEstimado,
+    balanceEstimado,
+    ingresosDelCiclo,
+    safeProgress,
+    hasVariableHistory,
+    confianza
+  } = calculateRealisticProjection({ movimientos, movimientosMesAnterior, resumen, ciclo });
+  const margenRatio = ingresosDelCiclo > 0 ? balanceEstimado / ingresosDelCiclo : 0;
+  const estado = balanceEstimado < 0 ? 'Riesgo de deficit' : margenRatio <= 0.1 ? 'Mes ajustado' : 'Margen positivo';
+  const tone = balanceEstimado < 0 ? 'danger' : margenRatio <= 0.1 ? 'muted' : 'positive';
+  const recommendation =
+    balanceEstimado < 0
+      ? 'El cierre estimado queda negativo. Revisa variables y pendientes antes de sumar gastos.'
+      : margenRatio <= 0.1
+        ? 'El margen estimado es bajo. Conviene esperar antes de nuevas decisiones grandes.'
+        : 'Hay margen estimado. Podes evaluar ahorro o compra de USD con prudencia.';
+
+  return (
+    <article className="card decision-card decision-comparison-card decision-card-primary">
+      <h3>Proyeccion por ritmo actual</h3>
+      <div className="decision-status-row">
+        <em className={`decision-status ${tone}`}>{estado}</em>
+        <em className={`decision-status decision-confidence ${confianza}`}>Confianza {confianza}</em>
+      </div>
+      <small>Proyeccion ajustada por tipo de gasto</small>
+      <div className="decision-comparison-grid">
+        <div className="decision-comparison-row">
+          <span>Egreso estimado al cierre</span>
+          <strong>{formatMoney(egresoEstimado)}</strong>
+          <small>Fijos, recurrentes, variables y extraordinarios</small>
+        </div>
+        <div className="decision-comparison-row">
+          <span>Balance estimado al cierre</span>
+          <strong>{formatMoney(balanceEstimado)}</strong>
+          <small>No modifica el balance proyectado del dashboard</small>
+        </div>
+        <div className="decision-comparison-row">
+          <span>Variable proyectado</span>
+          <strong>{formatMoney(variableProjection)}</strong>
+          <small>{hasVariableHistory ? `${Math.round(safeProgress * 100)}% esperado segun historial` : 'Fallback por promedio diario'}</small>
+        </div>
+      </div>
+      <div className="decision-composition-grid">
+        <span>Fijo <strong>{formatMoney(fijoTotal)}</strong></span>
+        <span>Recurrente variable <strong>{formatMoney(recurrenteTotal)}</strong></span>
+        <span>Variable proyectado <strong>{formatMoney(variableProjection)}</strong></span>
+        <span>Extraordinario confirmado <strong>{formatMoney(extraordinarioTotal)}</strong></span>
+      </div>
+      <strong>{recommendation}</strong>
+    </article>
+  );
+}
+
 function CriticalCategoriesCard({ categorias = [], formatMoney }) {
   const top = categorias.slice(0, 3);
   const total = categorias.reduce((acc, item) => acc + Number(item.total || 0), 0);
@@ -376,43 +550,176 @@ function CriticalCategoriesCard({ categorias = [], formatMoney }) {
   );
 }
 
-function SavingOpportunityCard({ resumen, operativo, ciclo, formatMoney }) {
+function getConfirmedExpensesByCategory(movimientos, predicate = () => true) {
+  return getConfirmedExpenses(movimientos).filter(predicate).reduce((acc, mov) => {
+    const category = getMovementCategory(mov) || 'Sin categoria';
+    acc[category] = (acc[category] || 0) + Number(mov.monto_ars || 0);
+    return acc;
+  }, {});
+}
+
+function isCategoryNamed(category, target) {
+  return normalizeCategoryName(category) === normalizeCategoryName(target);
+}
+
+function getCategoryTotal(categoryMap, category) {
+  const match = Object.entries(categoryMap).find(([key]) => isCategoryNamed(key, category));
+  return Number(match?.[1] || 0);
+}
+
+function getCategoryReference({ categoria, movimientosHistoricos = [], fallbackAnterior = 0 }) {
+  const totalsByCycle = getConfirmedExpenses(movimientosHistoricos)
+    .filter((mov) => isCategoryNamed(getMovementCategory(mov), categoria))
+    .reduce((acc, mov) => {
+      const cycle = String(mov.fecha || '').slice(0, 7);
+      if (!cycle) return acc;
+      acc[cycle] = (acc[cycle] || 0) + Number(mov.monto_ars || 0);
+      return acc;
+    }, {});
+  const values = Object.values(totalsByCycle).filter((value) => value > 0);
+
+  if (values.length > 1) {
+    return {
+      amount: values.reduce((acc, value) => acc + value, 0) / values.length,
+      label: 'Promedio habitual'
+    };
+  }
+
+  return {
+    amount: Number(values[0] || fallbackAnterior || 0),
+    label: values.length === 1 ? 'Historial disponible' : 'Mes anterior'
+  };
+}
+
+function RelevantDeviationsCard({ movimientos = [], movimientosMesAnterior = [], movimientosHistoricos = [], resumen, formatMoney }) {
   const ingresos = Number(resumen?.ingresos || 0);
-  const balanceProyectado = Number(resumen?.balance_proyectado || 0);
-  const egresosPendientes = Number(operativo?.montoPendienteEgresos || 0);
+  const currentByCategory = getConfirmedExpensesByCategory(movimientos);
+  const previousByCategory = getConfirmedExpensesByCategory(movimientosMesAnterior);
+  const deviations = Object.entries(currentByCategory)
+    .map(([categoria, actual]) => {
+      const kind = getCategoryKind(categoria);
+      const tarjeta = isCategoryNamed(categoria, 'Tarjeta');
+      const previousAmount = getCategoryTotal(previousByCategory, categoria);
+      const reference = tarjeta
+        ? getCategoryReference({ categoria, movimientosHistoricos, fallbackAnterior: previousAmount })
+        : { amount: previousAmount, label: 'Mes anterior' };
+      const anterior = Number(reference.amount || 0);
+      const variation = getVariation(actual, anterior);
+
+      if (kind === 'variable' && anterior > 0 && actual > anterior * 1.2) {
+        return {
+          categoria,
+          actual,
+          anterior,
+          referenceLabel: reference.label,
+          variation,
+          type: 'Variable alta',
+          recommendation: 'Revisa si este consumo puede moderarse el resto del ciclo.'
+        };
+      }
+
+      if (kind === 'recurrente_variable' && anterior > 0 && actual > anterior * (tarjeta ? 1.2 : 1.15)) {
+        return {
+          categoria,
+          actual,
+          anterior,
+          referenceLabel: reference.label,
+          variation,
+          type: tarjeta ? 'Tarjeta sobre referencia' : 'Recurrente variable alto',
+          recommendation: tarjeta
+            ? 'La tarjeta viene por encima de tu referencia habitual.'
+            : 'Este gasto recurrente vino mas alto de lo habitual. Revisa su composicion.'
+        };
+      }
+
+      if (kind === 'extraordinario' && ingresos > 0 && actual > ingresos * 0.05) {
+        return {
+          categoria,
+          actual,
+          anterior,
+          referenceLabel: 'Ingresos del ciclo',
+          variation: null,
+          type: 'Extraordinario alto',
+          recommendation: 'Gasto puntual relevante. No lo proyectes como consumo normal.'
+        };
+      }
+
+      return null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => Number(b.actual || 0) - Number(a.actual || 0))
+    .slice(0, 3);
+
+  return (
+    <article className="card decision-card decision-comparison-card decision-card-featured">
+      <h3>Desvios relevantes</h3>
+      {deviations.length > 0 ? (
+        <div className="decision-weekly-list">
+          {deviations.map((item) => (
+            <div className="decision-deviation-row" key={`${item.type}-${item.categoria}`}>
+              <div>
+                <span>{item.categoria}</span>
+                <em>{item.type}</em>
+              </div>
+              <strong>{formatMoney(item.actual)}</strong>
+              <small>
+                {item.referenceLabel || 'Referencia'}: {item.anterior > 0 ? formatMoney(item.anterior) : 'Sin referencia'} · {item.variation == null ? 'Puntual' : formatVariation(item.variation)}
+              </small>
+              <p>{item.recommendation}</p>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <strong>Sin desvios relevantes. El comportamiento esta dentro de parametros razonables.</strong>
+      )}
+    </article>
+  );
+}
+
+function SavingOpportunityCard({ resumen, movimientos = [], movimientosMesAnterior = [], ciclo, formatMoney }) {
+  const {
+    ingresosDelCiclo,
+    balanceEstimado,
+    egresosPendientes,
+    variablesEsperadosRestantes
+  } = calculateRealisticProjection({ movimientos, movimientosMesAnterior, resumen, ciclo });
   const { dayCurrent, daysTotal } = getCycleProgress(ciclo);
   const diasRestantes = Math.max(daysTotal - dayCurrent, 0);
-  const colchonMinimo = Math.max(ingresos * 0.1, egresosPendientes);
-  const ahorroSugerido = balanceProyectado - colchonMinimo;
+  const colchonMinimo = Math.max(ingresosDelCiclo * 0.1, egresosPendientes, variablesEsperadosRestantes);
+  const ahorroSugerido = balanceEstimado - colchonMinimo;
   const tieneMargen = ahorroSugerido > 0;
   const estado = tieneMargen ? 'Ahorro posible' : 'Sin margen sugerido';
   const tone = tieneMargen ? 'positive' : 'muted';
   const recommendation = !tieneMargen
-    ? 'No conviene separar ahorro todavia. Primero confirma pendientes y revisa gastos variables.'
-    : diasRestantes < 7
-      ? 'Quedan pocos dias del ciclo: es buen momento para separar ahorro o comprar USD si ya cubriste pendientes.'
-      : `Podrias separar hasta ${formatMoney(ahorroSugerido)} sin dejar el ciclo demasiado justo.`;
+    ? 'No conviene separar ahorro todavia. Primero confirma pendientes y controla variables.'
+    : diasRestantes <= 7
+      ? 'Buen momento para separar ahorro o comprar USD si los pendientes estan cubiertos.'
+      : `Podrias separar hasta ${formatMoney(ahorroSugerido)}, manteniendo colchon para el resto del ciclo.`;
 
   return (
-    <article className="card decision-card decision-comparison-card">
+    <article className="card decision-card decision-comparison-card decision-card-primary">
       <h3>Oportunidad de ahorro</h3>
       <em className={`decision-status ${tone}`}>{estado}</em>
       <div className="decision-comparison-grid">
         <div className="decision-comparison-row">
-          <span>Balance proyectado</span>
-          <strong>{formatMoney(balanceProyectado)}</strong>
-          <small>Margen disponible proyectado</small>
+          <span>Balance estimado realista</span>
+          <strong>{formatMoney(balanceEstimado)}</strong>
+          <small>Segun tipo funcional de gasto</small>
         </div>
         <div className="decision-comparison-row">
           <span>Colchon minimo sugerido</span>
           <strong>{formatMoney(colchonMinimo)}</strong>
-          <small>Mayor entre 10% ingresos y pendientes</small>
+          <small>10% ingresos, pendientes o variables restantes</small>
         </div>
         <div className="decision-comparison-row">
           <span>Monto sugerido para ahorro</span>
           <strong>{formatMoney(Math.max(ahorroSugerido, 0))}</strong>
           <small>{diasRestantes} dias restantes</small>
         </div>
+      </div>
+      <div className="decision-composition-grid">
+        <span>Variables restantes <strong>{formatMoney(variablesEsperadosRestantes)}</strong></span>
+        <span>Egresos pendientes <strong>{formatMoney(egresosPendientes)}</strong></span>
       </div>
       <strong>{recommendation}</strong>
     </article>
@@ -461,6 +768,7 @@ export default function DecisionesPanel({
   serieMensual = [],
   movimientos = [],
   movimientosMesAnterior = [],
+  movimientosHistoricos = [],
   ciclo = '',
   formatMoney
 }) {
@@ -508,18 +816,36 @@ export default function DecisionesPanel({
       </div>
       <ExecutiveSummary resumen={resumen} operativo={operativo} categorias={categorias} />
       <div className="cards-grid decisiones-grid">
-        <ComparisonCard serieMensual={serieMensual} formatMoney={formatMoney} />
-        <RhythmCard movimientos={movimientos} ciclo={ciclo} serieMensual={serieMensual} formatMoney={formatMoney} />
-        <WeeklyDistributionCard movimientos={movimientos} formatMoney={formatMoney} />
-        <ProjectionByPaceCard
+        <ProjectionByFunctionalTypeCard
           movimientos={movimientos}
           movimientosMesAnterior={movimientosMesAnterior}
           resumen={resumen}
           ciclo={ciclo}
           formatMoney={formatMoney}
         />
+        <SavingOpportunityCard
+          resumen={resumen}
+          movimientos={movimientos}
+          movimientosMesAnterior={movimientosMesAnterior}
+          ciclo={ciclo}
+          formatMoney={formatMoney}
+        />
+        <RelevantDeviationsCard
+          movimientos={movimientos}
+          movimientosMesAnterior={movimientosMesAnterior}
+          movimientosHistoricos={movimientosHistoricos}
+          resumen={resumen}
+          formatMoney={formatMoney}
+        />
+        <RhythmCard
+          movimientos={movimientos}
+          movimientosMesAnterior={movimientosMesAnterior}
+          ciclo={ciclo}
+          formatMoney={formatMoney}
+        />
+        <WeeklyDistributionCard movimientos={movimientos} formatMoney={formatMoney} />
+        <ComparisonCard serieMensual={serieMensual} formatMoney={formatMoney} />
         <CriticalCategoriesCard categorias={categorias} formatMoney={formatMoney} />
-        <SavingOpportunityCard resumen={resumen} operativo={operativo} ciclo={ciclo} formatMoney={formatMoney} />
         {cards.map((card) => (
           <DecisionCard key={card.title} {...card} />
         ))}

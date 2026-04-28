@@ -8,6 +8,7 @@ La pantalla usa datos ya existentes del front:
 
 - movimientos consolidados del ciclo actual
 - movimientos consolidados del ciclo anterior
+- movimientos consolidados historicos para referencias habituales
 - serie mensual consolidada de los ultimos ciclos
 - resumen financiero del ciclo
 - resumen operativo del ciclo
@@ -23,6 +24,46 @@ Para egresos confirmados:
 - `ahorro`: estado consolidado `registrado` o `cobrado`
 
 Los movimientos de tipo `ahorro` se tratan como egreso de balance porque salen del disponible del mes.
+
+## Clasificacion funcional de categorias
+
+Decisiones usa un mapping propio, solo para analisis. No modifica movimientos ni categorias reales.
+
+Tipos:
+
+- `fijo`: gasto recurrente con monto estable.
+- `recurrente_variable`: gasto que aparece todos los meses pero puede cambiar de monto.
+- `variable`: gasto cotidiano controlable.
+- `extraordinario`: gasto puntual o no habitual.
+
+Mapping inicial:
+
+- Vivienda: `fijo`
+- Servicios: `fijo`
+- Prestamos: `fijo`
+- Tarjeta: `recurrente_variable`
+- Alimentos: `variable`
+- Transporte: `variable`
+- Mascotas: `variable`
+- Salud: `recurrente_variable`
+- Ocio: `variable`
+- Herramientas: `extraordinario`
+- Otros: `extraordinario`
+- Ahorro: `fijo`
+- Ajuste de cierre: `extraordinario`
+- Arrastre de cierre: `extraordinario`
+
+### Tarjeta
+
+Tarjeta se trata como `recurrente_variable`.
+
+Esto significa:
+
+- aparece todos los meses
+- su monto puede variar
+- no se considera fijo estable
+- no se proyecta linealmente por dia
+- se compara contra el mes anterior o contra el promedio historico si hay mas ciclos disponibles
 
 ## Resumen ejecutivo
 
@@ -86,20 +127,34 @@ Recomendacion:
 
 ## Ritmo del mes
 
-Compara el gasto actual contra un gasto esperado a esta altura del ciclo usando el total de egresos del mes anterior.
+Compara solo consumo controlable contra el patron esperado.
+
+Incluye:
+
+- `variable`
+- `recurrente_variable`
+
+Excluye:
+
+- fijos puros planificados
+- extraordinarios
+
+Los fijos se muestran aparte como pagados y pendientes, pero no entran al ritmo.
 
 Datos:
 
 - dia actual dentro del ciclo
 - dias totales del ciclo
-- egresos confirmados acumulados hasta hoy
-- egresos confirmados totales del ciclo anterior
+- variables confirmados acumulados hasta hoy
+- recurrentes variables confirmados acumulados hasta hoy
+- patron semanal del mes anterior para gastos controlables
 
 Formula:
 
 ```text
-esperado = egresos_mes_anterior * (dia_actual / dias_totales)
-diferencia = egresos_actuales_hasta_hoy - esperado
+consumo_controlable = variables_acumulados + recurrentes_variables_acumulados
+esperado = consumo_controlable_mes_anterior * porcentaje_semanal_esperado
+diferencia = consumo_controlable - esperado
 ```
 
 Estado:
@@ -132,61 +187,61 @@ Recomendacion:
 - semana 1 + semana 2 concentran mas de 60%: separar ahorro al inicio del ciclo
 - caso contrario: gasto distribuido
 
-## Proyeccion por ritmo actual
+## Proyeccion realista por tipo de gasto
 
-La proyeccion usa el patron semanal del mes anterior para evitar distorsiones cuando el gasto se concentra al inicio del mes.
+La proyeccion realista evita tratar todos los egresos como gasto diario lineal.
 
-### Paso 1: distribucion semanal historica
+Formula:
 
-Se agrupan los egresos confirmados del mes anterior por semana:
+```text
+egreso_estimado_cierre =
+  fijos_confirmados
+  + fijos_pendientes
+  + recurrentes_variables_confirmados
+  + recurrentes_variables_pendientes
+  + variables_proyectados
+  + extraordinarios_confirmados
+```
+
+Reglas:
+
+- los fijos no se proyectan linealmente
+- los fijos confirmados se toman una sola vez
+- los fijos pendientes se suman si todavia no estan pagados
+- los recurrentes variables se suman confirmados + pendientes
+- los extraordinarios no se proyectan hacia adelante
+- los extraordinarios confirmados se incluyen como impacto real del ciclo
+- Tarjeta entra como `recurrente_variable`
+
+### Variables proyectados
+
+Para variables se usa patron semanal del mes anterior si existe.
+
+Se agrupan variables confirmadas del mes anterior por semana:
 
 - Semana 1: dias 1 al 7
 - Semana 2: dias 8 al 14
 - Semana 3: dias 15 al 21
 - Semana 4: dia 22 al cierre
 
-Luego se calcula el porcentaje de cada semana sobre el total del mes anterior:
+Luego:
 
 ```text
-porcentaje_semana = egresos_semana / egresos_mes_anterior
+porcentaje_semana = variables_semana / variables_mes_anterior
+porcentaje_acumulado_esperado = suma porcentajes hasta semana actual
+variables_proyectados = variables_confirmados_actuales / porcentaje_acumulado_esperado
 ```
 
-### Paso 2: porcentaje acumulado esperado
-
-Segun la semana actual del ciclo, se suma el porcentaje historico acumulado hasta esa semana:
+Si no hay historial, el fallback por promedio diario se usa solo para variables:
 
 ```text
-porcentaje_acumulado_esperado = suma porcentajes historicos hasta semana actual
-```
-
-Ejemplo:
-
-- si hoy cae en semana 2, se usa semana 1 + semana 2 del mes anterior
-- si hoy cae en semana 4, se usa semana 1 + semana 2 + semana 3 + semana 4
-
-### Paso 3: proyeccion corregida
-
-```text
-proyeccion_total = egresos_actuales / porcentaje_acumulado_esperado
-```
-
-Para evitar valores extremos:
-
-```text
-proyeccion_total = min(proyeccion_total, egresos_actuales * 2)
-```
-
-Si no hay historial del mes anterior, usa fallback por promedio diario:
-
-```text
-promedio_diario = egresos_actuales / dia_actual
-proyeccion_total = promedio_diario * dias_totales
+variables_proyectados = (variables_confirmados / dia_actual) * dias_totales
 ```
 
 ### Balance estimado
 
 ```text
-balance_estimado = ingresos_del_ciclo - proyeccion_total
+balance_estimado_realista = ingresos_del_ciclo - egreso_estimado_cierre
 ```
 
 Estados:
@@ -218,15 +273,22 @@ Usa:
 
 - ingresos del ciclo
 - egresos pendientes
-- balance proyectado
+- balance estimado realista
+- variables esperados restantes
 - dias restantes del ciclo
 
 Calculos:
 
 ```text
-margen_disponible_proyectado = balance_proyectado
-colchon_minimo_sugerido = max(10% de ingresos, egresos_pendientes)
-monto_sugerido_ahorro = balance_proyectado - colchon_minimo_sugerido
+egresos_variables_esperados_restantes = max(variables_proyectados - variables_confirmados, 0)
+
+colchon_minimo_sugerido = max(
+  10% de ingresos,
+  egresos_pendientes,
+  egresos_variables_esperados_restantes
+)
+
+monto_sugerido_ahorro = balance_estimado_realista - colchon_minimo_sugerido
 ```
 
 Reglas:
@@ -234,4 +296,47 @@ Reglas:
 - monto sugerido menor o igual a 0: `Sin margen sugerido`
 - monto sugerido mayor a 0: `Ahorro posible`
 
-Si quedan menos de 7 dias y hay margen, se sugiere separar ahorro o comprar USD si los pendientes ya estan cubiertos.
+Recomendaciones:
+
+- sin margen: confirmar pendientes y controlar variables antes de ahorrar
+- con margen y faltan mas de 7 dias: se puede separar hasta el monto sugerido manteniendo colchon
+- con margen y faltan 7 dias o menos: buen momento para separar ahorro o comprar USD si los pendientes estan cubiertos
+
+## Desvios relevantes
+
+Detecta hasta 3 desvios utiles para decidir.
+
+Reglas:
+
+1. Categorias `variable` cuyo gasto actual supera en mas de 20% la referencia anterior.
+2. Categorias `recurrente_variable` cuyo gasto actual supera en mas de 15% la referencia anterior.
+3. Gastos `extraordinario` confirmados mayores al 5% de ingresos.
+
+### Tarjeta en desvios
+
+Tarjeta tiene regla especifica:
+
+- se trata como `recurrente_variable`
+- se compara contra Tarjeta del mes anterior
+- si hay mas ciclos disponibles, se compara contra promedio habitual
+- si supera la referencia en mas de 20%, se muestra el insight:
+
+```text
+La tarjeta viene por encima de tu referencia habitual.
+```
+
+### Datos mostrados
+
+Por cada desvio:
+
+- categoria
+- monto actual
+- referencia
+- variacion
+- recomendacion corta
+
+Si no hay desvios:
+
+```text
+Sin desvios relevantes. El comportamiento esta dentro de parametros razonables.
+```

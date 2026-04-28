@@ -1254,6 +1254,12 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
 .decisiones-grid .decision-card {
   min-height: 0;
 }
+.decisiones-grid .decision-card-primary {
+  grid-column: span 2;
+}
+.decisiones-grid .decision-card-featured {
+  grid-column: span 2;
+}
 .decision-card {
   display: grid;
   align-content: start;
@@ -1286,6 +1292,18 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
 .decision-comparison-card {
   grid-column: auto;
 }
+.decision-card-primary {
+  border-left-width: 5px;
+  box-shadow: 0 18px 38px rgba(15, 23, 42, 0.08);
+}
+.decision-card-featured {
+  border-left-color: #f59e0b;
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.06);
+}
+.decision-card-primary h3,
+.decision-card-featured h3 {
+  font-size: 17px;
+}
 .decision-comparison-card h3 {
   margin-bottom: 0;
 }
@@ -1298,6 +1316,24 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
   font-size: 11px;
   font-style: normal;
   font-weight: 800;
+}
+.decision-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.decision-confidence.alta {
+  background: #dcfce7;
+  color: #15803d;
+}
+.decision-confidence.media {
+  background: #fef3c7;
+  color: #b45309;
+}
+.decision-confidence.baja {
+  background: var(--surface-soft);
+  color: var(--text-muted);
 }
 .decision-status.positive {
   background: #dcfce7;
@@ -1415,6 +1451,59 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
   min-width: 4px;
   border-radius: inherit;
   background: linear-gradient(90deg, #3b82f6, #14b8a6);
+}
+.decision-composition-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+.decision-composition-grid span {
+  display: grid;
+  gap: 2px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-soft);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+.decision-composition-grid strong {
+  color: var(--dashboard-card-value);
+  font-size: 14px;
+}
+.decision-deviation-row {
+  display: grid;
+  gap: 5px;
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-soft);
+}
+.decision-deviation-row div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.decision-deviation-row span {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 800;
+}
+.decision-deviation-row em {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+}
+.decision-deviation-row strong {
+  color: var(--dashboard-card-value);
+  font-size: 16px;
+}
+.decision-deviation-row p {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.35;
 }
 .dashboard-cards-block .card-balance {
   background: var(--dashboard-balance-bg);
@@ -3611,7 +3700,9 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
 }
 :root[data-theme='dark'] .decision-executive-summary,
 :root[data-theme='dark'] .decision-comparison-row,
-:root[data-theme='dark'] .decision-weekly-track {
+:root[data-theme='dark'] .decision-weekly-track,
+:root[data-theme='dark'] .decision-composition-grid span,
+:root[data-theme='dark'] .decision-deviation-row {
   background: var(--surface-soft);
   border-color: var(--border);
 }
@@ -3628,6 +3719,18 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   color: #fecaca;
 }
 :root[data-theme='dark'] .decision-status.muted {
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--text-muted);
+}
+:root[data-theme='dark'] .decision-confidence.alta {
+  background: rgba(34, 197, 94, 0.16);
+  color: #bbf7d0;
+}
+:root[data-theme='dark'] .decision-confidence.media {
+  background: rgba(245, 158, 11, 0.16);
+  color: #fde68a;
+}
+:root[data-theme='dark'] .decision-confidence.baja {
   background: rgba(148, 163, 184, 0.12);
   color: var(--text-muted);
 }
@@ -4046,8 +4149,13 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   }
   .decisiones-grid,
   .decision-comparison-grid,
-  .decision-executive-summary {
+  .decision-executive-summary,
+  .decision-composition-grid {
     grid-template-columns: 1fr;
+  }
+  .decisiones-grid .decision-card-primary,
+  .decisiones-grid .decision-card-featured {
+    grid-column: auto;
   }
   .decision-card {
     padding: 12px;
