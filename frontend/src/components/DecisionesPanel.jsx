@@ -9,6 +9,25 @@ function DecisionCard({ title, metric, text, recommendation, tone = 'balance' })
   );
 }
 
+const CATEGORY_KIND = {
+  Vivienda: 'fijo',
+  Servicios: 'fijo',
+  Prestamos: 'fijo',
+  Tarjeta: 'recurrente_variable',
+  Alimentos: 'variable',
+  Transporte: 'variable',
+  Mascotas: 'variable',
+  Salud: 'recurrente_variable',
+  Ocio: 'variable',
+  Herramientas: 'extraordinario',
+  Otros: 'extraordinario',
+  Ahorro: 'fijo'
+};
+
+function getCategoryKind(category) {
+  return CATEGORY_KIND[category] || 'variable';
+}
+
 function getVariation(actual, anterior) {
   if (!anterior) return null;
   return ((actual - anterior) / anterior) * 100;
@@ -340,6 +359,7 @@ function CriticalCategoriesCard({ categorias = [], formatMoney }) {
                   <strong>{formatMoney(item.total)}</strong>
                   <small>{percent}%</small>
                 </div>
+                <em className="decision-category-kind">{getCategoryKind(item.categoria)}</em>
                 <div className="decision-weekly-track" aria-hidden="true">
                   <div className="decision-weekly-fill" style={{ width: `${percent}%` }} />
                 </div>

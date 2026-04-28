@@ -1392,6 +1392,17 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
   font-size: 12px;
   font-weight: 800;
 }
+.decision-category-kind {
+  justify-self: start;
+  padding: 3px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-soft);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 700;
+}
 .decision-weekly-track {
   height: 7px;
   overflow: hidden;
