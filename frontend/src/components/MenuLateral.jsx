@@ -38,6 +38,14 @@ const icons = {
       <path d="M16 14h.01" />
     </>
   ),
+  tarjeta_credito: (
+    <>
+      <rect x="4" y="6" width="16" height="12" rx="2" />
+      <path d="M4 10h16" />
+      <path d="M8 14h3" />
+      <path d="M14 14h2" />
+    </>
+  ),
   decisiones: (
     <>
       <path d="M6 5h12v14H6z" />
@@ -76,6 +84,7 @@ const items = [
   { key: 'categorias', label: 'Categorias', icon: icons.configuracion },
   { key: 'cotizacion', label: 'Cotizacion dolar', icon: icons.cotizacion },
   { key: 'ahorros', label: 'Ahorros', icon: icons.ahorros },
+  { key: 'tarjeta_credito', label: 'Tarjeta de credito', icon: icons.tarjeta_credito },
   { key: 'decisiones', label: 'Decisiones', icon: icons.decisiones },
   { key: 'reportes', label: 'Reportes', icon: icons.reportes },
   { key: 'mi_hogar', label: 'Mi hogar', icon: icons.configuracion },
@@ -85,7 +94,7 @@ const items = [
 const menuGroups = [
   { title: 'GENERAL', keys: ['dashboard', 'movimientos'] },
   { title: 'GESTION', keys: ['gastos_fijos', 'categorias'] },
-  { title: 'FINANZAS', keys: ['cotizacion', 'ahorros', 'decisiones', 'reportes'] },
+  { title: 'FINANZAS', keys: ['cotizacion', 'ahorros', 'tarjeta_credito', 'decisiones', 'reportes'] },
   { title: 'ADMIN', keys: ['mi_hogar', 'superadmin'] }
 ];
 

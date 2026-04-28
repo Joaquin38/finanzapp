@@ -684,9 +684,65 @@ async function asegurarPasswordResetTokens() {
   `);
 }
 
+async function asegurarTarjetasCredito() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS tarjetas_credito (
+      id BIGSERIAL PRIMARY KEY,
+      hogar_id BIGINT NOT NULL REFERENCES hogares(id) ON DELETE CASCADE,
+      nombre VARCHAR(120) NOT NULL,
+      dia_cierre_default SMALLINT NOT NULL CHECK (dia_cierre_default BETWEEN 1 AND 31),
+      dia_vencimiento_default SMALLINT CHECK (dia_vencimiento_default BETWEEN 1 AND 31),
+      activa BOOLEAN NOT NULL DEFAULT TRUE,
+      creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      actualizado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (hogar_id, nombre)
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS cierres_tarjeta (
+      id BIGSERIAL PRIMARY KEY,
+      tarjeta_id BIGINT NOT NULL REFERENCES tarjetas_credito(id) ON DELETE CASCADE,
+      ciclo VARCHAR(7) NOT NULL,
+      fecha_cierre DATE NOT NULL,
+      fecha_vencimiento DATE,
+      estado VARCHAR(20) NOT NULL DEFAULT 'abierto'
+        CHECK (estado IN ('abierto', 'cerrado')),
+      creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      actualizado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (tarjeta_id, ciclo)
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS consumos_tarjeta (
+      id BIGSERIAL PRIMARY KEY,
+      tarjeta_id BIGINT NOT NULL REFERENCES tarjetas_credito(id) ON DELETE CASCADE,
+      cierre_id BIGINT REFERENCES cierres_tarjeta(id) ON DELETE SET NULL,
+      ciclo_asignado VARCHAR(7),
+      fecha_compra DATE NOT NULL,
+      descripcion VARCHAR(180) NOT NULL,
+      categoria VARCHAR(80),
+      moneda VARCHAR(3) NOT NULL CHECK (moneda IN ('ARS', 'USD')),
+      monto_total NUMERIC(14,2) NOT NULL CHECK (monto_total > 0),
+      cantidad_cuotas SMALLINT NOT NULL DEFAULT 1 CHECK (cantidad_cuotas >= 1),
+      monto_cuota NUMERIC(14,2) NOT NULL CHECK (monto_cuota > 0),
+      cuota_inicial SMALLINT NOT NULL DEFAULT 1 CHECK (cuota_inicial >= 1),
+      titular VARCHAR(120),
+      observaciones TEXT,
+      creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      actualizado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CHECK (cierre_id IS NOT NULL OR ciclo_asignado IS NOT NULL)
+    )
+  `);
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_tarjetas_credito_hogar ON tarjetas_credito (hogar_id, activa)');
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_cierres_tarjeta_tarjeta_ciclo ON cierres_tarjeta (tarjeta_id, ciclo)');
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_consumos_tarjeta_cierre ON consumos_tarjeta (cierre_id)');
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_consumos_tarjeta_tarjeta_fecha ON consumos_tarjeta (tarjeta_id, fecha_compra)');
+}
+
 async function asegurarDatosColon260() {
   await asegurarModeloMultiHogar();
   await asegurarPasswordResetTokens();
+  await asegurarTarjetasCredito();
 
   await pool.query(
     `
@@ -798,6 +854,26 @@ function siguienteCiclo(ciclo) {
   const [anioTexto, mesTexto] = String(ciclo).split('-');
   const fecha = new Date(Number(anioTexto), Number(mesTexto), 1);
   return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function cicloTarjetaPorFechaCompra(fechaCompra, diaCierre) {
+  const fecha = new Date(`${fechaCompra}T00:00:00`);
+  const cicloBase = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
+  return fecha.getDate() <= Number(diaCierre) ? cicloBase : siguienteCiclo(cicloBase);
+}
+
+function cicloTarjetaPorFechaCierre(fechaCompra, cicloActual, fechaCierreActual) {
+  if (!cicloEsValido(cicloActual) || !parseFecha(fechaCompra) || !parseFecha(fechaCierreActual)) return null;
+  return fechaCompra <= fechaCierreActual ? cicloActual : siguienteCiclo(cicloActual);
+}
+
+function fechaPorDiaDeCiclo(ciclo, dia) {
+  if (!cicloEsValido(ciclo) || !dia) return null;
+  const [anioTexto, mesTexto] = String(ciclo).split('-');
+  const anio = Number(anioTexto);
+  const mesIndex = Number(mesTexto) - 1;
+  const ultimoDia = new Date(anio, mesIndex + 1, 0).getDate();
+  return `${ciclo}-${String(Math.min(Number(dia), ultimoDia)).padStart(2, '0')}`;
 }
 
 async function asegurarEstadosGastosFijosPorCiclo() {
@@ -2007,6 +2083,380 @@ async function sincronizarCotizacionesDesdeApiPublica() {
 
 app.use(autenticar);
 app.use(validarAccesoHogar);
+
+app.get('/tarjetas-credito', async (req, res) => {
+  const hogarId = Number(req.query.hogar_id);
+  const ciclo = String(req.query.ciclo || '');
+
+  if (!hogarId) return res.status(400).json({ error: 'hogar_id es obligatorio' });
+
+  try {
+    await asegurarTarjetasCredito();
+
+    await pool.query(
+      `
+      INSERT INTO tarjetas_credito (hogar_id, nombre, dia_cierre_default)
+      VALUES ($1, 'Tarjeta principal', 25)
+      ON CONFLICT (hogar_id, nombre) DO NOTHING
+      `,
+      [hogarId]
+    );
+
+    const { rows: tarjetas } = await pool.query(
+      `
+      SELECT id, hogar_id, nombre, dia_cierre_default, dia_vencimiento_default, activa
+      FROM tarjetas_credito
+      WHERE hogar_id = $1 AND activa = true
+      ORDER BY id ASC
+      `,
+      [hogarId]
+    );
+    const cierreActualParams = [];
+    let cierreActual = null;
+
+    if (cicloEsValido(ciclo) && tarjetas[0]) {
+      const tarjetaActual = tarjetas[0];
+      const fechaCierreDefault = fechaPorDiaDeCiclo(ciclo, tarjetaActual.dia_cierre_default);
+      const fechaVencimientoDefault = tarjetaActual.dia_vencimiento_default
+        ? fechaPorDiaDeCiclo(ciclo, tarjetaActual.dia_vencimiento_default)
+        : null;
+      const { rows: cierreRows } = await pool.query(
+        `
+        INSERT INTO cierres_tarjeta (tarjeta_id, ciclo, fecha_cierre, fecha_vencimiento)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (tarjeta_id, ciclo) DO NOTHING
+        RETURNING id, tarjeta_id, ciclo, fecha_cierre, fecha_vencimiento, estado
+        `,
+        [tarjetaActual.id, ciclo, fechaCierreDefault, fechaVencimientoDefault]
+      );
+      if (cierreRows.length > 0) {
+        cierreActual = cierreRows[0];
+      } else {
+        const { rows } = await pool.query(
+          `
+          SELECT id, tarjeta_id, ciclo, fecha_cierre, fecha_vencimiento, estado
+          FROM cierres_tarjeta
+          WHERE tarjeta_id = $1 AND ciclo = $2
+          LIMIT 1
+          `,
+          [tarjetaActual.id, ciclo]
+        );
+        cierreActual = rows[0] || null;
+      }
+      cierreActualParams.push(cierreActual);
+    }
+
+    const cicloSiguiente = cicloEsValido(ciclo) ? siguienteCiclo(ciclo) : null;
+    const { rows: consumos } = cicloEsValido(ciclo)
+      ? await pool.query(
+          `
+          SELECT ct.id, ct.tarjeta_id, ct.cierre_id, ct.ciclo_asignado, ct.fecha_compra,
+                 ct.descripcion, ct.categoria, ct.moneda, ct.monto_total,
+                 ct.cantidad_cuotas, ct.monto_cuota, ct.cuota_inicial, ct.titular, ct.observaciones,
+                 crt.fecha_cierre,
+                 CASE WHEN ct.ciclo_asignado = $2 THEN 'actual' ELSE 'siguiente' END AS resumen_relativo
+          FROM consumos_tarjeta ct
+          JOIN tarjetas_credito tc ON tc.id = ct.tarjeta_id
+          LEFT JOIN cierres_tarjeta crt ON crt.id = ct.cierre_id
+          WHERE tc.hogar_id = $1
+            AND COALESCE(ct.ciclo_asignado, '') IN ($2, $3)
+          ORDER BY ct.fecha_compra DESC, ct.id DESC
+          `,
+          [hogarId, ciclo, cicloSiguiente]
+        )
+      : { rows: [] };
+
+    const resumen = consumos.filter((item) => item.ciclo_asignado === ciclo).reduce(
+      (acc, item) => {
+        if (item.moneda === 'USD') acc.total_usd += Number(item.monto_total || 0);
+        else acc.total_ars += Number(item.monto_total || 0);
+        acc.consumos += 1;
+        if (Number(item.cantidad_cuotas || 1) > 1) {
+          acc.cuotas_futuras += Math.max(Number(item.cantidad_cuotas || 1) - Number(item.cuota_inicial || 1), 0);
+        }
+        return acc;
+      },
+      { total_ars: 0, total_usd: 0, consumos: 0, cuotas_futuras: 0 }
+    );
+
+    return res.status(200).json({ tarjetas, cierre: cierreActualParams[0] || null, consumos, resumen });
+  } catch (error) {
+    return res.status(500).json({ error: 'Error consultando tarjetas', detalle: error.message });
+  }
+});
+
+app.post('/tarjetas-credito/consumos', async (req, res) => {
+  const {
+    tarjeta_id,
+    ciclo_actual,
+    fecha_cierre,
+    fecha_vencimiento,
+    fecha_compra,
+    descripcion,
+    categoria,
+    moneda,
+    monto_total,
+    cantidad_cuotas = 1,
+    monto_cuota,
+    titular,
+    observaciones
+  } = req.body || {};
+  const tarjetaId = Number(tarjeta_id);
+  const cuotas = Number(cantidad_cuotas || 1);
+  const montoTotal = Number(monto_total || 0);
+  const montoCuota = Number(monto_cuota || 0);
+
+  if (!tarjetaId || !fecha_compra || !descripcion || !moneda || !cuotas) {
+    return res.status(400).json({ error: 'Faltan campos obligatorios' });
+  }
+  if (!parseFecha(fecha_compra)) return res.status(400).json({ error: 'fecha_compra debe tener formato YYYY-MM-DD' });
+  if (!['ARS', 'USD'].includes(moneda)) return res.status(400).json({ error: 'moneda debe ser ARS o USD' });
+  if (!Number.isInteger(cuotas) || cuotas < 1) return res.status(400).json({ error: 'cantidad_cuotas debe ser mayor o igual a 1' });
+  if (!esNumeroPositivo(montoTotal) && !esNumeroPositivo(montoCuota)) {
+    return res.status(400).json({ error: 'Informá monto total o monto de cuota' });
+  }
+
+  try {
+    await asegurarTarjetasCredito();
+
+    const { rows: tarjetaRows } = await pool.query(
+      `
+      SELECT id, hogar_id, dia_cierre_default, dia_vencimiento_default
+      FROM tarjetas_credito
+      WHERE id = $1 AND activa = true
+      `,
+      [tarjetaId]
+    );
+    if (tarjetaRows.length === 0) return res.status(404).json({ error: 'Tarjeta no encontrada' });
+
+    const tarjeta = tarjetaRows[0];
+    if (!puedeOperarHogar(req.usuario, Number(tarjeta.hogar_id))) {
+      return res.status(403).json({ error: 'No tenes permisos para operar esta tarjeta' });
+    }
+
+    const cicloBase = cicloEsValido(String(ciclo_actual || '')) ? String(ciclo_actual) : cicloTarjetaPorFechaCompra(fecha_compra, tarjeta.dia_cierre_default);
+    const fechaCierreActual = parseFecha(fecha_cierre) || fechaPorDiaDeCiclo(cicloBase, tarjeta.dia_cierre_default);
+    const cicloAsignado = cicloTarjetaPorFechaCierre(fecha_compra, cicloBase, fechaCierreActual) || cicloBase;
+    const fechaCierre = cicloAsignado === cicloBase ? fechaCierreActual : fechaPorDiaDeCiclo(cicloAsignado, tarjeta.dia_cierre_default);
+    const fechaVencimiento = cicloAsignado === cicloBase && parseFecha(fecha_vencimiento)
+      ? parseFecha(fecha_vencimiento)
+      : tarjeta.dia_vencimiento_default
+        ? fechaPorDiaDeCiclo(cicloAsignado, tarjeta.dia_vencimiento_default)
+        : null;
+    const totalFinal = esNumeroPositivo(montoTotal) ? montoTotal : Number((montoCuota * cuotas).toFixed(2));
+    const cuotaFinal = esNumeroPositivo(montoCuota) ? montoCuota : Number((totalFinal / cuotas).toFixed(2));
+
+    const { rows: cierreRows } = await pool.query(
+      `
+      INSERT INTO cierres_tarjeta (tarjeta_id, ciclo, fecha_cierre, fecha_vencimiento)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (tarjeta_id, ciclo)
+      DO UPDATE SET fecha_cierre = EXCLUDED.fecha_cierre,
+                    fecha_vencimiento = EXCLUDED.fecha_vencimiento,
+                    actualizado_en = NOW()
+      RETURNING id
+      `,
+      [tarjetaId, cicloAsignado, fechaCierre, fechaVencimiento]
+    );
+
+    const { rows } = await pool.query(
+      `
+      INSERT INTO consumos_tarjeta (
+        tarjeta_id, cierre_id, ciclo_asignado, fecha_compra, descripcion, categoria,
+        moneda, monto_total, cantidad_cuotas, monto_cuota, cuota_inicial, titular, observaciones
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 1, $11, $12)
+      RETURNING *
+      `,
+      [
+        tarjetaId,
+        cierreRows[0].id,
+        cicloAsignado,
+        fecha_compra,
+        String(descripcion).trim(),
+        categoria ? String(categoria).trim() : null,
+        moneda,
+        totalFinal,
+        cuotas,
+        cuotaFinal,
+        titular ? String(titular).trim() : null,
+        observaciones ? String(observaciones).trim() : null
+      ]
+    );
+
+    return res.status(201).json({ item: rows[0] });
+  } catch (error) {
+    return res.status(500).json({ error: 'Error creando consumo de tarjeta', detalle: error.message });
+  }
+});
+
+app.patch('/tarjetas-credito/consumos/:id', async (req, res) => {
+  const consumoId = Number(req.params.id);
+  const {
+    tarjeta_id,
+    ciclo_actual,
+    fecha_cierre,
+    fecha_vencimiento,
+    fecha_compra,
+    descripcion,
+    categoria,
+    moneda,
+    monto_total,
+    cantidad_cuotas = 1,
+    monto_cuota,
+    titular,
+    observaciones
+  } = req.body || {};
+  const tarjetaId = Number(tarjeta_id);
+  const cuotas = Number(cantidad_cuotas || 1);
+  const montoTotal = Number(monto_total || 0);
+  const montoCuota = Number(monto_cuota || 0);
+
+  if (!consumoId) return res.status(400).json({ error: 'id invalido' });
+  if (!tarjetaId || !fecha_compra || !descripcion || !moneda || !cuotas) return res.status(400).json({ error: 'Faltan campos obligatorios' });
+  if (!parseFecha(fecha_compra)) return res.status(400).json({ error: 'fecha_compra debe tener formato YYYY-MM-DD' });
+  if (!['ARS', 'USD'].includes(moneda)) return res.status(400).json({ error: 'moneda debe ser ARS o USD' });
+  if (!Number.isInteger(cuotas) || cuotas < 1) return res.status(400).json({ error: 'cantidad_cuotas debe ser mayor o igual a 1' });
+  if (!esNumeroPositivo(montoTotal) && !esNumeroPositivo(montoCuota)) return res.status(400).json({ error: 'Informa monto total o monto de cuota' });
+
+  try {
+    await asegurarTarjetasCredito();
+    const { rows: tarjetaRows } = await pool.query(
+      'SELECT id, hogar_id, dia_cierre_default, dia_vencimiento_default FROM tarjetas_credito WHERE id = $1 AND activa = true',
+      [tarjetaId]
+    );
+    if (tarjetaRows.length === 0) return res.status(404).json({ error: 'Tarjeta no encontrada' });
+    const tarjeta = tarjetaRows[0];
+    if (!puedeOperarHogar(req.usuario, Number(tarjeta.hogar_id))) return res.status(403).json({ error: 'No tenes permisos para operar esta tarjeta' });
+
+    const cicloBase = cicloEsValido(String(ciclo_actual || '')) ? String(ciclo_actual) : cicloTarjetaPorFechaCompra(fecha_compra, tarjeta.dia_cierre_default);
+    const fechaCierreActual = parseFecha(fecha_cierre) || fechaPorDiaDeCiclo(cicloBase, tarjeta.dia_cierre_default);
+    const cicloAsignado = cicloTarjetaPorFechaCierre(fecha_compra, cicloBase, fechaCierreActual) || cicloBase;
+    const fechaCierre = cicloAsignado === cicloBase ? fechaCierreActual : fechaPorDiaDeCiclo(cicloAsignado, tarjeta.dia_cierre_default);
+    const fechaVencimiento = cicloAsignado === cicloBase && parseFecha(fecha_vencimiento)
+      ? parseFecha(fecha_vencimiento)
+      : tarjeta.dia_vencimiento_default
+        ? fechaPorDiaDeCiclo(cicloAsignado, tarjeta.dia_vencimiento_default)
+        : null;
+    const totalFinal = esNumeroPositivo(montoTotal) ? montoTotal : Number((montoCuota * cuotas).toFixed(2));
+    const cuotaFinal = esNumeroPositivo(montoCuota) ? montoCuota : Number((totalFinal / cuotas).toFixed(2));
+
+    const { rows: cierreRows } = await pool.query(
+      `
+      INSERT INTO cierres_tarjeta (tarjeta_id, ciclo, fecha_cierre, fecha_vencimiento)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (tarjeta_id, ciclo)
+      DO UPDATE SET fecha_cierre = EXCLUDED.fecha_cierre,
+                    fecha_vencimiento = EXCLUDED.fecha_vencimiento,
+                    actualizado_en = NOW()
+      RETURNING id
+      `,
+      [tarjetaId, cicloAsignado, fechaCierre, fechaVencimiento]
+    );
+
+    const { rows } = await pool.query(
+      `
+      UPDATE consumos_tarjeta
+      SET tarjeta_id = $1,
+          cierre_id = $2,
+          ciclo_asignado = $3,
+          fecha_compra = $4,
+          descripcion = $5,
+          categoria = $6,
+          moneda = $7,
+          monto_total = $8,
+          cantidad_cuotas = $9,
+          monto_cuota = $10,
+          titular = $11,
+          observaciones = $12,
+          actualizado_en = NOW()
+      WHERE id = $13
+      RETURNING *
+      `,
+      [
+        tarjetaId,
+        cierreRows[0].id,
+        cicloAsignado,
+        fecha_compra,
+        String(descripcion).trim(),
+        categoria ? String(categoria).trim() : null,
+        moneda,
+        totalFinal,
+        cuotas,
+        cuotaFinal,
+        titular ? String(titular).trim() : null,
+        observaciones ? String(observaciones).trim() : null,
+        consumoId
+      ]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'Consumo no encontrado' });
+    return res.status(200).json({ item: rows[0] });
+  } catch (error) {
+    return res.status(500).json({ error: 'Error actualizando consumo de tarjeta', detalle: error.message });
+  }
+});
+
+app.delete('/tarjetas-credito/consumos/:id', async (req, res) => {
+  const consumoId = Number(req.params.id);
+  if (!consumoId) return res.status(400).json({ error: 'id invalido' });
+
+  try {
+    await asegurarTarjetasCredito();
+    const { rows: permisoRows } = await pool.query(
+      `
+      SELECT tc.hogar_id
+      FROM consumos_tarjeta ct
+      JOIN tarjetas_credito tc ON tc.id = ct.tarjeta_id
+      WHERE ct.id = $1
+      `,
+      [consumoId]
+    );
+    if (permisoRows.length === 0) return res.status(404).json({ error: 'Consumo no encontrado' });
+    if (!puedeOperarHogar(req.usuario, Number(permisoRows[0].hogar_id))) return res.status(403).json({ error: 'No tenes permisos para operar este consumo' });
+
+    await pool.query('DELETE FROM consumos_tarjeta WHERE id = $1', [consumoId]);
+    return res.status(200).json({ ok: true });
+  } catch (error) {
+    return res.status(500).json({ error: 'Error eliminando consumo de tarjeta', detalle: error.message });
+  }
+});
+
+app.patch('/tarjetas-credito/cierres/:id', async (req, res) => {
+  const cierreId = Number(req.params.id);
+  const { estado } = req.body || {};
+
+  if (!cierreId) return res.status(400).json({ error: 'id invalido' });
+  if (!['abierto', 'cerrado'].includes(estado)) return res.status(400).json({ error: 'estado invalido' });
+
+  try {
+    await asegurarTarjetasCredito();
+    const { rows: permisoRows } = await pool.query(
+      `
+      SELECT tc.hogar_id
+      FROM cierres_tarjeta cr
+      JOIN tarjetas_credito tc ON tc.id = cr.tarjeta_id
+      WHERE cr.id = $1
+      `,
+      [cierreId]
+    );
+    if (permisoRows.length === 0) return res.status(404).json({ error: 'Resumen no encontrado' });
+    if (!puedeOperarHogar(req.usuario, Number(permisoRows[0].hogar_id))) return res.status(403).json({ error: 'No tenes permisos para operar este resumen' });
+
+    const { rows } = await pool.query(
+      `
+      UPDATE cierres_tarjeta
+      SET estado = $1,
+          actualizado_en = NOW()
+      WHERE id = $2
+      RETURNING id, tarjeta_id, ciclo, fecha_cierre, fecha_vencimiento, estado
+      `,
+      [estado, cierreId]
+    );
+    return res.status(200).json({ item: rows[0] });
+  } catch (error) {
+    return res.status(500).json({ error: 'Error actualizando resumen de tarjeta', detalle: error.message });
+  }
+});
 
 app.get('/movimientos', async (req, res) => {
   const hogarId = Number(req.query.hogar_id);

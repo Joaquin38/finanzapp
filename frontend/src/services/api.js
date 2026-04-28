@@ -614,6 +614,95 @@ export async function getGastosFijos(hogarId = 1, ciclo) {
   }
 }
 
+export async function getTarjetasCredito(hogarId = 1, ciclo) {
+  try {
+    const searchParams = new URLSearchParams({ hogar_id: String(hogarId) });
+    if (ciclo) searchParams.set('ciclo', ciclo);
+    const response = await fetch(`${API_URL}/tarjetas-credito?${searchParams.toString()}`, {
+      headers: getAuthHeaders()
+    });
+    if (!response.ok) throw new Error('No se pudieron obtener tarjetas');
+    return response.json();
+  } catch (error) {
+    throw new Error(normalizeFetchError(error));
+  }
+}
+
+export async function createConsumoTarjeta(payload) {
+  try {
+    const response = await fetch(`${API_URL}/tarjetas-credito/consumos`, {
+      method: 'POST',
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.error || 'No se pudo crear el consumo');
+    }
+
+    return response.json();
+  } catch (error) {
+    throw new Error(normalizeFetchError(error));
+  }
+}
+
+export async function updateConsumoTarjeta(consumoId, payload) {
+  try {
+    const response = await fetch(`${API_URL}/tarjetas-credito/consumos/${consumoId}`, {
+      method: 'PATCH',
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.error || 'No se pudo actualizar el consumo');
+    }
+
+    return response.json();
+  } catch (error) {
+    throw new Error(normalizeFetchError(error));
+  }
+}
+
+export async function deleteConsumoTarjeta(consumoId) {
+  try {
+    const response = await fetch(`${API_URL}/tarjetas-credito/consumos/${consumoId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders()
+    });
+
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.error || 'No se pudo eliminar el consumo');
+    }
+
+    return response.json();
+  } catch (error) {
+    throw new Error(normalizeFetchError(error));
+  }
+}
+
+export async function updateCierreTarjeta(cierreId, payload) {
+  try {
+    const response = await fetch(`${API_URL}/tarjetas-credito/cierres/${cierreId}`, {
+      method: 'PATCH',
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.error || 'No se pudo actualizar el resumen');
+    }
+
+    return response.json();
+  } catch (error) {
+    throw new Error(normalizeFetchError(error));
+  }
+}
+
 export async function updateGastoFijo(id, payload) {
   try {
     const response = await fetch(`${API_URL}/gastos-fijos/${id}`, {

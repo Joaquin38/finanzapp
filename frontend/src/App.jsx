@@ -36,6 +36,7 @@ import CotizacionesPanel from './components/CotizacionesPanel.jsx';
 import GastosFijosPanel from './components/GastosFijosPanel.jsx';
 import ReportesPanel from './components/ReportesPanel.jsx';
 import AhorrosPanel from './components/AhorrosPanel.jsx';
+import TarjetaCreditoPanel from './components/TarjetaCreditoPanel.jsx';
 import DecisionesPanel from './components/DecisionesPanel.jsx';
 import LoginPanel from './components/LoginPanel.jsx';
 import PasswordSetupForm from './components/PasswordSetupForm.jsx';
@@ -852,6 +853,7 @@ export default function App() {
     categorias: 'Categorias',
     cotizacion: 'Cotizacion dolar',
     ahorros: 'Ahorros',
+    tarjeta_credito: 'Tarjeta de credito',
     decisiones: 'Decisiones',
     reportes: 'Reportes',
     mi_hogar: 'Mi hogar',
@@ -1421,6 +1423,15 @@ export default function App() {
               ciclo={cicloSeleccionado}
               loading={loading}
               onCrearAhorro={handleCrearAhorro}
+            />
+          )}
+
+          {seccionActiva === 'tarjeta_credito' && (
+            <TarjetaCreditoPanel
+              hogarId={hogarId}
+              ciclo={cicloSeleccionado}
+              categorias={categorias}
+              formatMoney={formatMoneyText}
             />
           )}
 
