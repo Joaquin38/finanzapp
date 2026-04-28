@@ -3,7 +3,7 @@ function DecisionCard({ title, metric, text, recommendation, tone = 'balance' })
     <article className={`card decision-card card-${tone}`}>
       <DecisionCardHeader
         title={title}
-        help={`Mide ${title.toLowerCase()}. Usa datos consolidados del ciclo para orientar decisiones rapidas.`}
+        help={`Mide ${title.toLowerCase()} con datos consolidados del ciclo. Ayuda a interpretar el estado operativo antes de cerrar o tomar decisiones.`}
       />
       <p>{metric}</p>
       <small>{text}</small>
@@ -140,7 +140,7 @@ function ComparisonCard({ serieMensual, movimientos = [], movimientosMesAnterior
       <DecisionCardHeader
         title="Comparacion vs mes anterior"
         showDetail
-        help="Compara ingresos, egresos y balance contra el ciclo anterior. Tambien muestra las categorias con mayor impacto real por diferencia de monto."
+        help="Muestra que cambio respecto al mes anterior y que categorias movieron mas el resultado. Sirve para decidir donde ajustar o validar si el mes viene mejor o peor."
       />
       <div className="decision-comparison-block">
         <span className="decision-block-title">Resumen general</span>
@@ -320,7 +320,7 @@ function RhythmCard({ movimientos, movimientosMesAnterior = [], ciclo, formatMon
     <article className="card decision-card decision-comparison-card">
       <DecisionCardHeader
         title="Ritmo del mes"
-        help="Compara tu gasto controlable actual contra lo esperado segun el patron del mes anterior. Excluye fijos puros y extraordinarios."
+        help="Compara tu gasto controlable actual contra lo esperado segun el mes anterior. Si esta alto, ayuda a decidir si conviene frenar gastos variables."
       />
       <em className={`decision-status ${tone}`}>{status}</em>
       <div className="decision-comparison-grid">
@@ -391,7 +391,7 @@ function WeeklyDistributionCard({ movimientos, formatMoney }) {
     <article className="card decision-card decision-comparison-card">
       <DecisionCardHeader
         title="Distribucion semanal"
-        help="Agrupa egresos confirmados por semanas del ciclo para detectar concentracion de gasto."
+        help="Mide en que semanas se concentran los egresos confirmados. Ayuda a anticipar cuando separar ahorro o reservar liquidez."
       />
       <div className="decision-weekly-list">
         {enriched.map((week) => (
@@ -519,7 +519,7 @@ function ProjectionByPaceCard({ movimientos, movimientosMesAnterior = [], resume
       <DecisionCardHeader
         title="Proyeccion por ritmo actual"
         showDetail
-        help="Esta proyeccion estima el gasto final del mes usando patrones historicos por tipo de gasto: fijo, recurrente variable, variable y extraordinario."
+        help="Estima el cierre usando tipos de gasto y comportamiento historico. Sirve para decidir si conviene ahorrar, comprar USD o esperar."
       />
       <em className={`decision-status ${tone}`}>{estado}</em>
       <div className="decision-comparison-grid">
@@ -573,7 +573,7 @@ function ProjectionByFunctionalTypeCard({ movimientos, movimientosMesAnterior = 
       <DecisionCardHeader
         title="Proyeccion por ritmo actual"
         showDetail
-        help="Esta proyeccion estima el gasto final del mes usando patrones historicos por tipo de gasto: fijo, recurrente variable, variable y extraordinario."
+        help="Estima el cierre usando tipos de gasto y comportamiento historico. Sirve para decidir si conviene ahorrar, comprar USD o esperar."
       />
       <div className="decision-status-row">
         <em className={`decision-status ${tone}`}>{estado}</em>
@@ -626,7 +626,7 @@ function CriticalCategoriesCard({ categorias = [], formatMoney }) {
     <article className="card decision-card decision-comparison-card">
       <DecisionCardHeader
         title="Categorias criticas"
-        help="Muestra las tres categorias que mas pesan sobre los egresos confirmados y su concentracion sobre el total."
+        help="Mide que categorias concentran mas egresos confirmados. Ayuda a decidir donde mirar primero si necesitas ajustar el gasto."
       />
       <em className={`decision-status ${tone}`}>{estado}</em>
       <div className="decision-weekly-list">
@@ -694,7 +694,7 @@ function CategoryTrendsCard({ movimientos = [], movimientosHistoricos = [], form
     <article className="card decision-card decision-comparison-card">
       <DecisionCardHeader
         title="Tendencias por categoria"
-        help="Compara el gasto actual de las principales categorias contra su promedio de los ultimos tres ciclos."
+        help="Compara cada categoria contra su promedio de los ultimos ciclos. Ayuda a distinguir gastos normales de tendencias que empiezan a crecer."
       />
       {trends.length > 0 ? (
         <div className="decision-trend-list">
@@ -848,7 +848,7 @@ function RelevantDeviationsCard({ movimientos = [], movimientosMesAnterior = [],
     <article className="card decision-card decision-comparison-card decision-card-featured">
       <DecisionCardHeader
         title="Desvios relevantes"
-        help="Detecta hasta tres cambios importantes: variables altas, recurrentes por encima de referencia o extraordinarios relevantes."
+        help="Detecta cambios importantes frente a referencias anteriores. Ayuda a decidir que gasto revisar antes de asumir nuevos compromisos."
       />
       {deviations.length > 0 ? (
         <div className="decision-weekly-list">
@@ -897,7 +897,7 @@ function SavingOpportunityCard({ resumen, movimientos = [], movimientosMesAnteri
     <article className="card decision-card decision-comparison-card decision-card-primary">
       <DecisionCardHeader
         title="Oportunidad de ahorro"
-        help="Calcula si hay margen para ahorrar usando balance estimado realista, pendientes y variables esperadas restantes."
+        help="Calcula cuanto podrias separar manteniendo un colchon minimo. Sirve para decidir si ahorrar ahora o esperar a cubrir pendientes."
       />
       <em className={`decision-status ${tone}`}>{estado}</em>
       <div className="decision-comparison-grid">
