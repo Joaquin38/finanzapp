@@ -25,6 +25,15 @@ function DecisionCardHeader({ title, help, showDetail = false }) {
   );
 }
 
+function DecisionSection({ title, className = '', children }) {
+  return (
+    <section className={`decision-section ${className}`}>
+      <h3 className="decision-section-title">{title}</h3>
+      {children}
+    </section>
+  );
+}
+
 const CATEGORY_KIND = {
   vivienda: 'fijo',
   servicios: 'fijo',
@@ -124,62 +133,84 @@ function ComparisonCard({ serieMensual, movimientos = [], movimientosMesAnterior
     })
     .filter((item) => item.actual > 0 || item.anterior > 0)
     .sort((a, b) => Math.abs(b.diferencia) - Math.abs(a.diferencia) || Math.abs(Number(b.variacion || 0)) - Math.abs(Number(a.variacion || 0)))
-    .slice(0, 3);
+    .slice(0, 4);
 
   return (
-    <article className="card decision-card decision-comparison-card">
+    <article className="card decision-card decision-comparison-card decision-card-wide">
       <DecisionCardHeader
         title="Comparacion vs mes anterior"
         showDetail
         help="Compara ingresos, egresos y balance contra el ciclo anterior. Tambien muestra las categorias con mayor impacto real por diferencia de monto."
       />
-      <div className="decision-comparison-grid">
-        <ComparisonRow
-          label="Ingresos"
-          tipo="ingresos"
-          actual={Number(actual.ingresos || 0)}
-          anterior={Number(anterior.ingresos || 0)}
-          formatMoney={formatMoney}
-        />
-        <ComparisonRow
-          label="Egresos"
-          tipo="egresos"
-          actual={Number(actual.egresos || 0)}
-          anterior={Number(anterior.egresos || 0)}
-          formatMoney={formatMoney}
-        />
-        <ComparisonRow
-          label="Balance"
-          tipo="balance"
-          actual={Number(actual.balance || 0)}
-          anterior={Number(anterior.balance || 0)}
-          formatMoney={formatMoney}
-        />
+      <div className="decision-comparison-block">
+        <span className="decision-block-title">Resumen general</span>
+        <div className="decision-comparison-grid decision-summary-grid">
+          <ComparisonRow
+            label="Ingresos"
+            tipo="ingresos"
+            actual={Number(actual.ingresos || 0)}
+            anterior={Number(anterior.ingresos || 0)}
+            formatMoney={formatMoney}
+          />
+          <ComparisonRow
+            label="Egresos"
+            tipo="egresos"
+            actual={Number(actual.egresos || 0)}
+            anterior={Number(anterior.egresos || 0)}
+            formatMoney={formatMoney}
+          />
+          <ComparisonRow
+            label="Balance"
+            tipo="balance"
+            actual={Number(actual.balance || 0)}
+            anterior={Number(anterior.balance || 0)}
+            formatMoney={formatMoney}
+          />
+        </div>
       </div>
       {impactRanking.length > 0 && (
-        <div className="decision-impact-list">
-          {impactRanking.map((item, index) => {
-            const diffAbs = Math.abs(item.diferencia);
-            const variationText = item.variacion == null ? 'Sin referencia' : formatVariation(item.variacion);
-            const statusText =
-              item.diferencia < 0
-                ? 'Bajo respecto al mes anterior'
-                : item.variacion != null && item.variacion > 20
-                  ? 'Subio significativamente'
-                  : item.variacion != null && item.variacion >= 10
-                    ? 'Subio respecto al mes anterior'
-                    : 'Cambio leve respecto al mes anterior';
-            return (
-              <div className="decision-impact-row" key={item.categoria}>
-                <span>{item.categoria}</span>
-                <strong>{formatMoney(item.actual)}</strong>
-                <small>Anterior: {formatMoney(item.anterior)} | Dif: {item.diferencia >= 0 ? '+' : '-'}{formatMoney(diffAbs)} ({variationText})</small>
-                <p>
-                  {item.categoria} {statusText.toLowerCase()}. {index === 0 ? 'Es el cambio con mayor impacto en el mes.' : ''}
-                </p>
-              </div>
-            );
-          })}
+        <div className="decision-comparison-block">
+          <span className="decision-block-title">Cambios por categoria</span>
+          <div className="decision-impact-list">
+            {impactRanking.map((item, index) => {
+              const diffAbs = Math.abs(item.diferencia);
+              const variationText = item.variacion == null ? 'Sin referencia anterior' : formatVariation(item.variacion);
+              const badge =
+                item.anterior <= 0
+                  ? 'sin referencia'
+                  : item.diferencia < 0
+                    ? 'bajo'
+                    : item.diferencia > 0
+                      ? 'subio'
+                      : 'sin cambio';
+              const statusText =
+                item.anterior <= 0
+                  ? 'Sin referencia anterior'
+                  : item.diferencia < 0
+                    ? 'Bajo respecto al mes anterior'
+                    : item.variacion != null && item.variacion > 20
+                      ? 'Subio significativamente'
+                      : item.variacion != null && item.variacion >= 10
+                        ? 'Subio respecto al mes anterior'
+                        : 'Se mantuvo cerca del mes anterior';
+              return (
+                <div className="decision-impact-row" key={item.categoria}>
+                  <div className="decision-impact-head">
+                    <span>{item.categoria}</span>
+                    <em className={`decision-impact-badge ${badge.replace(' ', '-')}`}>{badge}</em>
+                  </div>
+                  <div className="decision-impact-values">
+                    <strong>{formatMoney(item.actual)}</strong>
+                    <small>Anterior: {item.anterior > 0 ? formatMoney(item.anterior) : 'Sin referencia'}</small>
+                    <small>Dif: {item.diferencia >= 0 ? '+' : '-'}{formatMoney(diffAbs)} ({variationText})</small>
+                  </div>
+                  <p>
+                    {item.categoria}: {statusText.toLowerCase()}. {index === 0 ? 'Es el cambio con mayor impacto en el mes.' : ''}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
       <strong>{recommendation}</strong>
@@ -654,17 +685,9 @@ function CategoryTrendsCard({ movimientos = [], movimientosHistoricos = [], form
         : 0;
       const desviacion = promedio > 0 ? ((Number(actual || 0) - promedio) / promedio) * 100 : null;
       const estado =
-        desviacion == null ? 'sin referencia' : desviacion > 10 ? 'en crecimiento' : desviacion < -10 ? 'en descenso' : 'estable';
-      const texto =
-        desviacion == null
-          ? `${categoria} todavia no tiene historial suficiente.`
-          : estado === 'estable'
-            ? `${categoria} se mantiene estable.`
-            : estado === 'en crecimiento'
-              ? `${categoria} esta ${formatPercent(Math.abs(desviacion))} por encima de su promedio de los ultimos 3 meses.`
-              : `${categoria} esta ${formatPercent(Math.abs(desviacion))} por debajo de su promedio de los ultimos 3 meses.`;
+        desviacion == null ? 'sin referencia' : desviacion > 10 ? 'subiendo' : desviacion < -10 ? 'bajando' : 'estable';
 
-      return { categoria, actual, promedio, desviacion, estado, texto };
+      return { categoria, actual, promedio, desviacion, estado };
     });
 
   return (
@@ -678,9 +701,10 @@ function CategoryTrendsCard({ movimientos = [], movimientosHistoricos = [], form
           {trends.map((item) => (
             <div className="decision-trend-row" key={item.categoria}>
               <span>{item.categoria}</span>
-              <strong>{item.estado}</strong>
-              <small>Actual: {formatMoney(item.actual)} | Promedio 3 ciclos: {item.promedio > 0 ? formatMoney(item.promedio) : 'Sin referencia'}</small>
-              <p>{item.texto}</p>
+              <em className={`decision-trend-badge trend-${item.estado.replace(' ', '-')}`}>{item.estado === 'sin referencia' ? 'sin referencia' : item.estado}</em>
+              <strong>{formatMoney(item.actual)}</strong>
+              <small>{item.promedio > 0 ? formatMoney(item.promedio) : 'Sin historial suficiente'}</small>
+              <b>{item.desviacion == null ? '-' : formatVariation(item.desviacion)}</b>
             </div>
           ))}
         </div>
@@ -991,51 +1015,62 @@ export default function DecisionesPanel({
         <p>Analisis y sugerencias basadas en tu comportamiento</p>
       </div>
       <ExecutiveSummary resumen={resumen} operativo={operativo} categorias={categorias} />
-      <div className="cards-grid decisiones-grid">
-        <ProjectionByFunctionalTypeCard
-          movimientos={movimientos}
-          movimientosMesAnterior={movimientosMesAnterior}
-          resumen={resumen}
-          ciclo={ciclo}
-          formatMoney={formatMoney}
-        />
-        <SavingOpportunityCard
-          resumen={resumen}
-          movimientos={movimientos}
-          movimientosMesAnterior={movimientosMesAnterior}
-          ciclo={ciclo}
-          formatMoney={formatMoney}
-        />
-        <RelevantDeviationsCard
-          movimientos={movimientos}
-          movimientosMesAnterior={movimientosMesAnterior}
-          movimientosHistoricos={movimientosHistoricos}
-          resumen={resumen}
-          formatMoney={formatMoney}
-        />
-        <RhythmCard
-          movimientos={movimientos}
-          movimientosMesAnterior={movimientosMesAnterior}
-          ciclo={ciclo}
-          formatMoney={formatMoney}
-        />
-        <WeeklyDistributionCard movimientos={movimientos} formatMoney={formatMoney} />
-        <ComparisonCard
-          serieMensual={serieMensual}
-          movimientos={movimientos}
-          movimientosMesAnterior={movimientosMesAnterior}
-          formatMoney={formatMoney}
-        />
-        <CriticalCategoriesCard categorias={categorias} formatMoney={formatMoney} />
-        <CategoryTrendsCard
-          movimientos={movimientos}
-          movimientosHistoricos={movimientosHistoricos}
-          formatMoney={formatMoney}
-        />
-        {cards.map((card) => (
-          <DecisionCard key={card.title} {...card} />
-        ))}
-      </div>
+      <DecisionSection title="Decision principal">
+        <div className="decision-section-grid decision-main-grid">
+          <ProjectionByFunctionalTypeCard
+            movimientos={movimientos}
+            movimientosMesAnterior={movimientosMesAnterior}
+            resumen={resumen}
+            ciclo={ciclo}
+            formatMoney={formatMoney}
+          />
+          <SavingOpportunityCard
+            resumen={resumen}
+            movimientos={movimientos}
+            movimientosMesAnterior={movimientosMesAnterior}
+            ciclo={ciclo}
+            formatMoney={formatMoney}
+          />
+        </div>
+      </DecisionSection>
+
+      <DecisionSection title="Que cambio este mes">
+        <div className="decision-section-grid decision-change-grid">
+          <ComparisonCard
+            serieMensual={serieMensual}
+            movimientos={movimientos}
+            movimientosMesAnterior={movimientosMesAnterior}
+            formatMoney={formatMoney}
+          />
+          <CategoryTrendsCard
+            movimientos={movimientos}
+            movimientosHistoricos={movimientosHistoricos}
+            formatMoney={formatMoney}
+          />
+        </div>
+      </DecisionSection>
+
+      <DecisionSection title="Donde mirar">
+        <div className="decision-section-grid decision-watch-grid">
+          <RelevantDeviationsCard
+            movimientos={movimientos}
+            movimientosMesAnterior={movimientosMesAnterior}
+            movimientosHistoricos={movimientosHistoricos}
+            resumen={resumen}
+            formatMoney={formatMoney}
+          />
+          <CriticalCategoriesCard categorias={categorias} formatMoney={formatMoney} />
+          <WeeklyDistributionCard movimientos={movimientos} formatMoney={formatMoney} />
+        </div>
+      </DecisionSection>
+
+      <DecisionSection title="Control operativo">
+        <div className="decision-section-grid decision-ops-grid">
+          {cards.map((card) => (
+            <DecisionCard key={card.title} {...card} />
+          ))}
+        </div>
+      </DecisionSection>
     </section>
   );
 }

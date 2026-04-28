@@ -1248,6 +1248,37 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
   font-size: 13px;
   line-height: 1.25;
 }
+.decision-section {
+  display: grid;
+  gap: 10px;
+}
+.decision-section-title {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.decision-section-grid {
+  display: grid;
+  gap: 12px;
+}
+.decision-main-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
+.decision-change-grid {
+  grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.9fr);
+  align-items: start;
+}
+.decision-watch-grid {
+  grid-template-columns: minmax(0, 1.15fr) repeat(2, minmax(240px, 0.85fr));
+  align-items: start;
+}
+.decision-ops-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
 .decisiones-grid {
   grid-template-columns: repeat(auto-fit, minmax(285px, 1fr));
 }
@@ -1349,6 +1380,9 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
 .decision-comparison-card {
   grid-column: auto;
 }
+.decision-card-wide {
+  min-width: 0;
+}
 .decision-card-primary {
   border-left-width: 5px;
   box-shadow: 0 18px 38px rgba(15, 23, 42, 0.08);
@@ -1412,6 +1446,20 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
   display: grid;
   grid-template-columns: 1fr;
   gap: 7px;
+}
+.decision-summary-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.decision-comparison-block {
+  display: grid;
+  gap: 8px;
+}
+.decision-block-title {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 .decision-comparison-row {
   display: grid;
@@ -1568,20 +1616,50 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
 }
 .decision-impact-row {
   display: grid;
-  gap: 4px;
+  gap: 6px;
   padding: 8px 9px;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--surface-soft);
+}
+.decision-impact-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 .decision-impact-row span {
   color: var(--text-primary);
   font-size: 13px;
   font-weight: 800;
 }
+.decision-impact-values {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.15fr);
+  gap: 6px;
+  align-items: baseline;
+}
 .decision-impact-row strong {
   color: var(--dashboard-card-value);
   font-size: 15px;
+}
+.decision-impact-badge {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.14);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.decision-impact-badge.subio {
+  background: rgba(245, 158, 11, 0.14);
+  color: #b45309;
+}
+.decision-impact-badge.bajo {
+  background: rgba(34, 197, 94, 0.14);
+  color: #15803d;
 }
 .decision-impact-row p {
   color: var(--text-secondary);
@@ -1590,11 +1668,13 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
 }
 .decision-trend-list {
   display: grid;
-  gap: 7px;
+  gap: 6px;
 }
 .decision-trend-row {
   display: grid;
-  gap: 4px;
+  grid-template-columns: minmax(90px, 1fr) auto minmax(86px, auto) minmax(96px, auto) auto;
+  align-items: center;
+  gap: 8px;
   padding: 8px 9px;
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -1605,18 +1685,36 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
   font-size: 13px;
   font-weight: 800;
 }
-.decision-trend-row strong {
+.decision-trend-badge {
   justify-self: start;
   padding: 3px 7px;
   border-radius: 999px;
   background: rgba(148, 163, 184, 0.12);
   color: var(--text-muted);
   font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  white-space: nowrap;
 }
-.decision-trend-row p {
-  color: var(--text-secondary);
+.decision-trend-badge.trend-subiendo {
+  background: rgba(245, 158, 11, 0.14);
+  color: #b45309;
+}
+.decision-trend-badge.trend-bajando {
+  background: rgba(34, 197, 94, 0.14);
+  color: #15803d;
+}
+.decision-trend-row strong {
+  color: var(--dashboard-card-value);
+  font-size: 13px;
+  text-align: right;
+}
+.decision-trend-row small,
+.decision-trend-row b {
+  color: var(--text-muted);
   font-size: 12px;
-  line-height: 1.35;
+  font-weight: 700;
+  text-align: right;
 }
 .dashboard-cards-block .card-balance {
   background: var(--dashboard-balance-bg);
@@ -3850,6 +3948,22 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   background: rgba(148, 163, 184, 0.12);
   color: var(--text-muted);
 }
+:root[data-theme='dark'] .decision-impact-badge.subio {
+  background: rgba(245, 158, 11, 0.16);
+  color: #fde68a;
+}
+:root[data-theme='dark'] .decision-impact-badge.bajo {
+  background: rgba(34, 197, 94, 0.16);
+  color: #bbf7d0;
+}
+:root[data-theme='dark'] .decision-trend-badge.trend-subiendo {
+  background: rgba(245, 158, 11, 0.16);
+  color: #fde68a;
+}
+:root[data-theme='dark'] .decision-trend-badge.trend-bajando {
+  background: rgba(34, 197, 94, 0.16);
+  color: #bbf7d0;
+}
 :root[data-theme='dark'] .cycle-control-actions .hero-action-btn.secondary {
   background: var(--surface-soft);
   color: var(--text-secondary);
@@ -4121,6 +4235,14 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   .decision-executive-summary {
     grid-template-columns: 1fr;
   }
+  .decision-main-grid,
+  .decision-change-grid,
+  .decision-watch-grid {
+    grid-template-columns: 1fr;
+  }
+  .decision-ops-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
   .config-category-form {
     grid-template-columns: 1fr;
   }
@@ -4270,8 +4392,20 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   .decisiones-grid,
   .decision-comparison-grid,
   .decision-executive-summary,
-  .decision-composition-grid {
+  .decision-composition-grid,
+  .decision-main-grid,
+  .decision-change-grid,
+  .decision-watch-grid,
+  .decision-ops-grid,
+  .decision-summary-grid,
+  .decision-impact-values,
+  .decision-trend-row {
     grid-template-columns: 1fr;
+  }
+  .decision-trend-row strong,
+  .decision-trend-row small,
+  .decision-trend-row b {
+    text-align: left;
   }
   .decisiones-grid .decision-card-primary,
   .decisiones-grid .decision-card-featured {
