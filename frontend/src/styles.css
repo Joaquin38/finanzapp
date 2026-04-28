@@ -1273,6 +1273,63 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
   font-size: 13px;
   font-weight: 700;
 }
+.decision-card-header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.decision-card-header h3 {
+  flex: 1;
+}
+.decision-help {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: help;
+}
+.decision-help-tooltip {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 20;
+  width: min(260px, calc(100vw - 40px));
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  box-shadow: var(--shadow-soft);
+  font-size: 12px;
+  line-height: 1.4;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(4px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.decision-help:hover .decision-help-tooltip,
+.decision-help:focus .decision-help-tooltip {
+  opacity: 1;
+  transform: translateY(0);
+}
+.decision-detail-btn {
+  min-height: 28px;
+  padding: 5px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-soft);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 800;
+}
 .decision-card p {
   color: var(--dashboard-card-value);
   font-size: 24px;
@@ -1481,9 +1538,8 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
   background: var(--surface-soft);
 }
 .decision-deviation-row div {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
+  display: grid;
+  gap: 3px;
 }
 .decision-deviation-row span {
   color: var(--text-primary);
@@ -1492,15 +1548,72 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
 }
 .decision-deviation-row em {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
   font-weight: 700;
+  line-height: 1.35;
 }
 .decision-deviation-row strong {
   color: var(--dashboard-card-value);
   font-size: 16px;
 }
 .decision-deviation-row p {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.35;
+}
+.decision-impact-list {
+  display: grid;
+  gap: 7px;
+}
+.decision-impact-row {
+  display: grid;
+  gap: 4px;
+  padding: 8px 9px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-soft);
+}
+.decision-impact-row span {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 800;
+}
+.decision-impact-row strong {
+  color: var(--dashboard-card-value);
+  font-size: 15px;
+}
+.decision-impact-row p {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.35;
+}
+.decision-trend-list {
+  display: grid;
+  gap: 7px;
+}
+.decision-trend-row {
+  display: grid;
+  gap: 4px;
+  padding: 8px 9px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-soft);
+}
+.decision-trend-row span {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 800;
+}
+.decision-trend-row strong {
+  justify-self: start;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.decision-trend-row p {
   color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.35;
@@ -3652,7 +3765,8 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   border-color: var(--border-strong);
 }
 :root[data-theme='dark'] .account-menu-trigger,
-:root[data-theme='dark'] .account-dropdown {
+:root[data-theme='dark'] .account-dropdown,
+:root[data-theme='dark'] .decision-help-tooltip {
   background: var(--surface);
   border-color: var(--border);
   box-shadow: var(--shadow-soft);
@@ -3702,7 +3816,9 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
 :root[data-theme='dark'] .decision-comparison-row,
 :root[data-theme='dark'] .decision-weekly-track,
 :root[data-theme='dark'] .decision-composition-grid span,
-:root[data-theme='dark'] .decision-deviation-row {
+:root[data-theme='dark'] .decision-deviation-row,
+:root[data-theme='dark'] .decision-impact-row,
+:root[data-theme='dark'] .decision-trend-row {
   background: var(--surface-soft);
   border-color: var(--border);
 }
@@ -4163,6 +4279,18 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   }
   .decision-card {
     padding: 12px;
+  }
+  .decision-card-header {
+    align-items: flex-start;
+  }
+  .decision-detail-btn {
+    padding-inline: 8px;
+    white-space: nowrap;
+  }
+  .decision-help-tooltip {
+    right: -8px;
+    bottom: auto;
+    top: calc(100% + 8px);
   }
   .decision-comparison-row,
   .decision-weekly-meta {

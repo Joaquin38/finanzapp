@@ -1,11 +1,27 @@
 function DecisionCard({ title, metric, text, recommendation, tone = 'balance' }) {
   return (
     <article className={`card decision-card card-${tone}`}>
-      <h3>{title}</h3>
+      <DecisionCardHeader
+        title={title}
+        help={`Mide ${title.toLowerCase()}. Usa datos consolidados del ciclo para orientar decisiones rapidas.`}
+      />
       <p>{metric}</p>
       <small>{text}</small>
       <strong>{recommendation}</strong>
     </article>
+  );
+}
+
+function DecisionCardHeader({ title, help, showDetail = false }) {
+  return (
+    <div className="decision-card-header">
+      <h3>{title}</h3>
+      <span className="decision-help" tabIndex="0" aria-label={help}>
+        ?
+        <span className="decision-help-tooltip" role="tooltip">{help}</span>
+      </span>
+      {showDetail && <button type="button" className="decision-detail-btn">Ver detalle</button>}
+    </div>
   );
 }
 
@@ -92,14 +108,31 @@ function getComparisonRecommendation(actual, anterior) {
   return 'Sin desvios fuertes frente al mes anterior.';
 }
 
-function ComparisonCard({ serieMensual, formatMoney }) {
+function ComparisonCard({ serieMensual, movimientos = [], movimientosMesAnterior = [], formatMoney }) {
   const actual = serieMensual?.[serieMensual.length - 1] || { ingresos: 0, egresos: 0, balance: 0 };
   const anterior = serieMensual?.[serieMensual.length - 2] || { ingresos: 0, egresos: 0, balance: 0 };
   const recommendation = getComparisonRecommendation(actual, anterior);
+  const currentByCategory = getConfirmedExpensesByCategory(movimientos);
+  const previousByCategory = getConfirmedExpensesByCategory(movimientosMesAnterior);
+  const impactRanking = Array.from(new Set([...Object.keys(currentByCategory), ...Object.keys(previousByCategory)]))
+    .map((categoria) => {
+      const actualCategoria = Number(currentByCategory[categoria] || 0);
+      const anteriorCategoria = getCategoryTotal(previousByCategory, categoria);
+      const diferencia = actualCategoria - anteriorCategoria;
+      const variacion = getVariation(actualCategoria, anteriorCategoria);
+      return { categoria, actual: actualCategoria, anterior: anteriorCategoria, diferencia, variacion };
+    })
+    .filter((item) => item.actual > 0 || item.anterior > 0)
+    .sort((a, b) => Math.abs(b.diferencia) - Math.abs(a.diferencia) || Math.abs(Number(b.variacion || 0)) - Math.abs(Number(a.variacion || 0)))
+    .slice(0, 3);
 
   return (
     <article className="card decision-card decision-comparison-card">
-      <h3>Comparacion vs mes anterior</h3>
+      <DecisionCardHeader
+        title="Comparacion vs mes anterior"
+        showDetail
+        help="Compara ingresos, egresos y balance contra el ciclo anterior. Tambien muestra las categorias con mayor impacto real por diferencia de monto."
+      />
       <div className="decision-comparison-grid">
         <ComparisonRow
           label="Ingresos"
@@ -123,6 +156,32 @@ function ComparisonCard({ serieMensual, formatMoney }) {
           formatMoney={formatMoney}
         />
       </div>
+      {impactRanking.length > 0 && (
+        <div className="decision-impact-list">
+          {impactRanking.map((item, index) => {
+            const diffAbs = Math.abs(item.diferencia);
+            const variationText = item.variacion == null ? 'Sin referencia' : formatVariation(item.variacion);
+            const statusText =
+              item.diferencia < 0
+                ? 'Bajo respecto al mes anterior'
+                : item.variacion != null && item.variacion > 20
+                  ? 'Subio significativamente'
+                  : item.variacion != null && item.variacion >= 10
+                    ? 'Subio respecto al mes anterior'
+                    : 'Cambio leve respecto al mes anterior';
+            return (
+              <div className="decision-impact-row" key={item.categoria}>
+                <span>{item.categoria}</span>
+                <strong>{formatMoney(item.actual)}</strong>
+                <small>Anterior: {formatMoney(item.anterior)} | Dif: {item.diferencia >= 0 ? '+' : '-'}{formatMoney(diffAbs)} ({variationText})</small>
+                <p>
+                  {item.categoria} {statusText.toLowerCase()}. {index === 0 ? 'Es el cambio con mayor impacto en el mes.' : ''}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      )}
       <strong>{recommendation}</strong>
     </article>
   );
@@ -228,7 +287,10 @@ function RhythmCard({ movimientos, movimientosMesAnterior = [], ciclo, formatMon
 
   return (
     <article className="card decision-card decision-comparison-card">
-      <h3>Ritmo del mes</h3>
+      <DecisionCardHeader
+        title="Ritmo del mes"
+        help="Compara tu gasto controlable actual contra lo esperado segun el patron del mes anterior. Excluye fijos puros y extraordinarios."
+      />
       <em className={`decision-status ${tone}`}>{status}</em>
       <div className="decision-comparison-grid">
         <div className="decision-comparison-row">
@@ -296,7 +358,10 @@ function WeeklyDistributionCard({ movimientos, formatMoney }) {
 
   return (
     <article className="card decision-card decision-comparison-card">
-      <h3>Distribucion semanal</h3>
+      <DecisionCardHeader
+        title="Distribucion semanal"
+        help="Agrupa egresos confirmados por semanas del ciclo para detectar concentracion de gasto."
+      />
       <div className="decision-weekly-list">
         {enriched.map((week) => (
           <div className="decision-weekly-row" key={week.label}>
@@ -420,7 +485,11 @@ function ProjectionByPaceCard({ movimientos, movimientosMesAnterior = [], resume
 
   return (
     <article className="card decision-card decision-comparison-card">
-      <h3>Proyeccion por ritmo actual</h3>
+      <DecisionCardHeader
+        title="Proyeccion por ritmo actual"
+        showDetail
+        help="Esta proyeccion estima el gasto final del mes usando patrones historicos por tipo de gasto: fijo, recurrente variable, variable y extraordinario."
+      />
       <em className={`decision-status ${tone}`}>{estado}</em>
       <div className="decision-comparison-grid">
         <div className="decision-comparison-row">
@@ -470,7 +539,11 @@ function ProjectionByFunctionalTypeCard({ movimientos, movimientosMesAnterior = 
 
   return (
     <article className="card decision-card decision-comparison-card decision-card-primary">
-      <h3>Proyeccion por ritmo actual</h3>
+      <DecisionCardHeader
+        title="Proyeccion por ritmo actual"
+        showDetail
+        help="Esta proyeccion estima el gasto final del mes usando patrones historicos por tipo de gasto: fijo, recurrente variable, variable y extraordinario."
+      />
       <div className="decision-status-row">
         <em className={`decision-status ${tone}`}>{estado}</em>
         <em className={`decision-status decision-confidence ${confianza}`}>Confianza {confianza}</em>
@@ -520,7 +593,10 @@ function CriticalCategoriesCard({ categorias = [], formatMoney }) {
 
   return (
     <article className="card decision-card decision-comparison-card">
-      <h3>Categorias criticas</h3>
+      <DecisionCardHeader
+        title="Categorias criticas"
+        help="Muestra las tres categorias que mas pesan sobre los egresos confirmados y su concentracion sobre el total."
+      />
       <em className={`decision-status ${tone}`}>{estado}</em>
       <div className="decision-weekly-list">
         {top.length > 0 ? (
@@ -546,6 +622,71 @@ function CriticalCategoriesCard({ categorias = [], formatMoney }) {
       </div>
       <small>Las 3 principales categorias concentran {topPercent}% de tus egresos.</small>
       <strong>{recommendation}</strong>
+    </article>
+  );
+}
+
+function getCategoryMonthlyTotals(movimientos = []) {
+  return getConfirmedExpenses(movimientos).reduce((acc, mov) => {
+    const cycle = String(mov.fecha || '').slice(0, 7);
+    const category = getMovementCategory(mov) || 'Sin categoria';
+    if (!cycle) return acc;
+    if (!acc[category]) acc[category] = {};
+    acc[category][cycle] = (acc[category][cycle] || 0) + Number(mov.monto_ars || 0);
+    return acc;
+  }, {});
+}
+
+function CategoryTrendsCard({ movimientos = [], movimientosHistoricos = [], formatMoney }) {
+  const currentByCategory = getConfirmedExpensesByCategory(movimientos);
+  const historicalByCategory = getCategoryMonthlyTotals(movimientosHistoricos);
+  const trends = Object.entries(currentByCategory)
+    .sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))
+    .slice(0, 5)
+    .map(([categoria, actual]) => {
+      const monthlyValues = Object.entries(historicalByCategory[categoria] || {})
+        .sort(([a], [b]) => String(b).localeCompare(String(a)))
+        .slice(0, 3)
+        .map(([, value]) => Number(value || 0))
+        .filter((value) => value > 0);
+      const promedio = monthlyValues.length > 0
+        ? monthlyValues.reduce((acc, value) => acc + value, 0) / monthlyValues.length
+        : 0;
+      const desviacion = promedio > 0 ? ((Number(actual || 0) - promedio) / promedio) * 100 : null;
+      const estado =
+        desviacion == null ? 'sin referencia' : desviacion > 10 ? 'en crecimiento' : desviacion < -10 ? 'en descenso' : 'estable';
+      const texto =
+        desviacion == null
+          ? `${categoria} todavia no tiene historial suficiente.`
+          : estado === 'estable'
+            ? `${categoria} se mantiene estable.`
+            : estado === 'en crecimiento'
+              ? `${categoria} esta ${formatPercent(Math.abs(desviacion))} por encima de su promedio de los ultimos 3 meses.`
+              : `${categoria} esta ${formatPercent(Math.abs(desviacion))} por debajo de su promedio de los ultimos 3 meses.`;
+
+      return { categoria, actual, promedio, desviacion, estado, texto };
+    });
+
+  return (
+    <article className="card decision-card decision-comparison-card">
+      <DecisionCardHeader
+        title="Tendencias por categoria"
+        help="Compara el gasto actual de las principales categorias contra su promedio de los ultimos tres ciclos."
+      />
+      {trends.length > 0 ? (
+        <div className="decision-trend-list">
+          {trends.map((item) => (
+            <div className="decision-trend-row" key={item.categoria}>
+              <span>{item.categoria}</span>
+              <strong>{item.estado}</strong>
+              <small>Actual: {formatMoney(item.actual)} | Promedio 3 ciclos: {item.promedio > 0 ? formatMoney(item.promedio) : 'Sin referencia'}</small>
+              <p>{item.texto}</p>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <strong>Todavia no hay categorias con gasto confirmado para analizar.</strong>
+      )}
     </article>
   );
 }
@@ -591,10 +732,36 @@ function getCategoryReference({ categoria, movimientosHistoricos = [], fallbackA
   };
 }
 
+function formatPercent(value) {
+  if (!Number.isFinite(value)) return '0%';
+  return `${value.toFixed(1)}%`;
+}
+
+function buildDeviationContext(item, ingresos, totalEgresos) {
+  const percentIngresos = ingresos > 0 ? (item.actual / ingresos) * 100 : null;
+  const percentEgresos = totalEgresos > 0 ? (item.actual / totalEgresos) * 100 : 0;
+  const shareText = percentIngresos != null
+    ? `${formatPercent(percentIngresos)} de tus ingresos del ciclo`
+    : `${formatPercent(percentEgresos)} de tus egresos confirmados`;
+  const variationText = item.variation == null ? 'sin comparacion mensual' : formatVariation(item.variation);
+
+  if (item.kind === 'extraordinario') {
+    return `Gasto puntual alto: representa el ${shareText}`;
+  }
+  if (item.kind === 'variable') {
+    return `Gasto variable alto: ${variationText} respecto al mes anterior`;
+  }
+  if (item.tarjeta) {
+    return `Tarjeta por encima de referencia: ${variationText} respecto a ${String(item.referenceLabel || 'tu referencia').toLowerCase()}`;
+  }
+  return `Gasto recurrente mas alto de lo habitual: ${variationText} respecto al mes anterior`;
+}
+
 function RelevantDeviationsCard({ movimientos = [], movimientosMesAnterior = [], movimientosHistoricos = [], resumen, formatMoney }) {
   const ingresos = Number(resumen?.ingresos || 0);
   const currentByCategory = getConfirmedExpensesByCategory(movimientos);
   const previousByCategory = getConfirmedExpensesByCategory(movimientosMesAnterior);
+  const totalEgresos = Object.values(currentByCategory).reduce((acc, value) => acc + Number(value || 0), 0);
   const deviations = Object.entries(currentByCategory)
     .map(([categoria, actual]) => {
       const kind = getCategoryKind(categoria);
@@ -612,8 +779,9 @@ function RelevantDeviationsCard({ movimientos = [], movimientosMesAnterior = [],
           actual,
           anterior,
           referenceLabel: reference.label,
+          kind,
+          tarjeta,
           variation,
-          type: 'Variable alta',
           recommendation: 'Revisa si este consumo puede moderarse el resto del ciclo.'
         };
       }
@@ -624,8 +792,9 @@ function RelevantDeviationsCard({ movimientos = [], movimientosMesAnterior = [],
           actual,
           anterior,
           referenceLabel: reference.label,
+          kind,
+          tarjeta,
           variation,
-          type: tarjeta ? 'Tarjeta sobre referencia' : 'Recurrente variable alto',
           recommendation: tarjeta
             ? 'La tarjeta viene por encima de tu referencia habitual.'
             : 'Este gasto recurrente vino mas alto de lo habitual. Revisa su composicion.'
@@ -638,8 +807,9 @@ function RelevantDeviationsCard({ movimientos = [], movimientosMesAnterior = [],
           actual,
           anterior,
           referenceLabel: 'Ingresos del ciclo',
+          kind,
+          tarjeta,
           variation: null,
-          type: 'Extraordinario alto',
           recommendation: 'Gasto puntual relevante. No lo proyectes como consumo normal.'
         };
       }
@@ -652,18 +822,21 @@ function RelevantDeviationsCard({ movimientos = [], movimientosMesAnterior = [],
 
   return (
     <article className="card decision-card decision-comparison-card decision-card-featured">
-      <h3>Desvios relevantes</h3>
+      <DecisionCardHeader
+        title="Desvios relevantes"
+        help="Detecta hasta tres cambios importantes: variables altas, recurrentes por encima de referencia o extraordinarios relevantes."
+      />
       {deviations.length > 0 ? (
         <div className="decision-weekly-list">
           {deviations.map((item) => (
-            <div className="decision-deviation-row" key={`${item.type}-${item.categoria}`}>
+            <div className="decision-deviation-row" key={`${item.kind}-${item.categoria}`}>
               <div>
                 <span>{item.categoria}</span>
-                <em>{item.type}</em>
+                <em>{buildDeviationContext(item, ingresos, totalEgresos)}</em>
               </div>
               <strong>{formatMoney(item.actual)}</strong>
               <small>
-                {item.referenceLabel || 'Referencia'}: {item.anterior > 0 ? formatMoney(item.anterior) : 'Sin referencia'} · {item.variation == null ? 'Puntual' : formatVariation(item.variation)}
+                {item.referenceLabel || 'Referencia'}: {item.anterior > 0 ? formatMoney(item.anterior) : 'Sin referencia'} | {item.variation == null ? 'Sin comparacion mensual' : formatVariation(item.variation)}
               </small>
               <p>{item.recommendation}</p>
             </div>
@@ -698,7 +871,10 @@ function SavingOpportunityCard({ resumen, movimientos = [], movimientosMesAnteri
 
   return (
     <article className="card decision-card decision-comparison-card decision-card-primary">
-      <h3>Oportunidad de ahorro</h3>
+      <DecisionCardHeader
+        title="Oportunidad de ahorro"
+        help="Calcula si hay margen para ahorrar usando balance estimado realista, pendientes y variables esperadas restantes."
+      />
       <em className={`decision-status ${tone}`}>{estado}</em>
       <div className="decision-comparison-grid">
         <div className="decision-comparison-row">
@@ -844,8 +1020,18 @@ export default function DecisionesPanel({
           formatMoney={formatMoney}
         />
         <WeeklyDistributionCard movimientos={movimientos} formatMoney={formatMoney} />
-        <ComparisonCard serieMensual={serieMensual} formatMoney={formatMoney} />
+        <ComparisonCard
+          serieMensual={serieMensual}
+          movimientos={movimientos}
+          movimientosMesAnterior={movimientosMesAnterior}
+          formatMoney={formatMoney}
+        />
         <CriticalCategoriesCard categorias={categorias} formatMoney={formatMoney} />
+        <CategoryTrendsCard
+          movimientos={movimientos}
+          movimientosHistoricos={movimientosHistoricos}
+          formatMoney={formatMoney}
+        />
         {cards.map((card) => (
           <DecisionCard key={card.title} {...card} />
         ))}
@@ -853,3 +1039,4 @@ export default function DecisionesPanel({
     </section>
   );
 }
+
