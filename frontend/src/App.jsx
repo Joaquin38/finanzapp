@@ -94,6 +94,27 @@ function getAuthRouteState() {
   return { view: 'login', token: '' };
 }
 
+function ToastStack({ toasts, onDismiss }) {
+  if (!toasts.length) return null;
+
+  return (
+    <div className="toast-stack" aria-live="polite" aria-atomic="true">
+      {toasts.map((toast) => (
+        <div className={`app-toast ${toast.type}`} role="status" key={toast.id}>
+          <span>{toast.message}</span>
+          <button type="button" onClick={() => onDismiss(toast.id)} aria-label="Cerrar aviso">
+            x
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ButtonSpinner() {
+  return <span className="btn-spinner" aria-hidden="true" />;
+}
+
 export default function App() {
   const [theme, setTheme] = useState(() => getStoredTheme());
   const [dashboardAmountsHidden, setDashboardAmountsHidden] = useState(() => getStoredDashboardAmountsHidden());
@@ -112,7 +133,10 @@ export default function App() {
   const [gastosFijosHistoricosPorCiclo, setGastosFijosHistoricosPorCiclo] = useState({});
   const [movimientosHistoricos, setMovimientosHistoricos] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [cycleActionLoading, setCycleActionLoading] = useState(false);
   const [error, setError] = useState('');
+  const [toasts, setToasts] = useState([]);
+  const toastIdRef = useRef(0);
   const [openModal, setOpenModal] = useState(false);
   const [gastoRapidoAbierto, setGastoRapidoAbierto] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
@@ -187,6 +211,18 @@ export default function App() {
 
   const getEstadoMovimiento = (mov) => {
     return getEstadoMovimientoConsolidado(mov, estadoOverrides);
+  };
+
+  const dismissToast = (id) => {
+    setToasts((prev) => prev.filter((toast) => toast.id !== id));
+  };
+
+  const addToast = ({ type = 'success', message }) => {
+    if (!message) return;
+    toastIdRef.current += 1;
+    const id = `${Date.now()}-${toastIdRef.current}`;
+    setToasts((prev) => [...prev, { id, type, message }].slice(-4));
+    window.setTimeout(() => dismissToast(id), 3800);
   };
 
   useEffect(() => {
@@ -292,9 +328,11 @@ export default function App() {
         await updateMovimiento(mov.id, { estado_ingreso: siguiente });
       }
       await cargarDatos();
+      addToast({ message: 'Estado actualizado.' });
     } catch (err) {
       setEstadoOverrides((prev) => ({ ...prev, [mov.id]: estadoActual }));
       setError(err.message);
+      addToast({ type: 'error', message: err.message || 'No se pudo actualizar el estado.' });
     }
   };
 
@@ -554,6 +592,7 @@ export default function App() {
     }
 
     try {
+      setCycleActionLoading(true);
       setLoading(true);
       setError('');
 
@@ -591,10 +630,13 @@ export default function App() {
       setOpenModal(false);
       setMovimientoEditando(null);
       setModoModal('crear');
+      addToast({ message: modoModal === 'editar' ? 'Movimiento actualizado.' : 'Movimiento registrado.' });
     } catch (err) {
       setError(err.message);
+      addToast({ type: 'error', message: err.message || 'No se pudo guardar el movimiento.' });
     } finally {
       setLoading(false);
+      setCycleActionLoading(false);
     }
   };
 
@@ -609,8 +651,10 @@ export default function App() {
       await createGastoFijo({ ...payload, hogar_id: hogarId, ciclo_desde: payload.ciclo_desde || cicloSeleccionado });
       await cargarDatos();
       setSeccionActiva('gastos_fijos');
+      addToast({ message: 'Valor fijo creado.' });
     } catch (err) {
       setError(err.message);
+      addToast({ type: 'error', message: err.message || 'No se pudo crear el valor fijo.' });
     }
   };
 
@@ -624,8 +668,10 @@ export default function App() {
       setError('');
       await updateGastoFijo(id, payload);
       await cargarDatos();
+      addToast({ message: 'Valor fijo actualizado.' });
     } catch (err) {
       setError(err.message);
+      addToast({ type: 'error', message: err.message || 'No se pudo actualizar el valor fijo.' });
     }
   };
 
@@ -639,8 +685,10 @@ export default function App() {
       setError('');
       await createAjusteGastoFijo(id, payload);
       await cargarDatos();
+      addToast({ message: 'Ajuste aplicado.' });
     } catch (err) {
       setError(err.message);
+      addToast({ type: 'error', message: err.message || 'No se pudo aplicar el ajuste.' });
     }
   };
 
@@ -654,8 +702,10 @@ export default function App() {
       setError('');
       await deleteGastoFijoEnCiclo(id, cicloFinalizacion);
       await cargarDatos();
+      addToast({ message: 'Valor fijo finalizado.' });
     } catch (err) {
       setError(err.message);
+      addToast({ type: 'error', message: err.message || 'No se pudo finalizar el valor fijo.' });
     }
   };
 
@@ -740,6 +790,7 @@ export default function App() {
     }
 
     try {
+      setCycleActionLoading(true);
       setLoading(true);
       setError('');
       await createMovimiento({
@@ -759,10 +810,13 @@ export default function App() {
       });
       await cargarDatos();
       setGastoRapidoAbierto(false);
+      addToast({ message: 'Gasto rapido registrado.' });
     } catch (err) {
       setError(err.message);
+      addToast({ type: 'error', message: err.message || 'No se pudo registrar el gasto.' });
     } finally {
       setLoading(false);
+      setCycleActionLoading(false);
     }
   };
 
@@ -782,8 +836,10 @@ export default function App() {
         creado_por_usuario_id: usuarioId
       });
       await cargarDatos();
+      addToast({ message: 'Ahorro registrado.' });
     } catch (err) {
       setError(err.message);
+      addToast({ type: 'error', message: err.message || 'No se pudo registrar el ahorro.' });
     } finally {
       setLoading(false);
     }
@@ -797,8 +853,10 @@ export default function App() {
       await deleteMovimiento(deleteTargetId);
       await cargarDatos();
       setDeleteTargetId(null);
+      addToast({ message: 'Movimiento eliminado.' });
     } catch (err) {
       setError(err.message);
+      addToast({ type: 'error', message: err.message || 'No se pudo eliminar el movimiento.' });
     }
   };
 
@@ -1128,8 +1186,10 @@ export default function App() {
       await cargarDatos();
       setCierreCicloAbierto(false);
       setSaldoRealFinal('');
+      addToast({ message: 'Ciclo cerrado.' });
     } catch (err) {
       setError(err.message);
+      addToast({ type: 'error', message: err.message || 'No se pudo cerrar el ciclo.' });
     } finally {
       setLoading(false);
     }
@@ -1146,8 +1206,10 @@ export default function App() {
       setError('');
       await reabrirCiclo(hogarId, cicloSeleccionado);
       await cargarDatos();
+      addToast({ message: 'Ciclo reabierto.' });
     } catch (err) {
       setError(err.message);
+      addToast({ type: 'error', message: err.message || 'No se pudo reabrir el ciclo.' });
     } finally {
       setLoading(false);
     }
@@ -1186,8 +1248,9 @@ export default function App() {
           {canManageHome && (
             <div className="cycle-control-actions">
               {estadoCierreCiclo.cerrado ? (
-                <button type="button" className="hero-action-btn secondary" onClick={handleReabrirCiclo} disabled={loading}>
-                  Reabrir ciclo
+                <button type="button" className="hero-action-btn secondary btn-with-spinner" onClick={handleReabrirCiclo} disabled={loading || cycleActionLoading}>
+                  {cycleActionLoading && <ButtonSpinner />}
+                  {cycleActionLoading ? 'Reabriendo...' : 'Reabrir ciclo'}
                 </button>
               ) : (
                 <button
@@ -1432,6 +1495,7 @@ export default function App() {
               ciclo={cicloSeleccionado}
               categorias={categorias}
               formatMoney={formatMoneyText}
+              onToast={addToast}
             />
           )}
 
@@ -1706,16 +1770,18 @@ export default function App() {
               </button>
               <button
                 type="button"
-                className="btn-inline success"
+                className="btn-inline success btn-with-spinner"
                 onClick={aplicarCierreCiclo}
-                disabled={loading || estadoCierreCiclo.cerrado}
+                disabled={loading || cycleActionLoading || estadoCierreCiclo.cerrado}
               >
-                {diferenciaCierreCiclo === 0 ? 'Cerrar sin ajuste' : loading ? 'Aplicando...' : 'Aplicar cierre'}
+                {cycleActionLoading && <ButtonSpinner />}
+                {cycleActionLoading ? 'Aplicando...' : diferenciaCierreCiclo === 0 ? 'Cerrar sin ajuste' : 'Aplicar cierre'}
               </button>
             </div>
           </div>
         </div>
       )}
+      <ToastStack toasts={toasts} onDismiss={dismissToast} />
     </main>
   );
 }

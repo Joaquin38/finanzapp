@@ -80,7 +80,7 @@ function addMonthsToCycle(ciclo, offset) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 }
 
-export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = [], formatMoney }) {
+export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = [], formatMoney, onToast }) {
   const [tarjetas, setTarjetas] = useState([]);
   const [consumos, setConsumos] = useState([]);
   const [cierre, setCierre] = useState(null);
@@ -96,6 +96,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
   const [calcSource, setCalcSource] = useState('total');
   const [vistaTarjeta, setVistaTarjeta] = useState('principal');
   const [loading, setLoading] = useState(false);
+  const [loadingAction, setLoadingAction] = useState('');
   const [error, setError] = useState('');
 
   const tarjetaActual = tarjetas.find((tarjeta) => Number(tarjeta.id) === Number(form.tarjeta_id)) || tarjetas[0];
@@ -236,6 +237,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
   const handleGuardarCierre = async () => {
     if (!cierre?.id || cierre?.estado === 'cerrado' || !cierreForm.fecha_cierre) return;
     setLoading(true);
+    setLoadingAction('cierre-form');
     setError('');
 
     try {
@@ -246,10 +248,13 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
       setCierre(data.item || cierre);
       setSavedCierreForm(cierreForm);
       await cargarTarjetas(form.tarjeta_id, selectedCiclo);
+      onToast?.({ message: 'Resumen actualizado.' });
     } catch (err) {
       setError(err.message);
+      onToast?.({ type: 'error', message: err.message || 'No se pudo guardar el resumen.' });
     } finally {
       setLoading(false);
+      setLoadingAction('');
     }
   };
 
@@ -270,6 +275,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
   const handleSubmit = async (event) => {
     event.preventDefault();
     setLoading(true);
+    setLoadingAction('consumo');
     setError('');
 
     try {
@@ -296,10 +302,13 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
       }));
       setEditingId(null);
       await cargarTarjetas();
+      onToast?.({ message: editingId ? 'Consumo actualizado.' : 'Consumo guardado.' });
     } catch (err) {
       setError(err.message);
+      onToast?.({ type: 'error', message: err.message || 'No se pudo guardar el consumo.' });
     } finally {
       setLoading(false);
+      setLoadingAction('');
     }
   };
 
@@ -330,27 +339,36 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
     if (resumenSeleccionadoCerrado && consumo.ciclo_asignado === selectedCiclo) return;
     if (!window.confirm(`Eliminar consumo "${consumo.descripcion}"?`)) return;
     setLoading(true);
+    setLoadingAction('delete-consumo');
     setError('');
     try {
       await deleteConsumoTarjeta(consumo.id);
       await cargarTarjetas();
+      onToast?.({ message: 'Consumo eliminado.' });
     } catch (err) {
       setError(err.message);
+      onToast?.({ type: 'error', message: err.message || 'No se pudo eliminar el consumo.' });
     } finally {
       setLoading(false);
+      setLoadingAction('');
     }
   };
   const handleToggleCierre = async () => {
     if (!cierre?.id) return;
     setLoading(true);
+    setLoadingAction('toggle-cierre');
     setError('');
     try {
+      const siguienteEstado = cierre.estado === 'cerrado' ? 'abierto' : 'cerrado';
       await updateCierreTarjeta(cierre.id, { estado: cierre.estado === 'cerrado' ? 'abierto' : 'cerrado' });
       await cargarTarjetas();
+      onToast?.({ message: siguienteEstado === 'cerrado' ? 'Resumen cerrado.' : 'Resumen reabierto.' });
     } catch (err) {
       setError(err.message);
+      onToast?.({ type: 'error', message: err.message || 'No se pudo cambiar el estado del resumen.' });
     } finally {
       setLoading(false);
+      setLoadingAction('');
     }
   };
 
@@ -369,14 +387,19 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
   const handleToggleResumenHistorial = async (item) => {
     if (!item?.id) return;
     setLoading(true);
+    setLoadingAction('historial-cierre');
     setError('');
     try {
-      await updateCierreTarjeta(item.id, { estado: item.estado === 'cerrado' ? 'abierto' : 'cerrado' });
+      const siguienteEstado = item.estado === 'cerrado' ? 'abierto' : 'cerrado';
+      await updateCierreTarjeta(item.id, { estado: siguienteEstado });
       await cargarTarjetas(form.tarjeta_id, selectedCiclo);
+      onToast?.({ message: siguienteEstado === 'cerrado' ? 'Resumen cerrado.' : 'Resumen reabierto.' });
     } catch (err) {
       setError(err.message);
+      onToast?.({ type: 'error', message: err.message || 'No se pudo cambiar el estado del resumen.' });
     } finally {
       setLoading(false);
+      setLoadingAction('');
     }
   };
 
@@ -469,8 +492,9 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
             >
               Guardar configuracion del resumen
             </button>
-            <button type="button" className="btn-inline secondary tarjeta-close-action" onClick={handleToggleCierre} disabled={loading || !cierre?.id}>
-              {resumenSeleccionadoCerrado ? 'Reabrir resumen' : 'Cerrar resumen'}
+            <button type="button" className="btn-inline secondary tarjeta-close-action btn-with-spinner" onClick={handleToggleCierre} disabled={loading || !cierre?.id}>
+              {loadingAction === 'toggle-cierre' && <span className="btn-spinner" aria-hidden="true" />}
+              {loadingAction === 'toggle-cierre' ? 'Procesando...' : resumenSeleccionadoCerrado ? 'Reabrir resumen' : 'Cerrar resumen'}
             </button>
           </div>
         </div>
@@ -608,8 +632,9 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
             </label>
           </div>
 
-          <button className="full-width movement-submit" type="submit" disabled={loading || tarjetas.length === 0 || consumoAsignadoAResumenCerrado}>
-            {loading ? 'Guardando...' : editingId ? 'Guardar cambios' : 'Guardar consumo'}
+          <button className="full-width movement-submit btn-with-spinner" type="submit" disabled={loading || tarjetas.length === 0 || consumoAsignadoAResumenCerrado}>
+            {loadingAction === 'consumo' && <span className="btn-spinner" aria-hidden="true" />}
+            {loadingAction === 'consumo' ? 'Guardando...' : editingId ? 'Guardar cambios' : 'Guardar consumo'}
           </button>
           {consumoAsignadoAResumenCerrado && (
             <p className="tarjeta-closed-helper full-width">Este resumen esta cerrado. Reabrilo para modificar sus consumos.</p>
@@ -813,8 +838,9 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
                       <button type="button" className="btn-inline secondary" onClick={() => handleEditarResumen(item)}>
                         Editar
                       </button>
-                      <button type="button" className="btn-inline" onClick={() => handleToggleResumenHistorial(item)} disabled={loading}>
-                        {item.estado === 'cerrado' ? 'Reabrir' : 'Cerrar'}
+                      <button type="button" className="btn-inline btn-with-spinner" onClick={() => handleToggleResumenHistorial(item)} disabled={loading}>
+                        {loadingAction === 'historial-cierre' && <span className="btn-spinner" aria-hidden="true" />}
+                        {loadingAction === 'historial-cierre' ? '...' : item.estado === 'cerrado' ? 'Reabrir' : 'Cerrar'}
                       </button>
                     </div>
                   </td>
