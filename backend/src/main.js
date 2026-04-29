@@ -2190,7 +2190,31 @@ app.get('/tarjetas-credito', async (req, res) => {
       { total_ars: 0, total_usd: 0, consumos: 0, cuotas_futuras: 0 }
     );
 
-    return res.status(200).json({ tarjetas, cierre: cierreActual || null, consumos, resumen });
+    const { rows: historialResumenes } = tarjetaConsultaId
+      ? await pool.query(
+          `
+          SELECT cr.id, cr.tarjeta_id, cr.ciclo, cr.fecha_cierre, cr.fecha_vencimiento, cr.estado,
+                 COALESCE(SUM(CASE WHEN ct.moneda = 'ARS' THEN ct.monto_total ELSE 0 END), 0) AS total_ars,
+                 COALESCE(SUM(CASE WHEN ct.moneda = 'USD' THEN ct.monto_total ELSE 0 END), 0) AS total_usd,
+                 COUNT(ct.id) AS consumos
+          FROM cierres_tarjeta cr
+          LEFT JOIN consumos_tarjeta ct ON ct.cierre_id = cr.id
+          WHERE cr.tarjeta_id = $1
+          GROUP BY cr.id, cr.tarjeta_id, cr.ciclo, cr.fecha_cierre, cr.fecha_vencimiento, cr.estado
+          ORDER BY cr.ciclo DESC
+          LIMIT 12
+          `,
+          [tarjetaConsultaId]
+        )
+      : { rows: [] };
+
+    return res.status(200).json({
+      tarjetas,
+      cierre: cierreActual || null,
+      consumos,
+      resumen,
+      historial_resumenes: historialResumenes
+    });
   } catch (error) {
     return res.status(500).json({ error: 'Error consultando tarjetas', detalle: error.message });
   }

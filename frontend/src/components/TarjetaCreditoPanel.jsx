@@ -44,10 +44,33 @@ function getClosingDateIso(ciclo) {
   return `${ciclo}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
+function formatDate(value) {
+  if (!value) return '-';
+  const [year, month, day] = String(value).slice(0, 10).split('-');
+  return day && month && year ? `${day}/${month}/${year}` : '-';
+}
+
 function parseAmount(value) {
   const raw = String(value ?? '').trim();
   const normalized = raw.includes(',') ? raw.replace(/\./g, '').replace(',', '.') : raw;
   return Number(normalized);
+}
+
+function calcularMontosPorModo(form, source) {
+  const next = { ...form };
+  const cuotas = Math.max(Number(next.cantidad_cuotas || 1), 1);
+
+  if (source === 'total') {
+    const total = parseAmount(next.monto_total);
+    if (total > 0 && cuotas > 0) next.monto_cuota = (total / cuotas).toFixed(2);
+  }
+
+  if (source === 'cuota') {
+    const cuota = parseAmount(next.monto_cuota);
+    if (cuota > 0 && cuotas > 0) next.monto_total = (cuota * cuotas).toFixed(2);
+  }
+
+  return next;
 }
 
 function addMonthsToCycle(ciclo, offset) {
@@ -65,6 +88,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
   const [cierreForm, setCierreForm] = useState({ fecha_cierre: '', fecha_vencimiento: '' });
   const [savedCierreForm, setSavedCierreForm] = useState({ fecha_cierre: '', fecha_vencimiento: '' });
   const [resumen, setResumen] = useState({ total_ars: 0, total_usd: 0, consumos: 0, cuotas_futuras: 0 });
+  const [historialResumenes, setHistorialResumenes] = useState([]);
   const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState(null);
   const [detailItem, setDetailItem] = useState(null);
@@ -178,6 +202,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
     setSavedCierreForm(nextCierreForm);
     setConsumos(data.consumos || []);
     setResumen(data.resumen || { total_ars: 0, total_usd: 0, consumos: 0, cuotas_futuras: 0 });
+    setHistorialResumenes(data.historial_resumenes || []);
     setFilters((prev) => ({ ...prev, ciclo: cicloConsulta }));
     setForm((prev) => ({
       ...prev,
@@ -228,26 +253,17 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
   };
 
   const handleChange = (field, value) => {
-    const nextSource = field === 'monto_total' ? 'total' : field === 'monto_cuota' ? 'cuota' : calcSource;
-    if (field === 'monto_total') setCalcSource('total');
-    if (field === 'monto_cuota') setCalcSource('cuota');
-
     setForm((prev) => {
       const next = { ...prev, [field]: value };
-      const cuotas = Math.max(Number(next.cantidad_cuotas || 1), 1);
-
-      if (nextSource === 'total' && (field === 'monto_total' || field === 'cantidad_cuotas')) {
-        const total = parseAmount(next.monto_total);
-        if (total > 0 && cuotas > 0) next.monto_cuota = (total / cuotas).toFixed(2);
-      }
-
-      if (nextSource === 'cuota' && (field === 'monto_cuota' || field === 'cantidad_cuotas')) {
-        const cuota = parseAmount(next.monto_cuota);
-        if (cuota > 0 && cuotas > 0) next.monto_total = (cuota * cuotas).toFixed(2);
-      }
-
-      return next;
+      return ['monto_total', 'monto_cuota', 'cantidad_cuotas'].includes(field)
+        ? calcularMontosPorModo(next, calcSource)
+        : next;
     });
+  };
+
+  const handleCalcSourceChange = (source) => {
+    setCalcSource(source);
+    setForm((prev) => calcularMontosPorModo(prev, source));
   };
 
   const handleSubmit = async (event) => {
@@ -337,6 +353,31 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
     }
   };
 
+  const handleVerResumen = (cicloResumen) => {
+    if (!cicloResumen) return;
+    setDetailItem(null);
+    setEditingId(null);
+    handleCicloChange(cicloResumen);
+  };
+
+  const handleEditarResumen = (item) => {
+    handleVerResumen(item.ciclo);
+  };
+
+  const handleToggleResumenHistorial = async (item) => {
+    if (!item?.id) return;
+    setLoading(true);
+    setError('');
+    try {
+      await updateCierreTarjeta(item.id, { estado: item.estado === 'cerrado' ? 'abierto' : 'cerrado' });
+      await cargarTarjetas(form.tarjeta_id, selectedCiclo);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const cards = [
     { label: 'Total ARS del resumen', value: formatMoney(resumen.total_ars), tone: 'ars' },
     { label: 'Total USD del resumen', value: `US$ ${Number(resumen.total_usd || 0).toLocaleString('es-AR', moneyFormat)}`, tone: 'usd' },
@@ -350,16 +391,16 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
         <div>
           <p className="eyebrow">Tarjeta de credito</p>
           <h2>{tarjetaActual?.nombre || 'Tarjeta principal'}</h2>
-          <p>Resumen separado para consumos de tarjeta, sin impacto en movimientos.</p>
+          <p>Resumenes y consumos, sin impacto en movimientos.</p>
         </div>
       </div>
 
-      <section className="panel tarjeta-current-summary">
+      <section className="panel tarjeta-current-summary tarjeta-section-card tarjeta-section-config">
         <div className="panel-header">
           <div>
-            <p className="eyebrow">Resumen actual de tarjeta</p>
+            <p className="eyebrow">Paso 1</p>
             <h2>Resumen actual de tarjeta</h2>
-            <p>Los consumos se asignan automaticamente segun la fecha de compra y el cierre del resumen.</p>
+            <p>Cierre, vencimiento y estado.</p>
           </div>
           <em className={`tarjeta-cierre-status ${cierre?.estado === 'cerrado' ? 'cerrado' : 'abierto'}`}>
             {cierre?.estado === 'cerrado' ? 'Cerrado' : 'Abierto'}
@@ -433,6 +474,69 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
         ))}
       </div>
 
+      <section className="panel tarjeta-history tarjeta-section-card tarjeta-section-history">
+        <div className="panel-header">
+          <div>
+            <h2>Historial de resumenes</h2>
+            <p>{historialResumenes.length} recientes.</p>
+          </div>
+        </div>
+        <div className="tarjeta-table-wrap">
+          <table className="tarjeta-table tarjeta-history-table">
+            <thead>
+              <tr>
+                <th>Ciclo/resumen</th>
+                <th>Cierre</th>
+                <th>Vencimiento</th>
+                <th>Estado</th>
+                <th>Total ARS</th>
+                <th>Total USD</th>
+                <th>Consumos</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {historialResumenes.map((item) => (
+                <tr key={item.id} className={item.ciclo === selectedCiclo ? 'is-selected' : ''}>
+                  <td>
+                    <strong>{formatCycleLabel(item.ciclo)}</strong>
+                    {item.ciclo === selectedCiclo && <small>Seleccionado</small>}
+                  </td>
+                  <td>{formatDate(item.fecha_cierre)}</td>
+                  <td>{formatDate(item.fecha_vencimiento)}</td>
+                  <td>
+                    <span className={`tarjeta-history-status ${item.estado === 'cerrado' ? 'cerrado' : 'abierto'}`}>
+                      {item.estado === 'cerrado' ? 'Cerrado' : 'Abierto'}
+                    </span>
+                  </td>
+                  <td>{formatMoney(item.total_ars)}</td>
+                  <td>USD {Number(item.total_usd || 0).toLocaleString('es-AR', moneyFormat)}</td>
+                  <td>{Number(item.consumos || 0)}</td>
+                  <td>
+                    <div className="acciones-inline tarjeta-history-actions">
+                      <button type="button" className="btn-inline secondary" onClick={() => handleVerResumen(item.ciclo)}>
+                        Ver
+                      </button>
+                      <button type="button" className="btn-inline secondary" onClick={() => handleEditarResumen(item)}>
+                        Editar
+                      </button>
+                      <button type="button" className="btn-inline" onClick={() => handleToggleResumenHistorial(item)} disabled={loading}>
+                        {item.estado === 'cerrado' ? 'Reabrir' : 'Cerrar'}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {historialResumenes.length === 0 && (
+                <tr>
+                  <td colSpan="8">Sin resumenes disponibles.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       {resumenSeleccionadoCerrado && (
         <section className="panel tarjeta-closed-summary">
           <div>
@@ -450,20 +554,23 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
         </section>
       )}
 
-      <section className="panel panel-form tarjeta-form-panel">
+      <section className="panel panel-form tarjeta-form-panel tarjeta-section-card tarjeta-section-form">
         <div className="panel-header">
-          <h2>{editingId ? 'Editar consumo de tarjeta' : 'Nuevo consumo de tarjeta'}</h2>
-          <p>Este consumo se asignara automaticamente al resumen correspondiente.</p>
+          <div>
+            <p className="eyebrow">Paso 2</p>
+            <h2>{editingId ? 'Editar consumo' : 'Nuevo consumo'}</h2>
+            <p>Alta rapida de tarjeta.</p>
+          </div>
+          <span className={`tarjeta-assignment-preview ${previewPasaAlSiguiente ? 'next' : ''}`} aria-live="polite">
+            {previewPasaAlSiguiente ? 'Pasa a ' : 'Resumen '}
+            <strong>{formatCycleLabel(previewCicloAsignado)}</strong>
+          </span>
         </div>
         {error && <p className="error">{error}</p>}
         <form className="form-grid tarjeta-consumo-form" onSubmit={handleSubmit}>
           <label>
             Fecha de compra
             <input type="date" value={form.fecha_compra} onChange={(e) => handleChange('fecha_compra', e.target.value)} required />
-            <span className={`tarjeta-assignment-preview ${previewPasaAlSiguiente ? 'next' : ''}`}>
-              {previewPasaAlSiguiente ? 'Pasa al proximo resumen: ' : 'Resumen asignado: '}
-              <strong>{formatCycleLabel(previewCicloAsignado)}</strong>
-            </span>
           </label>
           <label className="field-strong">
             Descripcion / comercio
@@ -497,13 +604,47 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
             Cantidad de cuotas
             <input type="number" min="1" step="1" value={form.cantidad_cuotas} onChange={(e) => handleChange('cantidad_cuotas', e.target.value)} required />
           </label>
+          <div className="tarjeta-calc-mode" role="group" aria-label="Modo de carga del monto">
+            <button
+              type="button"
+              className={calcSource === 'total' ? 'active' : ''}
+              onClick={() => handleCalcSourceChange('total')}
+            >
+              Cargo total
+            </button>
+            <button
+              type="button"
+              className={calcSource === 'cuota' ? 'active' : ''}
+              onClick={() => handleCalcSourceChange('cuota')}
+            >
+              Cargo cuota
+            </button>
+          </div>
           <label className="field-strong">
             Monto total
-            <input type="number" min="0.01" step="0.01" value={form.monto_total} onChange={(e) => handleChange('monto_total', e.target.value)} placeholder="0.00" required />
+            <input
+              type="number"
+              min="0.01"
+              step="0.01"
+              value={form.monto_total}
+              onChange={(e) => handleChange('monto_total', e.target.value)}
+              placeholder="0.00"
+              readOnly={calcSource !== 'total'}
+              required
+            />
           </label>
           <label className="field-strong">
             Monto de cuota
-            <input type="number" min="0.01" step="0.01" value={form.monto_cuota} onChange={(e) => handleChange('monto_cuota', e.target.value)} placeholder="0.00" required />
+            <input
+              type="number"
+              min="0.01"
+              step="0.01"
+              value={form.monto_cuota}
+              onChange={(e) => handleChange('monto_cuota', e.target.value)}
+              placeholder="0.00"
+              readOnly={calcSource !== 'cuota'}
+              required
+            />
           </label>
           <label>
             Titular / adicional
@@ -514,7 +655,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
               <span>Observaciones</span>
               <small>Opcional</small>
             </div>
-            <textarea value={form.observaciones} onChange={(e) => handleChange('observaciones', e.target.value)} rows="3" />
+            <textarea value={form.observaciones} onChange={(e) => handleChange('observaciones', e.target.value)} rows="2" />
           </label>
           <button className="full-width movement-submit" type="submit" disabled={loading || tarjetas.length === 0 || consumoAsignadoAResumenCerrado}>
             {loading ? 'Guardando...' : editingId ? 'Guardar cambios' : 'Guardar consumo'}
@@ -530,10 +671,12 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
         </form>
       </section>
 
-      <section className="panel tarjeta-consumos-list">
+      <section className="panel tarjeta-consumos-list tarjeta-section-card tarjeta-section-consumos">
         <div className="panel-header">
-          <h2>Consumos de tarjeta</h2>
-          <p>{consumosFiltrados.length} consumos visibles.</p>
+          <div>
+            <h2>Consumos</h2>
+            <p>{consumosFiltrados.length} visibles.</p>
+          </div>
         </div>
         <div className="tarjeta-table-filters">
           <label>
@@ -634,31 +777,13 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
         </section>
       )}
 
-      <section className="panel tarjeta-cuotas-futuras">
+      <section className="panel tarjeta-analisis-resumen tarjeta-section-card tarjeta-section-analysis">
         <div className="panel-header">
-          <h2>Cuotas futuras</h2>
-          <p>Impacto estimado de compras en cuotas en los proximos meses.</p>
-        </div>
-        {cuotasFuturas.length > 0 ? (
-          <div className="tarjeta-future-grid">
-            {cuotasFuturas.map((item) => (
-              <article className="tarjeta-future-card" key={item.ciclo}>
-                <span>{formatCycleLabel(item.ciclo)}</span>
-                <strong>{formatMoney(item.totalArs)} ARS</strong>
-                <strong>USD {Number(item.totalUsd || 0).toLocaleString('es-AR', moneyFormat)}</strong>
-                <small>{item.cantidadConsumos} consumos incluidos</small>
-              </article>
-            ))}
+          <div>
+            <p className="eyebrow">Paso 3</p>
+            <h2>Analisis del resumen</h2>
+            <p>Lectura del ciclo seleccionado.</p>
           </div>
-        ) : (
-          <p className="empty-state">No hay cuotas futuras cargadas todavia.</p>
-        )}
-      </section>
-
-      <section className="panel tarjeta-analisis-resumen">
-        <div className="panel-header">
-          <h2>Analisis del resumen</h2>
-          <p>Lectura rapida del resumen seleccionado.</p>
         </div>
         <div className="tarjeta-analysis-grid">
           <article>
@@ -690,6 +815,30 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
             El {resumenAnalisis.porcentajeCuotas}% del resumen corresponde a compras en cuotas.
           </p>
         </div>
+      </section>
+
+      <section className="panel tarjeta-cuotas-futuras tarjeta-section-card tarjeta-section-future">
+        <div className="panel-header">
+          <div>
+            <p className="eyebrow">Paso 4</p>
+            <h2>Cuotas futuras</h2>
+            <p>Proximos impactos.</p>
+          </div>
+        </div>
+        {cuotasFuturas.length > 0 ? (
+          <div className="tarjeta-future-grid">
+            {cuotasFuturas.map((item) => (
+              <article className="tarjeta-future-card" key={item.ciclo}>
+                <span>{formatCycleLabel(item.ciclo)}</span>
+                <strong>{formatMoney(item.totalArs)} ARS</strong>
+                <strong>USD {Number(item.totalUsd || 0).toLocaleString('es-AR', moneyFormat)}</strong>
+                <small>{item.cantidadConsumos} consumos incluidos</small>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p className="empty-state">Sin cuotas futuras.</p>
+        )}
       </section>
     </section>
   );

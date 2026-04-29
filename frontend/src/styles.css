@@ -3373,13 +3373,14 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
 }
 .tarjeta-panel {
   display: grid;
-  gap: 14px;
+  gap: 16px;
 }
 .tarjeta-hero {
   display: flex;
   justify-content: space-between;
   gap: 18px;
   align-items: stretch;
+  padding-block: 14px;
 }
 .tarjeta-hero h2 {
   margin: 0 0 6px;
@@ -3389,9 +3390,32 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   margin: 0;
   color: var(--text-muted);
 }
+.tarjeta-panel .panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.tarjeta-panel .panel-header p {
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+.tarjeta-section-card {
+  position: relative;
+  overflow: hidden;
+  border-left-width: 4px;
+}
+.tarjeta-section-config { border-left-color: #2563eb; }
+.tarjeta-section-history { border-left-color: #64748b; }
+.tarjeta-section-form { border-left-color: #16a34a; }
+.tarjeta-section-consumos { border-left-color: #0f766e; }
+.tarjeta-section-analysis { border-left-color: #7c3aed; }
+.tarjeta-section-future { border-left-color: #f59e0b; }
 .tarjeta-current-summary {
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 .tarjeta-current-summary .panel-header {
   align-items: center;
@@ -3500,19 +3524,20 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
 .tarjeta-summary-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  gap: 10px;
 }
 .tarjeta-summary-card {
   display: grid;
-  gap: 10px;
-  min-height: 118px;
+  gap: 8px;
+  min-height: 88px;
+  padding: 14px;
   align-content: center;
 }
 .tarjeta-summary-card strong {
   color: var(--dashboard-card-value);
-  font-size: clamp(24px, 2.8vw, 34px);
+  font-size: 24px;
   line-height: 1;
-  letter-spacing: -0.03em;
+  letter-spacing: 0;
 }
 .tarjeta-ars { border-left: 4px solid #22c55e; }
 .tarjeta-usd { border-left: 4px solid #38bdf8; }
@@ -3543,17 +3568,63 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
 }
 .tarjeta-form-panel {
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 .tarjeta-consumo-form {
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 9px 10px;
+  margin-top: 0;
+}
+.tarjeta-consumo-form label {
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.tarjeta-consumo-form input,
+.tarjeta-consumo-form select,
+.tarjeta-consumo-form textarea {
+  min-height: 38px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  font-size: 13px;
+}
+.tarjeta-consumo-form textarea {
+  min-height: 58px;
+}
+.tarjeta-calc-mode {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  align-self: end;
+  min-width: 0;
+}
+.tarjeta-calc-mode button {
+  min-height: 38px;
+  padding: 7px 8px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-soft);
+  color: var(--text-secondary);
+  box-shadow: none;
+  font-size: 12px;
+  font-weight: 800;
+}
+.tarjeta-calc-mode button.active {
+  border-color: rgba(37, 99, 235, 0.48);
+  background: rgba(37, 99, 235, 0.1);
+  color: var(--primary-strong);
+}
+.tarjeta-consumo-form input[readonly] {
+  background: var(--surface-soft);
+  color: var(--text-muted);
+  cursor: not-allowed;
 }
 .tarjeta-assignment-preview {
   display: inline-flex;
   align-items: center;
   width: fit-content;
   max-width: 100%;
-  padding: 5px 8px;
+  padding: 4px 8px;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--surface-soft);
@@ -3591,7 +3662,7 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
 }
 .tarjeta-table th,
 .tarjeta-table td {
-  padding: 11px 10px;
+  padding: 9px 10px;
   border-bottom: 1px solid var(--border);
   color: var(--text-primary);
   text-align: left;
@@ -3614,6 +3685,39 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
 .tarjeta-table .pill {
   background: var(--surface-soft);
   color: var(--text-primary);
+}
+.tarjeta-history {
+  display: grid;
+  gap: 10px;
+}
+.tarjeta-history-table {
+  min-width: 920px;
+}
+.tarjeta-history-table tr.is-selected {
+  background: var(--surface-soft);
+}
+.tarjeta-history-table td strong {
+  color: var(--text-primary);
+}
+.tarjeta-history-status {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+}
+.tarjeta-history-status.abierto {
+  background: #dcfce7;
+  color: #15803d;
+}
+.tarjeta-history-status.cerrado {
+  background: #e0e7ff;
+  color: #4338ca;
+}
+.tarjeta-history-actions {
+  flex-wrap: nowrap;
 }
 .tarjeta-consumo-row {
   display: flex;
@@ -3665,7 +3769,7 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
 }
 .tarjeta-cuotas-futuras {
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 .tarjeta-future-grid {
   display: grid;
@@ -3674,8 +3778,8 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
 }
 .tarjeta-future-card {
   display: grid;
-  gap: 7px;
-  padding: 14px;
+  gap: 6px;
+  padding: 12px;
   border: 1px solid var(--border);
   border-left: 4px solid #f59e0b;
   border-radius: 12px;
@@ -3689,7 +3793,7 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
 }
 .tarjeta-future-card strong {
   color: var(--text-primary);
-  font-size: 18px;
+  font-size: 16px;
 }
 .tarjeta-future-card small {
   color: var(--text-secondary);
@@ -3697,17 +3801,17 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
 }
 .tarjeta-analisis-resumen {
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 .tarjeta-analysis-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  gap: 10px;
 }
 .tarjeta-analysis-grid article {
   display: grid;
-  gap: 7px;
-  padding: 14px;
+  gap: 6px;
+  padding: 12px;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--surface-soft);
@@ -3720,7 +3824,7 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
 }
 .tarjeta-analysis-grid strong {
   color: var(--text-primary);
-  font-size: 20px;
+  font-size: 18px;
 }
 .tarjeta-insights-list {
   display: grid;
