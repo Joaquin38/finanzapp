@@ -2247,6 +2247,9 @@ app.post('/tarjetas-credito/consumos', async (req, res) => {
     const cierreBase = await obtenerOCrearCierreTarjeta(tarjeta, cicloBase);
     const cicloAsignado = cicloTarjetaPorFechaCierre(fecha_compra, cicloBase, String(cierreBase.fecha_cierre).slice(0, 10)) || cicloBase;
     const cierreAsignado = cicloAsignado === cicloBase ? cierreBase : await obtenerOCrearCierreTarjeta(tarjeta, cicloAsignado);
+    if (cierreAsignado?.estado === 'cerrado') {
+      return res.status(409).json({ error: 'El resumen asignado esta cerrado' });
+    }
     const totalFinal = esNumeroPositivo(montoTotal) ? montoTotal : Number((montoCuota * cuotas).toFixed(2));
     const cuotaFinal = esNumeroPositivo(montoCuota) ? montoCuota : Number((totalFinal / cuotas).toFixed(2));
 
@@ -2318,10 +2321,27 @@ app.patch('/tarjetas-credito/consumos/:id', async (req, res) => {
     const tarjeta = tarjetaRows[0];
     if (!puedeOperarHogar(req.usuario, Number(tarjeta.hogar_id))) return res.status(403).json({ error: 'No tenes permisos para operar esta tarjeta' });
 
+    const { rows: consumoActualRows } = await pool.query(
+      `
+      SELECT ct.id, cr.estado
+      FROM consumos_tarjeta ct
+      LEFT JOIN cierres_tarjeta cr ON cr.id = ct.cierre_id
+      WHERE ct.id = $1
+      `,
+      [consumoId]
+    );
+    if (consumoActualRows.length === 0) return res.status(404).json({ error: 'Consumo no encontrado' });
+    if (consumoActualRows[0].estado === 'cerrado') {
+      return res.status(409).json({ error: 'El resumen asignado esta cerrado' });
+    }
+
     const cicloBase = cicloEsValido(String(ciclo_actual || '')) ? String(ciclo_actual) : cicloTarjetaPorFechaCompra(fecha_compra, tarjeta.dia_cierre_default);
     const cierreBase = await obtenerOCrearCierreTarjeta(tarjeta, cicloBase);
     const cicloAsignado = cicloTarjetaPorFechaCierre(fecha_compra, cicloBase, String(cierreBase.fecha_cierre).slice(0, 10)) || cicloBase;
     const cierreAsignado = cicloAsignado === cicloBase ? cierreBase : await obtenerOCrearCierreTarjeta(tarjeta, cicloAsignado);
+    if (cierreAsignado?.estado === 'cerrado') {
+      return res.status(409).json({ error: 'El resumen asignado esta cerrado' });
+    }
     const totalFinal = esNumeroPositivo(montoTotal) ? montoTotal : Number((montoCuota * cuotas).toFixed(2));
     const cuotaFinal = esNumeroPositivo(montoCuota) ? montoCuota : Number((totalFinal / cuotas).toFixed(2));
 
@@ -2375,15 +2395,17 @@ app.delete('/tarjetas-credito/consumos/:id', async (req, res) => {
     await asegurarTarjetasCredito();
     const { rows: permisoRows } = await pool.query(
       `
-      SELECT tc.hogar_id
+      SELECT tc.hogar_id, cr.estado
       FROM consumos_tarjeta ct
       JOIN tarjetas_credito tc ON tc.id = ct.tarjeta_id
+      LEFT JOIN cierres_tarjeta cr ON cr.id = ct.cierre_id
       WHERE ct.id = $1
       `,
       [consumoId]
     );
     if (permisoRows.length === 0) return res.status(404).json({ error: 'Consumo no encontrado' });
     if (!puedeOperarHogar(req.usuario, Number(permisoRows[0].hogar_id))) return res.status(403).json({ error: 'No tenes permisos para operar este consumo' });
+    if (permisoRows[0].estado === 'cerrado') return res.status(409).json({ error: 'El resumen asignado esta cerrado' });
 
     await pool.query('DELETE FROM consumos_tarjeta WHERE id = $1', [consumoId]);
     return res.status(200).json({ ok: true });

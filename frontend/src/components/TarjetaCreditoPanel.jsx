@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createConsumoTarjeta, deleteConsumoTarjeta, getTarjetasCredito, updateCierreTarjeta, updateConsumoTarjeta } from '../services/api.js';
+import MonthPicker from './MonthPicker.jsx';
 
 const moneyFormat = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
 
@@ -60,7 +61,9 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
   const [tarjetas, setTarjetas] = useState([]);
   const [consumos, setConsumos] = useState([]);
   const [cierre, setCierre] = useState(null);
+  const [selectedCiclo, setSelectedCiclo] = useState(ciclo);
   const [cierreForm, setCierreForm] = useState({ fecha_cierre: '', fecha_vencimiento: '' });
+  const [savedCierreForm, setSavedCierreForm] = useState({ fecha_cierre: '', fecha_vencimiento: '' });
   const [resumen, setResumen] = useState({ total_ars: 0, total_usd: 0, consumos: 0, cuotas_futuras: 0 });
   const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState(null);
@@ -71,13 +74,16 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
   const [error, setError] = useState('');
 
   const tarjetaActual = tarjetas.find((tarjeta) => Number(tarjeta.id) === Number(form.tarjeta_id)) || tarjetas[0];
+  const resumenSeleccionadoCerrado = cierre?.estado === 'cerrado';
+  const cierreTieneCambios = cierreForm.fecha_cierre !== savedCierreForm.fecha_cierre
+    || cierreForm.fecha_vencimiento !== savedCierreForm.fecha_vencimiento;
   const categoriasEgreso = useMemo(
     () => categorias.filter((categoria) => categoria.tipo_movimiento === 'egreso' || Number(categoria.tipo_movimiento_id) === 2),
     [categorias]
   );
   const ciclosDisponibles = useMemo(
-    () => Array.from(new Set(consumos.map((item) => item.ciclo_asignado).filter(Boolean))).sort().reverse(),
-    [consumos]
+    () => Array.from(new Set([selectedCiclo, ...consumos.map((item) => item.ciclo_asignado)].filter(Boolean))).sort().reverse(),
+    [consumos, selectedCiclo]
   );
   const consumosFiltrados = useMemo(
     () => consumos.filter((item) => {
@@ -118,11 +124,13 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
       .sort((a, b) => String(a.ciclo).localeCompare(String(b.ciclo)));
   }, [consumos]);
   const previewCicloAsignado = useMemo(() => {
-    if (!form.fecha_compra || !cierreForm.fecha_cierre) return ciclo;
-    return form.fecha_compra <= cierreForm.fecha_cierre ? ciclo : addMonthsToCycle(ciclo, 1);
-  }, [form.fecha_compra, cierreForm.fecha_cierre, ciclo]);
+    if (!form.fecha_compra || !savedCierreForm.fecha_cierre) return selectedCiclo;
+    return form.fecha_compra <= savedCierreForm.fecha_cierre ? selectedCiclo : addMonthsToCycle(selectedCiclo, 1);
+  }, [form.fecha_compra, savedCierreForm.fecha_cierre, selectedCiclo]);
+  const previewPasaAlSiguiente = previewCicloAsignado !== selectedCiclo;
+  const consumoAsignadoAResumenCerrado = resumenSeleccionadoCerrado && previewCicloAsignado === selectedCiclo;
   const resumenAnalisis = useMemo(() => {
-    const actuales = consumos.filter((item) => item.ciclo_asignado === ciclo);
+    const actuales = consumos.filter((item) => item.ciclo_asignado === selectedCiclo);
     const categorias = new Map();
     let totalArs = 0;
     let totalUsd = 0;
@@ -155,19 +163,22 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
       cantidadConsumos: actuales.length,
       nuevosConsumosCuotas: actuales.filter((item) => Number(item.cantidad_cuotas || 1) > 1).length
     };
-  }, [consumos, ciclo]);
+  }, [consumos, selectedCiclo]);
 
-  const cargarTarjetas = async (tarjetaId = form.tarjeta_id) => {
+  const cargarTarjetas = async (tarjetaId = form.tarjeta_id, cicloConsulta = selectedCiclo) => {
     if (!hogarId) return;
-    const data = await getTarjetasCredito(hogarId, ciclo, tarjetaId);
+    const data = await getTarjetasCredito(hogarId, cicloConsulta, tarjetaId);
     setTarjetas(data.tarjetas || []);
     setCierre(data.cierre || null);
-    setCierreForm({
-      fecha_cierre: data.cierre?.fecha_cierre ? String(data.cierre.fecha_cierre).slice(0, 10) : getClosingDateIso(ciclo),
+    const nextCierreForm = {
+      fecha_cierre: data.cierre?.fecha_cierre ? String(data.cierre.fecha_cierre).slice(0, 10) : getClosingDateIso(cicloConsulta),
       fecha_vencimiento: data.cierre?.fecha_vencimiento ? String(data.cierre.fecha_vencimiento).slice(0, 10) : ''
-    });
+    };
+    setCierreForm(nextCierreForm);
+    setSavedCierreForm(nextCierreForm);
     setConsumos(data.consumos || []);
     setResumen(data.resumen || { total_ars: 0, total_usd: 0, consumos: 0, cuotas_futuras: 0 });
+    setFilters((prev) => ({ ...prev, ciclo: cicloConsulta }));
     setForm((prev) => ({
       ...prev,
       tarjeta_id: tarjetaId ? String(tarjetaId) : prev.tarjeta_id || String(data.tarjetas?.[0]?.id || '')
@@ -175,28 +186,44 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
   };
 
   useEffect(() => {
+    setSelectedCiclo(ciclo);
+  }, [ciclo]);
+
+  useEffect(() => {
     cargarTarjetas().catch((err) => setError(err.message));
-  }, [hogarId, ciclo]);
+  }, [hogarId, selectedCiclo]);
 
   const handleTarjetaChange = (value) => {
     setForm((prev) => ({ ...prev, tarjeta_id: value }));
-    cargarTarjetas(value).catch((err) => setError(err.message));
+    cargarTarjetas(value, selectedCiclo).catch((err) => setError(err.message));
+  };
+
+  const handleCicloChange = (value) => {
+    setSelectedCiclo(value);
+    setFilters((prev) => ({ ...prev, ciclo: value }));
   };
 
   const handleCierreFieldChange = async (field, value) => {
-    const next = { ...cierreForm, [field]: value };
-    setCierreForm(next);
-    if (!cierre?.id || cierre?.estado === 'cerrado') return;
-    if (field === 'fecha_cierre' && !value) return;
+    setCierreForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleGuardarCierre = async () => {
+    if (!cierre?.id || cierre?.estado === 'cerrado' || !cierreForm.fecha_cierre) return;
+    setLoading(true);
+    setError('');
 
     try {
       const data = await updateCierreTarjeta(cierre.id, {
-        fecha_cierre: next.fecha_cierre,
-        fecha_vencimiento: next.fecha_vencimiento || null
+        fecha_cierre: cierreForm.fecha_cierre,
+        fecha_vencimiento: cierreForm.fecha_vencimiento || null
       });
       setCierre(data.item || cierre);
+      setSavedCierreForm(cierreForm);
+      await cargarTarjetas(form.tarjeta_id, selectedCiclo);
     } catch (err) {
       setError(err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -231,7 +258,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
     try {
       const payload = {
         tarjeta_id: Number(form.tarjeta_id),
-        ciclo_actual: ciclo,
+        ciclo_actual: selectedCiclo,
         fecha_compra: form.fecha_compra,
         descripcion: form.descripcion,
         categoria: form.categoria || null,
@@ -260,6 +287,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
   };
 
   const handleEdit = (consumo) => {
+    if (resumenSeleccionadoCerrado && consumo.ciclo_asignado === selectedCiclo) return;
     setEditingId(consumo.id);
     setForm({
       fecha_compra: String(consumo.fecha_compra || '').slice(0, 10),
@@ -282,6 +310,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
   };
 
   const handleDelete = async (consumo) => {
+    if (resumenSeleccionadoCerrado && consumo.ciclo_asignado === selectedCiclo) return;
     if (!window.confirm(`Eliminar consumo "${consumo.descripcion}"?`)) return;
     setLoading(true);
     setError('');
@@ -336,6 +365,9 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
             {cierre?.estado === 'cerrado' ? 'Cerrado' : 'Abierto'}
           </em>
         </div>
+        <p className={`tarjeta-summary-state ${resumenSeleccionadoCerrado ? 'cerrado' : 'abierto'}`}>
+          Resumen {formatCycleLabel(selectedCiclo)} {resumenSeleccionadoCerrado ? 'cerrado' : 'abierto'}
+        </p>
         <div className="tarjeta-current-grid">
           <label>
             Tarjeta seleccionada
@@ -345,16 +377,18 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
               ))}
             </select>
           </label>
-          <label>
-            Ciclo / resumen actual
-            <input value={formatCycleLabel(ciclo)} readOnly />
-          </label>
+          <MonthPicker
+            label="Ciclo / resumen actual"
+            value={selectedCiclo}
+            onChange={handleCicloChange}
+            className="tarjeta-cycle-picker"
+          />
           <label>
             Fecha de cierre del resumen
             <input
               type="date"
               value={cierreForm.fecha_cierre}
-              disabled={cierre?.estado === 'cerrado'}
+              disabled={resumenSeleccionadoCerrado}
               onChange={(e) => handleCierreFieldChange('fecha_cierre', e.target.value)}
             />
           </label>
@@ -363,14 +397,31 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
             <input
               type="date"
               value={cierreForm.fecha_vencimiento}
-              disabled={cierre?.estado === 'cerrado'}
+              disabled={resumenSeleccionadoCerrado}
               onChange={(e) => handleCierreFieldChange('fecha_vencimiento', e.target.value)}
             />
           </label>
         </div>
-        <button type="button" className="btn-inline secondary tarjeta-close-action" onClick={handleToggleCierre} disabled={loading || !cierre?.id}>
-          {cierre?.estado === 'cerrado' ? 'Reabrir resumen' : 'Cerrar resumen'}
-        </button>
+        <div className="tarjeta-current-actions">
+          <p className={`tarjeta-config-status ${cierreTieneCambios ? 'pending' : 'saved'}`}>
+            {cierreTieneCambios
+              ? 'Hay cambios pendientes en la configuracion del resumen.'
+              : `Configuracion guardada para ${formatCycleLabel(selectedCiclo)}.`}
+          </p>
+          <div className="tarjeta-config-buttons">
+            <button
+              type="button"
+              className="btn-inline tarjeta-save-config"
+              onClick={handleGuardarCierre}
+              disabled={loading || !cierre?.id || resumenSeleccionadoCerrado || !cierreTieneCambios || !cierreForm.fecha_cierre}
+            >
+              Guardar configuracion del resumen
+            </button>
+            <button type="button" className="btn-inline secondary tarjeta-close-action" onClick={handleToggleCierre} disabled={loading || !cierre?.id}>
+              {resumenSeleccionadoCerrado ? 'Reabrir resumen' : 'Cerrar resumen'}
+            </button>
+          </div>
+        </div>
       </section>
 
       <div className="tarjeta-summary-grid">
@@ -382,7 +433,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
         ))}
       </div>
 
-      {cierre?.estado === 'cerrado' && (
+      {resumenSeleccionadoCerrado && (
         <section className="panel tarjeta-closed-summary">
           <div>
             <span>Total ARS cerrado</span>
@@ -409,6 +460,10 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
           <label>
             Fecha de compra
             <input type="date" value={form.fecha_compra} onChange={(e) => handleChange('fecha_compra', e.target.value)} required />
+            <span className={`tarjeta-assignment-preview ${previewPasaAlSiguiente ? 'next' : ''}`}>
+              {previewPasaAlSiguiente ? 'Pasa al proximo resumen: ' : 'Resumen asignado: '}
+              <strong>{formatCycleLabel(previewCicloAsignado)}</strong>
+            </span>
           </label>
           <label className="field-strong">
             Descripcion / comercio
@@ -461,12 +516,12 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
             </div>
             <textarea value={form.observaciones} onChange={(e) => handleChange('observaciones', e.target.value)} rows="3" />
           </label>
-          <button className="full-width movement-submit" type="submit" disabled={loading || tarjetas.length === 0}>
+          <button className="full-width movement-submit" type="submit" disabled={loading || tarjetas.length === 0 || consumoAsignadoAResumenCerrado}>
             {loading ? 'Guardando...' : editingId ? 'Guardar cambios' : 'Guardar consumo'}
           </button>
-          <div className="tarjeta-assignment-preview full-width">
-            Entrara en: <strong>{formatCycleLabel(previewCicloAsignado)}</strong>
-          </div>
+          {consumoAsignadoAResumenCerrado && (
+            <p className="tarjeta-closed-helper full-width">Este resumen esta cerrado. Reabrilo para modificar sus consumos.</p>
+          )}
           {editingId && (
             <button className="full-width btn-inline secondary" type="button" onClick={handleCancelEdit}>
               Cancelar edicion
