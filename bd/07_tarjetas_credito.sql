@@ -22,8 +22,16 @@ CREATE TABLE IF NOT EXISTS cierres_tarjeta (
     CHECK (estado IN ('abierto', 'cerrado')),
   creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   actualizado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (tarjeta_id, ciclo)
 );
+
+ALTER TABLE cierres_tarjeta
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+ALTER TABLE cierres_tarjeta
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
 CREATE TABLE IF NOT EXISTS consumos_tarjeta (
   id BIGSERIAL PRIMARY KEY,

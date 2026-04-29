@@ -614,10 +614,11 @@ export async function getGastosFijos(hogarId = 1, ciclo) {
   }
 }
 
-export async function getTarjetasCredito(hogarId = 1, ciclo) {
+export async function getTarjetasCredito(hogarId = 1, ciclo, tarjetaId) {
   try {
     const searchParams = new URLSearchParams({ hogar_id: String(hogarId) });
     if (ciclo) searchParams.set('ciclo', ciclo);
+    if (tarjetaId) searchParams.set('tarjeta_id', String(tarjetaId));
     const response = await fetch(`${API_URL}/tarjetas-credito?${searchParams.toString()}`, {
       headers: getAuthHeaders()
     });

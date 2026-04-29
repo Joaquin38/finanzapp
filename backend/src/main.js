@@ -709,9 +709,13 @@ async function asegurarTarjetasCredito() {
         CHECK (estado IN ('abierto', 'cerrado')),
       creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       actualizado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE (tarjeta_id, ciclo)
     )
   `);
+  await pool.query('ALTER TABLE cierres_tarjeta ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()');
+  await pool.query('ALTER TABLE cierres_tarjeta ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()');
   await pool.query(`
     CREATE TABLE IF NOT EXISTS consumos_tarjeta (
       id BIGSERIAL PRIMARY KEY,
@@ -874,6 +878,38 @@ function fechaPorDiaDeCiclo(ciclo, dia) {
   const mesIndex = Number(mesTexto) - 1;
   const ultimoDia = new Date(anio, mesIndex + 1, 0).getDate();
   return `${ciclo}-${String(Math.min(Number(dia), ultimoDia)).padStart(2, '0')}`;
+}
+
+async function obtenerOCrearCierreTarjeta(tarjeta, ciclo) {
+  if (!tarjeta?.id || !cicloEsValido(ciclo)) return null;
+  const fechaCierreDefault = fechaPorDiaDeCiclo(ciclo, tarjeta.dia_cierre_default);
+  const fechaVencimientoDefault = tarjeta.dia_vencimiento_default
+    ? fechaPorDiaDeCiclo(ciclo, tarjeta.dia_vencimiento_default)
+    : null;
+
+  const { rows: insertRows } = await pool.query(
+    `
+    INSERT INTO cierres_tarjeta (tarjeta_id, ciclo, fecha_cierre, fecha_vencimiento)
+    VALUES ($1, $2, $3, $4)
+    ON CONFLICT (tarjeta_id, ciclo) DO NOTHING
+    RETURNING id, tarjeta_id, ciclo, fecha_cierre, fecha_vencimiento, estado,
+              creado_en, actualizado_en, created_at, updated_at
+    `,
+    [tarjeta.id, ciclo, fechaCierreDefault, fechaVencimientoDefault]
+  );
+  if (insertRows.length > 0) return insertRows[0];
+
+  const { rows } = await pool.query(
+    `
+    SELECT id, tarjeta_id, ciclo, fecha_cierre, fecha_vencimiento, estado,
+           creado_en, actualizado_en, created_at, updated_at
+    FROM cierres_tarjeta
+    WHERE tarjeta_id = $1 AND ciclo = $2
+    LIMIT 1
+    `,
+    [tarjeta.id, ciclo]
+  );
+  return rows[0] || null;
 }
 
 async function asegurarEstadosGastosFijosPorCiclo() {
@@ -2087,6 +2123,7 @@ app.use(validarAccesoHogar);
 app.get('/tarjetas-credito', async (req, res) => {
   const hogarId = Number(req.query.hogar_id);
   const ciclo = String(req.query.ciclo || '');
+  const tarjetaIdSeleccionada = Number(req.query.tarjeta_id || 0);
 
   if (!hogarId) return res.status(400).json({ error: 'hogar_id es obligatorio' });
 
@@ -2111,42 +2148,15 @@ app.get('/tarjetas-credito', async (req, res) => {
       `,
       [hogarId]
     );
-    const cierreActualParams = [];
     let cierreActual = null;
 
     if (cicloEsValido(ciclo) && tarjetas[0]) {
-      const tarjetaActual = tarjetas[0];
-      const fechaCierreDefault = fechaPorDiaDeCiclo(ciclo, tarjetaActual.dia_cierre_default);
-      const fechaVencimientoDefault = tarjetaActual.dia_vencimiento_default
-        ? fechaPorDiaDeCiclo(ciclo, tarjetaActual.dia_vencimiento_default)
-        : null;
-      const { rows: cierreRows } = await pool.query(
-        `
-        INSERT INTO cierres_tarjeta (tarjeta_id, ciclo, fecha_cierre, fecha_vencimiento)
-        VALUES ($1, $2, $3, $4)
-        ON CONFLICT (tarjeta_id, ciclo) DO NOTHING
-        RETURNING id, tarjeta_id, ciclo, fecha_cierre, fecha_vencimiento, estado
-        `,
-        [tarjetaActual.id, ciclo, fechaCierreDefault, fechaVencimientoDefault]
-      );
-      if (cierreRows.length > 0) {
-        cierreActual = cierreRows[0];
-      } else {
-        const { rows } = await pool.query(
-          `
-          SELECT id, tarjeta_id, ciclo, fecha_cierre, fecha_vencimiento, estado
-          FROM cierres_tarjeta
-          WHERE tarjeta_id = $1 AND ciclo = $2
-          LIMIT 1
-          `,
-          [tarjetaActual.id, ciclo]
-        );
-        cierreActual = rows[0] || null;
-      }
-      cierreActualParams.push(cierreActual);
+      const tarjetaActual = tarjetas.find((tarjeta) => Number(tarjeta.id) === tarjetaIdSeleccionada) || tarjetas[0];
+      cierreActual = await obtenerOCrearCierreTarjeta(tarjetaActual, ciclo);
     }
 
     const cicloSiguiente = cicloEsValido(ciclo) ? siguienteCiclo(ciclo) : null;
+    const tarjetaConsultaId = cierreActual?.tarjeta_id || null;
     const { rows: consumos } = cicloEsValido(ciclo)
       ? await pool.query(
           `
@@ -2160,9 +2170,10 @@ app.get('/tarjetas-credito', async (req, res) => {
           LEFT JOIN cierres_tarjeta crt ON crt.id = ct.cierre_id
           WHERE tc.hogar_id = $1
             AND COALESCE(ct.ciclo_asignado, '') IN ($2, $3)
+            AND ($4::BIGINT IS NULL OR ct.tarjeta_id = $4)
           ORDER BY ct.fecha_compra DESC, ct.id DESC
           `,
-          [hogarId, ciclo, cicloSiguiente]
+          [hogarId, ciclo, cicloSiguiente, tarjetaConsultaId]
         )
       : { rows: [] };
 
@@ -2179,7 +2190,7 @@ app.get('/tarjetas-credito', async (req, res) => {
       { total_ars: 0, total_usd: 0, consumos: 0, cuotas_futuras: 0 }
     );
 
-    return res.status(200).json({ tarjetas, cierre: cierreActualParams[0] || null, consumos, resumen });
+    return res.status(200).json({ tarjetas, cierre: cierreActual || null, consumos, resumen });
   } catch (error) {
     return res.status(500).json({ error: 'Error consultando tarjetas', detalle: error.message });
   }
@@ -2189,8 +2200,6 @@ app.post('/tarjetas-credito/consumos', async (req, res) => {
   const {
     tarjeta_id,
     ciclo_actual,
-    fecha_cierre,
-    fecha_vencimiento,
     fecha_compra,
     descripcion,
     categoria,
@@ -2235,29 +2244,11 @@ app.post('/tarjetas-credito/consumos', async (req, res) => {
     }
 
     const cicloBase = cicloEsValido(String(ciclo_actual || '')) ? String(ciclo_actual) : cicloTarjetaPorFechaCompra(fecha_compra, tarjeta.dia_cierre_default);
-    const fechaCierreActual = parseFecha(fecha_cierre) || fechaPorDiaDeCiclo(cicloBase, tarjeta.dia_cierre_default);
-    const cicloAsignado = cicloTarjetaPorFechaCierre(fecha_compra, cicloBase, fechaCierreActual) || cicloBase;
-    const fechaCierre = cicloAsignado === cicloBase ? fechaCierreActual : fechaPorDiaDeCiclo(cicloAsignado, tarjeta.dia_cierre_default);
-    const fechaVencimiento = cicloAsignado === cicloBase && parseFecha(fecha_vencimiento)
-      ? parseFecha(fecha_vencimiento)
-      : tarjeta.dia_vencimiento_default
-        ? fechaPorDiaDeCiclo(cicloAsignado, tarjeta.dia_vencimiento_default)
-        : null;
+    const cierreBase = await obtenerOCrearCierreTarjeta(tarjeta, cicloBase);
+    const cicloAsignado = cicloTarjetaPorFechaCierre(fecha_compra, cicloBase, String(cierreBase.fecha_cierre).slice(0, 10)) || cicloBase;
+    const cierreAsignado = cicloAsignado === cicloBase ? cierreBase : await obtenerOCrearCierreTarjeta(tarjeta, cicloAsignado);
     const totalFinal = esNumeroPositivo(montoTotal) ? montoTotal : Number((montoCuota * cuotas).toFixed(2));
     const cuotaFinal = esNumeroPositivo(montoCuota) ? montoCuota : Number((totalFinal / cuotas).toFixed(2));
-
-    const { rows: cierreRows } = await pool.query(
-      `
-      INSERT INTO cierres_tarjeta (tarjeta_id, ciclo, fecha_cierre, fecha_vencimiento)
-      VALUES ($1, $2, $3, $4)
-      ON CONFLICT (tarjeta_id, ciclo)
-      DO UPDATE SET fecha_cierre = EXCLUDED.fecha_cierre,
-                    fecha_vencimiento = EXCLUDED.fecha_vencimiento,
-                    actualizado_en = NOW()
-      RETURNING id
-      `,
-      [tarjetaId, cicloAsignado, fechaCierre, fechaVencimiento]
-    );
 
     const { rows } = await pool.query(
       `
@@ -2270,7 +2261,7 @@ app.post('/tarjetas-credito/consumos', async (req, res) => {
       `,
       [
         tarjetaId,
-        cierreRows[0].id,
+        cierreAsignado.id,
         cicloAsignado,
         fecha_compra,
         String(descripcion).trim(),
@@ -2295,8 +2286,6 @@ app.patch('/tarjetas-credito/consumos/:id', async (req, res) => {
   const {
     tarjeta_id,
     ciclo_actual,
-    fecha_cierre,
-    fecha_vencimiento,
     fecha_compra,
     descripcion,
     categoria,
@@ -2330,29 +2319,11 @@ app.patch('/tarjetas-credito/consumos/:id', async (req, res) => {
     if (!puedeOperarHogar(req.usuario, Number(tarjeta.hogar_id))) return res.status(403).json({ error: 'No tenes permisos para operar esta tarjeta' });
 
     const cicloBase = cicloEsValido(String(ciclo_actual || '')) ? String(ciclo_actual) : cicloTarjetaPorFechaCompra(fecha_compra, tarjeta.dia_cierre_default);
-    const fechaCierreActual = parseFecha(fecha_cierre) || fechaPorDiaDeCiclo(cicloBase, tarjeta.dia_cierre_default);
-    const cicloAsignado = cicloTarjetaPorFechaCierre(fecha_compra, cicloBase, fechaCierreActual) || cicloBase;
-    const fechaCierre = cicloAsignado === cicloBase ? fechaCierreActual : fechaPorDiaDeCiclo(cicloAsignado, tarjeta.dia_cierre_default);
-    const fechaVencimiento = cicloAsignado === cicloBase && parseFecha(fecha_vencimiento)
-      ? parseFecha(fecha_vencimiento)
-      : tarjeta.dia_vencimiento_default
-        ? fechaPorDiaDeCiclo(cicloAsignado, tarjeta.dia_vencimiento_default)
-        : null;
+    const cierreBase = await obtenerOCrearCierreTarjeta(tarjeta, cicloBase);
+    const cicloAsignado = cicloTarjetaPorFechaCierre(fecha_compra, cicloBase, String(cierreBase.fecha_cierre).slice(0, 10)) || cicloBase;
+    const cierreAsignado = cicloAsignado === cicloBase ? cierreBase : await obtenerOCrearCierreTarjeta(tarjeta, cicloAsignado);
     const totalFinal = esNumeroPositivo(montoTotal) ? montoTotal : Number((montoCuota * cuotas).toFixed(2));
     const cuotaFinal = esNumeroPositivo(montoCuota) ? montoCuota : Number((totalFinal / cuotas).toFixed(2));
-
-    const { rows: cierreRows } = await pool.query(
-      `
-      INSERT INTO cierres_tarjeta (tarjeta_id, ciclo, fecha_cierre, fecha_vencimiento)
-      VALUES ($1, $2, $3, $4)
-      ON CONFLICT (tarjeta_id, ciclo)
-      DO UPDATE SET fecha_cierre = EXCLUDED.fecha_cierre,
-                    fecha_vencimiento = EXCLUDED.fecha_vencimiento,
-                    actualizado_en = NOW()
-      RETURNING id
-      `,
-      [tarjetaId, cicloAsignado, fechaCierre, fechaVencimiento]
-    );
 
     const { rows } = await pool.query(
       `
@@ -2375,7 +2346,7 @@ app.patch('/tarjetas-credito/consumos/:id', async (req, res) => {
       `,
       [
         tarjetaId,
-        cierreRows[0].id,
+        cierreAsignado.id,
         cicloAsignado,
         fecha_compra,
         String(descripcion).trim(),
@@ -2423,10 +2394,12 @@ app.delete('/tarjetas-credito/consumos/:id', async (req, res) => {
 
 app.patch('/tarjetas-credito/cierres/:id', async (req, res) => {
   const cierreId = Number(req.params.id);
-  const { estado } = req.body || {};
+  const { estado, fecha_cierre, fecha_vencimiento } = req.body || {};
 
   if (!cierreId) return res.status(400).json({ error: 'id invalido' });
-  if (!['abierto', 'cerrado'].includes(estado)) return res.status(400).json({ error: 'estado invalido' });
+  if (estado !== undefined && !['abierto', 'cerrado'].includes(estado)) return res.status(400).json({ error: 'estado invalido' });
+  if (fecha_cierre !== undefined && !parseFecha(fecha_cierre)) return res.status(400).json({ error: 'fecha_cierre invalida' });
+  if (fecha_vencimiento && !parseFecha(fecha_vencimiento)) return res.status(400).json({ error: 'fecha_vencimiento invalida' });
 
   try {
     await asegurarTarjetasCredito();
@@ -2445,12 +2418,22 @@ app.patch('/tarjetas-credito/cierres/:id', async (req, res) => {
     const { rows } = await pool.query(
       `
       UPDATE cierres_tarjeta
-      SET estado = $1,
-          actualizado_en = NOW()
-      WHERE id = $2
-      RETURNING id, tarjeta_id, ciclo, fecha_cierre, fecha_vencimiento, estado
+      SET estado = COALESCE($1, estado),
+          fecha_cierre = COALESCE($2, fecha_cierre),
+          fecha_vencimiento = CASE WHEN $3 THEN $4 ELSE fecha_vencimiento END,
+          actualizado_en = NOW(),
+          updated_at = NOW()
+      WHERE id = $5
+      RETURNING id, tarjeta_id, ciclo, fecha_cierre, fecha_vencimiento, estado,
+                creado_en, actualizado_en, created_at, updated_at
       `,
-      [estado, cierreId]
+      [
+        estado === undefined ? null : estado,
+        fecha_cierre === undefined ? null : fecha_cierre,
+        fecha_vencimiento !== undefined,
+        fecha_vencimiento || null,
+        cierreId
+      ]
     );
     return res.status(200).json({ item: rows[0] });
   } catch (error) {

@@ -157,9 +157,9 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
     };
   }, [consumos, ciclo]);
 
-  const cargarTarjetas = async () => {
+  const cargarTarjetas = async (tarjetaId = form.tarjeta_id) => {
     if (!hogarId) return;
-    const data = await getTarjetasCredito(hogarId, ciclo);
+    const data = await getTarjetasCredito(hogarId, ciclo, tarjetaId);
     setTarjetas(data.tarjetas || []);
     setCierre(data.cierre || null);
     setCierreForm({
@@ -170,13 +170,35 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
     setResumen(data.resumen || { total_ars: 0, total_usd: 0, consumos: 0, cuotas_futuras: 0 });
     setForm((prev) => ({
       ...prev,
-      tarjeta_id: prev.tarjeta_id || String(data.tarjetas?.[0]?.id || '')
+      tarjeta_id: tarjetaId ? String(tarjetaId) : prev.tarjeta_id || String(data.tarjetas?.[0]?.id || '')
     }));
   };
 
   useEffect(() => {
     cargarTarjetas().catch((err) => setError(err.message));
   }, [hogarId, ciclo]);
+
+  const handleTarjetaChange = (value) => {
+    setForm((prev) => ({ ...prev, tarjeta_id: value }));
+    cargarTarjetas(value).catch((err) => setError(err.message));
+  };
+
+  const handleCierreFieldChange = async (field, value) => {
+    const next = { ...cierreForm, [field]: value };
+    setCierreForm(next);
+    if (!cierre?.id || cierre?.estado === 'cerrado') return;
+    if (field === 'fecha_cierre' && !value) return;
+
+    try {
+      const data = await updateCierreTarjeta(cierre.id, {
+        fecha_cierre: next.fecha_cierre,
+        fecha_vencimiento: next.fecha_vencimiento || null
+      });
+      setCierre(data.item || cierre);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
 
   const handleChange = (field, value) => {
     const nextSource = field === 'monto_total' ? 'total' : field === 'monto_cuota' ? 'cuota' : calcSource;
@@ -210,8 +232,6 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
       const payload = {
         tarjeta_id: Number(form.tarjeta_id),
         ciclo_actual: ciclo,
-        fecha_cierre: cierreForm.fecha_cierre,
-        fecha_vencimiento: cierreForm.fecha_vencimiento || null,
         fecha_compra: form.fecha_compra,
         descripcion: form.descripcion,
         categoria: form.categoria || null,
@@ -319,7 +339,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
         <div className="tarjeta-current-grid">
           <label>
             Tarjeta seleccionada
-            <select value={form.tarjeta_id} onChange={(e) => handleChange('tarjeta_id', e.target.value)}>
+            <select value={form.tarjeta_id} onChange={(e) => handleTarjetaChange(e.target.value)}>
               {tarjetas.map((tarjeta) => (
                 <option key={tarjeta.id} value={tarjeta.id}>{tarjeta.nombre}</option>
               ))}
@@ -335,7 +355,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
               type="date"
               value={cierreForm.fecha_cierre}
               disabled={cierre?.estado === 'cerrado'}
-              onChange={(e) => setCierreForm((prev) => ({ ...prev, fecha_cierre: e.target.value }))}
+              onChange={(e) => handleCierreFieldChange('fecha_cierre', e.target.value)}
             />
           </label>
           <label>
@@ -344,7 +364,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
               type="date"
               value={cierreForm.fecha_vencimiento}
               disabled={cierre?.estado === 'cerrado'}
-              onChange={(e) => setCierreForm((prev) => ({ ...prev, fecha_vencimiento: e.target.value }))}
+              onChange={(e) => handleCierreFieldChange('fecha_vencimiento', e.target.value)}
             />
           </label>
         </div>
