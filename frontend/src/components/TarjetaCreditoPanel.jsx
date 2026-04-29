@@ -558,22 +558,13 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
               Cuotas
               <input type="number" min="1" step="1" value={form.cantidad_cuotas} onChange={(e) => handleChange('cantidad_cuotas', e.target.value)} required />
             </label>
-            <div className="tarjeta-calc-mode" role="group" aria-label="Modo de carga del monto">
-              <button
-                type="button"
-                className={calcSource === 'total' ? 'active' : ''}
-                onClick={() => handleCalcSourceChange('total')}
-              >
-                Cargo total
-              </button>
-              <button
-                type="button"
-                className={calcSource === 'cuota' ? 'active' : ''}
-                onClick={() => handleCalcSourceChange('cuota')}
-              >
-                Cargo cuota
-              </button>
-            </div>
+            <label className="tarjeta-calc-mode">
+              Modo de carga
+              <select value={calcSource} onChange={(e) => handleCalcSourceChange(e.target.value)}>
+                <option value="total">Cargo total</option>
+                <option value="cuota">Cargo cuota</option>
+              </select>
+            </label>
             <label className="field-strong">
               Monto total
               <input
