@@ -3516,36 +3516,6 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   color: #ffffff;
   box-shadow: var(--primary-button-shadow);
 }
-.tarjeta-screen-indicator {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 10px 14px;
-  border: 1px solid rgba(37, 99, 235, 0.22);
-  border-radius: 12px;
-  background: rgba(37, 99, 235, 0.08);
-}
-.tarjeta-screen-indicator span,
-.tarjeta-screen-pill {
-  color: var(--primary-strong);
-  font-size: 11px;
-  font-weight: 900;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-.tarjeta-screen-indicator strong {
-  color: var(--text-primary);
-  font-size: 13px;
-}
-.tarjeta-screen-pill {
-  display: inline-flex;
-  align-items: center;
-  min-height: 30px;
-  padding: 0 10px;
-  border-radius: 999px;
-  background: rgba(37, 99, 235, 0.1);
-}
 .tarjeta-panel .panel-header {
   display: flex;
   align-items: flex-start;
@@ -3877,10 +3847,6 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   color: var(--text-primary);
 }
 .tarjeta-history {
-  display: grid;
-  gap: 10px;
-}
-.tarjeta-secondary-screen {
   display: grid;
   gap: 10px;
 }
@@ -4601,7 +4567,6 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
 :root[data-theme='dark'] .decision-executive-summary,
 :root[data-theme='dark'] .decision-section,
 :root[data-theme='dark'] .tarjeta-view-switch,
-:root[data-theme='dark'] .tarjeta-screen-indicator,
 :root[data-theme='dark'] .decision-comparison-row,
 :root[data-theme='dark'] .decision-weekly-track,
 :root[data-theme='dark'] .decision-composition-grid span,
@@ -4616,10 +4581,6 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
 }
 :root[data-theme='dark'] .tarjeta-view-switch button.active {
   color: #ffffff;
-}
-:root[data-theme='dark'] .tarjeta-screen-pill {
-  background: rgba(96, 165, 250, 0.16);
-  color: #bfdbfe;
 }
 :root[data-theme='dark'] .app-toast {
   background: var(--surface);
@@ -5214,7 +5175,6 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
     grid-template-columns: 1fr;
   }
   .tarjeta-view-switch { width: 100%; }
-  .tarjeta-screen-indicator { align-items: flex-start; flex-direction: column; }
   .tarjeta-consumo-row { align-items: flex-start; flex-direction: column; }
   .ahorro-evolution-row {
     grid-template-columns: 1fr;

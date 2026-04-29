@@ -444,11 +444,6 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
 
       {vistaTarjeta === 'principal' ? (
         <>
-      <div className="tarjeta-screen-indicator">
-        <span>Pantalla activa</span>
-        <strong>Resumen en curso, consumos y cuotas futuras</strong>
-      </div>
-
       <section className="panel tarjeta-current-summary tarjeta-section-card tarjeta-section-config">
         <div className="panel-header">
           <div>
@@ -799,17 +794,6 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
         </>
       ) : (
         <>
-      <section className="panel tarjeta-secondary-screen tarjeta-section-card tarjeta-section-history">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">Pantalla activa</p>
-            <h2>Historial y analisis</h2>
-            <p>Resumenes anteriores y lectura del ciclo seleccionado.</p>
-          </div>
-          <span className="tarjeta-screen-pill">Vista secundaria</span>
-        </div>
-      </section>
-
       <section className="panel tarjeta-history tarjeta-section-card tarjeta-section-history">
         <div className="panel-header">
           <div>
