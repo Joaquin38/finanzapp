@@ -3379,7 +3379,7 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   display: flex;
   justify-content: space-between;
   gap: 18px;
-  align-items: stretch;
+  align-items: center;
   padding-block: 14px;
 }
 .tarjeta-hero h2 {
@@ -3389,6 +3389,10 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
 .tarjeta-hero p:not(.eyebrow) {
   margin: 0;
   color: var(--text-muted);
+}
+.tarjeta-secondary-toggle {
+  min-width: 160px;
+  min-height: 38px;
 }
 .tarjeta-panel .panel-header {
   display: flex;
@@ -3569,16 +3573,51 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
 .tarjeta-form-panel {
   display: grid;
   gap: 10px;
+  border-color: rgba(22, 163, 74, 0.34);
+  background:
+    linear-gradient(180deg, rgba(22, 163, 74, 0.06), rgba(255, 255, 255, 0) 170px),
+    var(--surface);
 }
 .tarjeta-consumo-form {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 9px 10px;
+  grid-template-columns: 1fr;
+  gap: 10px;
   margin-top: 0;
+}
+.tarjeta-form-group {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+.tarjeta-form-group-purchase {
+  grid-template-columns: 0.75fr 1.6fr 1fr 1fr;
+}
+.tarjeta-form-group-amounts {
+  grid-template-columns: 0.7fr 0.7fr 1.25fr 1fr 1fr;
+}
+.tarjeta-form-group-extra {
+  grid-template-columns: 1fr 2fr;
+}
+.tarjeta-form-group-title {
+  grid-column: 1 / -1;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+.tarjeta-consumo-form label,
+.tarjeta-form-group-title {
+  min-width: 0;
 }
 .tarjeta-consumo-form label {
   gap: 4px;
   font-size: 12px;
   font-weight: 700;
+}
+.tarjeta-field-wide {
+  min-width: 0;
 }
 .tarjeta-consumo-form input,
 .tarjeta-consumo-form select,
@@ -3689,6 +3728,21 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
 .tarjeta-history {
   display: grid;
   gap: 10px;
+}
+.tarjeta-secondary-screen {
+  display: grid;
+  gap: 10px;
+}
+:root[data-theme='dark'] .tarjeta-form-panel {
+  border-color: rgba(74, 222, 128, 0.22);
+  background:
+    linear-gradient(180deg, rgba(34, 197, 94, 0.1), rgba(15, 23, 42, 0) 170px),
+    var(--surface);
+}
+:root[data-theme='dark'] .tarjeta-calc-mode button.active {
+  border-color: rgba(96, 165, 250, 0.5);
+  background: rgba(37, 99, 235, 0.24);
+  color: #bfdbfe;
 }
 .tarjeta-history-table {
   min-width: 920px;
@@ -4708,6 +4762,12 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   .tarjeta-table-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tarjeta-analysis-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tarjeta-consumo-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tarjeta-form-group-purchase,
+  .tarjeta-form-group-amounts,
+  .tarjeta-form-group-extra {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
   .tarjeta-hero { flex-direction: column; }
   .tarjeta-cycle-summary { min-width: 0; }
   .ahorros-summary-grid,
@@ -4974,6 +5034,12 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   .tarjeta-analysis-grid,
   .tarjeta-detail-grid { grid-template-columns: 1fr; }
   .tarjeta-consumo-form { grid-template-columns: 1fr; }
+  .tarjeta-form-group-purchase,
+  .tarjeta-form-group-amounts,
+  .tarjeta-form-group-extra {
+    grid-template-columns: 1fr;
+  }
+  .tarjeta-secondary-toggle { width: 100%; }
   .tarjeta-consumo-row { align-items: flex-start; flex-direction: column; }
   .ahorro-evolution-row {
     grid-template-columns: 1fr;

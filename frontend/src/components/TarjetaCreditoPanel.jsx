@@ -94,6 +94,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
   const [detailItem, setDetailItem] = useState(null);
   const [filters, setFilters] = useState({ ciclo: '', categoria: '', moneda: '', cuotas: '', texto: '' });
   const [calcSource, setCalcSource] = useState('total');
+  const [vistaTarjeta, setVistaTarjeta] = useState('principal');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -358,6 +359,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
     setDetailItem(null);
     setEditingId(null);
     handleCicloChange(cicloResumen);
+    setVistaTarjeta('principal');
   };
 
   const handleEditarResumen = (item) => {
@@ -393,8 +395,17 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
           <h2>{tarjetaActual?.nombre || 'Tarjeta principal'}</h2>
           <p>Resumenes y consumos, sin impacto en movimientos.</p>
         </div>
+        <button
+          type="button"
+          className="btn-inline secondary tarjeta-secondary-toggle"
+          onClick={() => setVistaTarjeta(vistaTarjeta === 'principal' ? 'secundaria' : 'principal')}
+        >
+          {vistaTarjeta === 'principal' ? 'Historial y analisis' : 'Volver a consumos'}
+        </button>
       </div>
 
+      {vistaTarjeta === 'principal' ? (
+        <>
       <section className="panel tarjeta-current-summary tarjeta-section-card tarjeta-section-config">
         <div className="panel-header">
           <div>
@@ -474,69 +485,6 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
         ))}
       </div>
 
-      <section className="panel tarjeta-history tarjeta-section-card tarjeta-section-history">
-        <div className="panel-header">
-          <div>
-            <h2>Historial de resumenes</h2>
-            <p>{historialResumenes.length} recientes.</p>
-          </div>
-        </div>
-        <div className="tarjeta-table-wrap">
-          <table className="tarjeta-table tarjeta-history-table">
-            <thead>
-              <tr>
-                <th>Ciclo/resumen</th>
-                <th>Cierre</th>
-                <th>Vencimiento</th>
-                <th>Estado</th>
-                <th>Total ARS</th>
-                <th>Total USD</th>
-                <th>Consumos</th>
-                <th>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {historialResumenes.map((item) => (
-                <tr key={item.id} className={item.ciclo === selectedCiclo ? 'is-selected' : ''}>
-                  <td>
-                    <strong>{formatCycleLabel(item.ciclo)}</strong>
-                    {item.ciclo === selectedCiclo && <small>Seleccionado</small>}
-                  </td>
-                  <td>{formatDate(item.fecha_cierre)}</td>
-                  <td>{formatDate(item.fecha_vencimiento)}</td>
-                  <td>
-                    <span className={`tarjeta-history-status ${item.estado === 'cerrado' ? 'cerrado' : 'abierto'}`}>
-                      {item.estado === 'cerrado' ? 'Cerrado' : 'Abierto'}
-                    </span>
-                  </td>
-                  <td>{formatMoney(item.total_ars)}</td>
-                  <td>USD {Number(item.total_usd || 0).toLocaleString('es-AR', moneyFormat)}</td>
-                  <td>{Number(item.consumos || 0)}</td>
-                  <td>
-                    <div className="acciones-inline tarjeta-history-actions">
-                      <button type="button" className="btn-inline secondary" onClick={() => handleVerResumen(item.ciclo)}>
-                        Ver
-                      </button>
-                      <button type="button" className="btn-inline secondary" onClick={() => handleEditarResumen(item)}>
-                        Editar
-                      </button>
-                      <button type="button" className="btn-inline" onClick={() => handleToggleResumenHistorial(item)} disabled={loading}>
-                        {item.estado === 'cerrado' ? 'Reabrir' : 'Cerrar'}
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {historialResumenes.length === 0 && (
-                <tr>
-                  <td colSpan="8">Sin resumenes disponibles.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
       {resumenSeleccionadoCerrado && (
         <section className="panel tarjeta-closed-summary">
           <div>
@@ -568,95 +516,107 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
         </div>
         {error && <p className="error">{error}</p>}
         <form className="form-grid tarjeta-consumo-form" onSubmit={handleSubmit}>
-          <label>
-            Fecha de compra
-            <input type="date" value={form.fecha_compra} onChange={(e) => handleChange('fecha_compra', e.target.value)} required />
-          </label>
-          <label className="field-strong">
-            Descripcion / comercio
-            <input value={form.descripcion} onChange={(e) => handleChange('descripcion', e.target.value)} placeholder="Ej: Mercado, farmacia" required />
-          </label>
-          <label>
-            Categoria
-            <select value={form.categoria} onChange={(e) => handleChange('categoria', e.target.value)}>
-              <option value="">Sin categoria</option>
-              {categoriasEgreso.map((categoria) => (
-                <option key={categoria.id} value={categoria.nombre}>{categoria.nombre}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Tarjeta
-            <select value={form.tarjeta_id} onChange={(e) => handleChange('tarjeta_id', e.target.value)} required>
-              {tarjetas.map((tarjeta) => (
-                <option key={tarjeta.id} value={tarjeta.id}>{tarjeta.nombre}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Moneda
-            <select value={form.moneda} onChange={(e) => handleChange('moneda', e.target.value)}>
-              <option value="ARS">ARS</option>
-              <option value="USD">USD</option>
-            </select>
-          </label>
-          <label>
-            Cantidad de cuotas
-            <input type="number" min="1" step="1" value={form.cantidad_cuotas} onChange={(e) => handleChange('cantidad_cuotas', e.target.value)} required />
-          </label>
-          <div className="tarjeta-calc-mode" role="group" aria-label="Modo de carga del monto">
-            <button
-              type="button"
-              className={calcSource === 'total' ? 'active' : ''}
-              onClick={() => handleCalcSourceChange('total')}
-            >
-              Cargo total
-            </button>
-            <button
-              type="button"
-              className={calcSource === 'cuota' ? 'active' : ''}
-              onClick={() => handleCalcSourceChange('cuota')}
-            >
-              Cargo cuota
-            </button>
+          <div className="tarjeta-form-group tarjeta-form-group-purchase">
+            <span className="tarjeta-form-group-title">Compra</span>
+            <label>
+              Fecha
+              <input type="date" value={form.fecha_compra} onChange={(e) => handleChange('fecha_compra', e.target.value)} required />
+            </label>
+            <label className="field-strong tarjeta-field-wide">
+              Comercio / descripcion
+              <input value={form.descripcion} onChange={(e) => handleChange('descripcion', e.target.value)} placeholder="Ej: Mercado, farmacia" required />
+            </label>
+            <label>
+              Categoria
+              <select value={form.categoria} onChange={(e) => handleChange('categoria', e.target.value)}>
+                <option value="">Sin categoria</option>
+                {categoriasEgreso.map((categoria) => (
+                  <option key={categoria.id} value={categoria.nombre}>{categoria.nombre}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Tarjeta
+              <select value={form.tarjeta_id} onChange={(e) => handleChange('tarjeta_id', e.target.value)} required>
+                {tarjetas.map((tarjeta) => (
+                  <option key={tarjeta.id} value={tarjeta.id}>{tarjeta.nombre}</option>
+                ))}
+              </select>
+            </label>
           </div>
-          <label className="field-strong">
-            Monto total
-            <input
-              type="number"
-              min="0.01"
-              step="0.01"
-              value={form.monto_total}
-              onChange={(e) => handleChange('monto_total', e.target.value)}
-              placeholder="0.00"
-              readOnly={calcSource !== 'total'}
-              required
-            />
-          </label>
-          <label className="field-strong">
-            Monto de cuota
-            <input
-              type="number"
-              min="0.01"
-              step="0.01"
-              value={form.monto_cuota}
-              onChange={(e) => handleChange('monto_cuota', e.target.value)}
-              placeholder="0.00"
-              readOnly={calcSource !== 'cuota'}
-              required
-            />
-          </label>
-          <label>
-            Titular / adicional
-            <input value={form.titular} onChange={(e) => handleChange('titular', e.target.value)} placeholder="Opcional" />
-          </label>
-          <label className="full-width movement-form-description">
-            <div className="field-heading">
-              <span>Observaciones</span>
-              <small>Opcional</small>
+
+          <div className="tarjeta-form-group tarjeta-form-group-amounts">
+            <span className="tarjeta-form-group-title">Importe</span>
+            <label>
+              Moneda
+              <select value={form.moneda} onChange={(e) => handleChange('moneda', e.target.value)}>
+                <option value="ARS">ARS</option>
+                <option value="USD">USD</option>
+              </select>
+            </label>
+            <label>
+              Cuotas
+              <input type="number" min="1" step="1" value={form.cantidad_cuotas} onChange={(e) => handleChange('cantidad_cuotas', e.target.value)} required />
+            </label>
+            <div className="tarjeta-calc-mode" role="group" aria-label="Modo de carga del monto">
+              <button
+                type="button"
+                className={calcSource === 'total' ? 'active' : ''}
+                onClick={() => handleCalcSourceChange('total')}
+              >
+                Cargo total
+              </button>
+              <button
+                type="button"
+                className={calcSource === 'cuota' ? 'active' : ''}
+                onClick={() => handleCalcSourceChange('cuota')}
+              >
+                Cargo cuota
+              </button>
             </div>
-            <textarea value={form.observaciones} onChange={(e) => handleChange('observaciones', e.target.value)} rows="2" />
-          </label>
+            <label className="field-strong">
+              Monto total
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={form.monto_total}
+                onChange={(e) => handleChange('monto_total', e.target.value)}
+                placeholder="0.00"
+                readOnly={calcSource !== 'total'}
+                required
+              />
+            </label>
+            <label className="field-strong">
+              Monto de cuota
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={form.monto_cuota}
+                onChange={(e) => handleChange('monto_cuota', e.target.value)}
+                placeholder="0.00"
+                readOnly={calcSource !== 'cuota'}
+                required
+              />
+            </label>
+          </div>
+
+          <div className="tarjeta-form-group tarjeta-form-group-extra">
+            <span className="tarjeta-form-group-title">Opcional</span>
+            <label>
+              Titular / adicional
+              <input value={form.titular} onChange={(e) => handleChange('titular', e.target.value)} placeholder="Opcional" />
+            </label>
+            <label className="movement-form-description tarjeta-field-wide">
+              <div className="field-heading">
+                <span>Observaciones</span>
+                <small>Opcional</small>
+              </div>
+              <textarea value={form.observaciones} onChange={(e) => handleChange('observaciones', e.target.value)} rows="2" />
+            </label>
+          </div>
+
           <button className="full-width movement-submit" type="submit" disabled={loading || tarjetas.length === 0 || consumoAsignadoAResumenCerrado}>
             {loading ? 'Guardando...' : editingId ? 'Guardar cambios' : 'Guardar consumo'}
           </button>
@@ -777,10 +737,112 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
         </section>
       )}
 
+      <section className="panel tarjeta-cuotas-futuras tarjeta-section-card tarjeta-section-future">
+        <div className="panel-header">
+          <div>
+            <p className="eyebrow">Analisis de cuotas</p>
+            <h2>Cuotas futuras</h2>
+            <p>Proximos impactos.</p>
+          </div>
+        </div>
+        {cuotasFuturas.length > 0 ? (
+          <div className="tarjeta-future-grid">
+            {cuotasFuturas.map((item) => (
+              <article className="tarjeta-future-card" key={item.ciclo}>
+                <span>{formatCycleLabel(item.ciclo)}</span>
+                <strong>{formatMoney(item.totalArs)} ARS</strong>
+                <strong>USD {Number(item.totalUsd || 0).toLocaleString('es-AR', moneyFormat)}</strong>
+                <small>{item.cantidadConsumos} consumos incluidos</small>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p className="empty-state">Sin cuotas futuras.</p>
+        )}
+      </section>
+        </>
+      ) : (
+        <>
+      <section className="panel tarjeta-secondary-screen tarjeta-section-card tarjeta-section-history">
+        <div className="panel-header">
+          <div>
+            <p className="eyebrow">Vista secundaria</p>
+            <h2>Historial y analisis</h2>
+            <p>Resumenes anteriores y lectura del ciclo seleccionado.</p>
+          </div>
+          <button type="button" className="btn-inline secondary" onClick={() => setVistaTarjeta('principal')}>
+            Volver a consumos
+          </button>
+        </div>
+      </section>
+
+      <section className="panel tarjeta-history tarjeta-section-card tarjeta-section-history">
+        <div className="panel-header">
+          <div>
+            <h2>Historial de resumenes</h2>
+            <p>{historialResumenes.length} recientes.</p>
+          </div>
+        </div>
+        <div className="tarjeta-table-wrap">
+          <table className="tarjeta-table tarjeta-history-table">
+            <thead>
+              <tr>
+                <th>Ciclo/resumen</th>
+                <th>Cierre</th>
+                <th>Vencimiento</th>
+                <th>Estado</th>
+                <th>Total ARS</th>
+                <th>Total USD</th>
+                <th>Consumos</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {historialResumenes.map((item) => (
+                <tr key={item.id} className={item.ciclo === selectedCiclo ? 'is-selected' : ''}>
+                  <td>
+                    <strong>{formatCycleLabel(item.ciclo)}</strong>
+                    {item.ciclo === selectedCiclo && <small>Seleccionado</small>}
+                  </td>
+                  <td>{formatDate(item.fecha_cierre)}</td>
+                  <td>{formatDate(item.fecha_vencimiento)}</td>
+                  <td>
+                    <span className={`tarjeta-history-status ${item.estado === 'cerrado' ? 'cerrado' : 'abierto'}`}>
+                      {item.estado === 'cerrado' ? 'Cerrado' : 'Abierto'}
+                    </span>
+                  </td>
+                  <td>{formatMoney(item.total_ars)}</td>
+                  <td>USD {Number(item.total_usd || 0).toLocaleString('es-AR', moneyFormat)}</td>
+                  <td>{Number(item.consumos || 0)}</td>
+                  <td>
+                    <div className="acciones-inline tarjeta-history-actions">
+                      <button type="button" className="btn-inline secondary" onClick={() => handleVerResumen(item.ciclo)}>
+                        Ver
+                      </button>
+                      <button type="button" className="btn-inline secondary" onClick={() => handleEditarResumen(item)}>
+                        Editar
+                      </button>
+                      <button type="button" className="btn-inline" onClick={() => handleToggleResumenHistorial(item)} disabled={loading}>
+                        {item.estado === 'cerrado' ? 'Reabrir' : 'Cerrar'}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {historialResumenes.length === 0 && (
+                <tr>
+                  <td colSpan="8">Sin resumenes disponibles.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <section className="panel tarjeta-analisis-resumen tarjeta-section-card tarjeta-section-analysis">
         <div className="panel-header">
           <div>
-            <p className="eyebrow">Paso 3</p>
+            <p className="eyebrow">Analisis</p>
             <h2>Analisis del resumen</h2>
             <p>Lectura del ciclo seleccionado.</p>
           </div>
@@ -816,30 +878,8 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
           </p>
         </div>
       </section>
-
-      <section className="panel tarjeta-cuotas-futuras tarjeta-section-card tarjeta-section-future">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">Paso 4</p>
-            <h2>Cuotas futuras</h2>
-            <p>Proximos impactos.</p>
-          </div>
-        </div>
-        {cuotasFuturas.length > 0 ? (
-          <div className="tarjeta-future-grid">
-            {cuotasFuturas.map((item) => (
-              <article className="tarjeta-future-card" key={item.ciclo}>
-                <span>{formatCycleLabel(item.ciclo)}</span>
-                <strong>{formatMoney(item.totalArs)} ARS</strong>
-                <strong>USD {Number(item.totalUsd || 0).toLocaleString('es-AR', moneyFormat)}</strong>
-                <small>{item.cantidadConsumos} consumos incluidos</small>
-              </article>
-            ))}
-          </div>
-        ) : (
-          <p className="empty-state">Sin cuotas futuras.</p>
-        )}
-      </section>
+        </>
+      )}
     </section>
   );
 }
