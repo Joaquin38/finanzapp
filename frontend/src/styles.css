@@ -3614,27 +3614,31 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
     linear-gradient(180deg, rgba(22, 163, 74, 0.06), rgba(255, 255, 255, 0) 170px),
     var(--surface);
 }
-.tarjeta-consumo-form {
-  grid-template-columns: 1fr;
-  gap: 10px;
+.form-grid.tarjeta-consumo-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   margin-top: 0;
 }
 .tarjeta-form-group {
   display: grid;
   gap: 10px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   padding: 12px;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--surface-soft);
 }
 .tarjeta-form-group-purchase {
-  grid-template-columns: 0.75fr 1.6fr 1fr 1fr;
+  grid-template-columns: minmax(140px, 0.75fr) minmax(260px, 1.8fr) minmax(150px, 1fr) minmax(150px, 1fr);
 }
 .tarjeta-form-group-amounts {
-  grid-template-columns: 0.7fr 0.7fr 1.25fr 1fr 1fr;
+  grid-template-columns: minmax(120px, 0.7fr) minmax(100px, 0.6fr) minmax(190px, 1.2fr) minmax(160px, 1fr) minmax(160px, 1fr);
 }
 .tarjeta-form-group-extra {
-  grid-template-columns: 1fr 2fr;
+  grid-template-columns: minmax(180px, 0.8fr) minmax(320px, 2fr);
 }
 .tarjeta-form-group-title {
   grid-column: 1 / -1;
@@ -3653,6 +3657,13 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   font-weight: 700;
 }
 .tarjeta-field-wide {
+  min-width: 0;
+}
+.tarjeta-consumo-form label,
+.tarjeta-consumo-form input,
+.tarjeta-consumo-form select,
+.tarjeta-consumo-form textarea,
+.tarjeta-calc-mode {
   min-width: 0;
 }
 .tarjeta-consumo-form input,
@@ -4798,7 +4809,7 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   .tarjeta-current-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tarjeta-table-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tarjeta-analysis-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .tarjeta-consumo-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tarjeta-consumo-form { grid-template-columns: 1fr; }
   .tarjeta-form-group-purchase,
   .tarjeta-form-group-amounts,
   .tarjeta-form-group-extra {
