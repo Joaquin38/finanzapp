@@ -415,20 +415,40 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
       <div className="panel tarjeta-hero">
         <div>
           <p className="eyebrow">Tarjeta de credito</p>
-          <h2>{tarjetaActual?.nombre || 'Tarjeta principal'}</h2>
-          <p>Resumenes y consumos, sin impacto en movimientos.</p>
+          <h2>{vistaTarjeta === 'principal' ? 'Consumo actual' : 'Historial y analisis'}</h2>
+          <p>
+            {vistaTarjeta === 'principal'
+              ? `${tarjetaActual?.nombre || 'Tarjeta principal'} - resumen en curso y cuotas futuras.`
+              : 'Resumenes anteriores y analisis del ciclo seleccionado.'}
+          </p>
         </div>
-        <button
-          type="button"
-          className="btn-inline secondary tarjeta-secondary-toggle"
-          onClick={() => setVistaTarjeta(vistaTarjeta === 'principal' ? 'secundaria' : 'principal')}
-        >
-          {vistaTarjeta === 'principal' ? 'Historial y analisis' : 'Volver a consumos'}
-        </button>
+        <div className="tarjeta-view-switch" aria-label="Cambiar pantalla de tarjeta">
+          <button
+            type="button"
+            className={vistaTarjeta === 'principal' ? 'active' : ''}
+            aria-pressed={vistaTarjeta === 'principal'}
+            onClick={() => setVistaTarjeta('principal')}
+          >
+            Consumo actual
+          </button>
+          <button
+            type="button"
+            className={vistaTarjeta === 'secundaria' ? 'active' : ''}
+            aria-pressed={vistaTarjeta === 'secundaria'}
+            onClick={() => setVistaTarjeta('secundaria')}
+          >
+            Historial y analisis
+          </button>
+        </div>
       </div>
 
       {vistaTarjeta === 'principal' ? (
         <>
+      <div className="tarjeta-screen-indicator">
+        <span>Pantalla activa</span>
+        <strong>Resumen en curso, consumos y cuotas futuras</strong>
+      </div>
+
       <section className="panel tarjeta-current-summary tarjeta-section-card tarjeta-section-config">
         <div className="panel-header">
           <div>
@@ -782,13 +802,11 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
       <section className="panel tarjeta-secondary-screen tarjeta-section-card tarjeta-section-history">
         <div className="panel-header">
           <div>
-            <p className="eyebrow">Vista secundaria</p>
+            <p className="eyebrow">Pantalla activa</p>
             <h2>Historial y analisis</h2>
             <p>Resumenes anteriores y lectura del ciclo seleccionado.</p>
           </div>
-          <button type="button" className="btn-inline secondary" onClick={() => setVistaTarjeta('principal')}>
-            Volver a consumos
-          </button>
+          <span className="tarjeta-screen-pill">Vista secundaria</span>
         </div>
       </section>
 
