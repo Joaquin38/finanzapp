@@ -28,6 +28,7 @@ export default function GastoRapidoModal({ categorias, loading, onClose, onSubmi
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    if (loading) return;
     await onSubmit({
       monto: Number(form.monto),
       categoria_id: form.categoria_id ? Number(form.categoria_id) : null,
@@ -88,7 +89,8 @@ export default function GastoRapidoModal({ categorias, loading, onClose, onSubmi
             />
           </label>
 
-          <button type="submit" className="quick-expense-submit" disabled={loading}>
+          <button type="submit" className="quick-expense-submit btn-with-spinner" disabled={loading}>
+            {loading && <span className="btn-spinner" aria-hidden="true" />}
             {loading ? 'Guardando...' : 'Guardar gasto'}
           </button>
         </form>

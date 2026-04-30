@@ -3315,41 +3315,41 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   z-index: 5000;
   display: grid;
   gap: 12px;
-  width: min(460px, calc(100vw - 32px));
+  width: min(420px, calc(100vw - 32px));
   pointer-events: none;
 }
 .app-toast {
   display: grid;
   grid-template-columns: 1fr auto;
   align-items: center;
-  gap: 16px;
-  min-height: 58px;
-  padding: 16px 16px 16px 18px;
-  border: 2px solid #86efac;
-  border-left: 7px solid #16a34a;
-  border-radius: 10px;
-  background: #f0fdf4;
-  color: #052e16;
-  box-shadow: 0 22px 52px rgba(15, 23, 42, 0.28);
-  font-size: 15px;
+  gap: 14px;
+  min-height: 54px;
+  padding: 14px 14px 14px 16px;
+  border: 1px solid #bbf7d0;
+  border-left: 5px solid #34d399;
+  border-radius: 12px;
+  background: #f7fef9;
+  color: #14532d;
+  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.18);
+  font-size: 14px;
   line-height: 1.35;
-  font-weight: 800;
+  font-weight: 750;
   pointer-events: auto;
 }
 .app-toast.error {
-  background: #fef2f2;
-  border-color: #fca5a5;
-  border-left-color: #ef4444;
-  color: #450a0a;
+  background: #fff7f7;
+  border-color: #fecaca;
+  border-left-color: #fb7185;
+  color: #7f1d1d;
 }
 .app-toast button {
   display: inline-grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   border: 0;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.08);
+  background: rgba(15, 23, 42, 0.06);
   color: currentColor;
   cursor: pointer;
   font-weight: 800;
@@ -4628,18 +4628,20 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   color: #ffffff;
 }
 :root[data-theme='dark'] .app-toast {
-  background: #052e16;
-  border-color: #22c55e;
-  color: #dcfce7;
-  box-shadow: 0 24px 58px rgba(0, 0, 0, 0.68);
+  background: #10251a;
+  border-color: #22543d;
+  border-left-color: #34d399;
+  color: #d8f3df;
+  box-shadow: 0 20px 44px rgba(0, 0, 0, 0.5);
 }
 :root[data-theme='dark'] .app-toast.error {
-  background: #450a0a;
-  border-color: #ef4444;
+  background: #2b1518;
+  border-color: #7f1d1d;
+  border-left-color: #fb7185;
   color: #fee2e2;
 }
 :root[data-theme='dark'] .app-toast button {
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.1);
   color: currentColor;
 }
 :root[data-theme='dark'] .btn-inline.secondary .btn-spinner,

@@ -38,7 +38,8 @@ export default function MovimientosTable({
   canEdit = true,
   canDelete = true,
   canManageFixedValues = true,
-  canToggleEstado = true
+  canToggleEstado = true,
+  actionLoading = false
 }) {
   const resolverEstado = getEstadoMovimiento || ((mov) => (mov.esProyectado ? 'proyectado' : mov.activo ? 'pagado' : 'pendiente'));
   const etiquetaEstado = (mov) => {
@@ -74,7 +75,7 @@ export default function MovimientosTable({
         </div>
         <div className="table-actions">
           {canCreate && (
-            <button type="button" onClick={onNuevo}>
+            <button type="button" onClick={onNuevo} disabled={actionLoading}>
               + Nuevo movimiento
             </button>
           )}
@@ -192,6 +193,7 @@ export default function MovimientosTable({
                             : 'Marcar registrado'
                         }
                         onClick={() => onToggleEstadoPago?.(mov)}
+                        disabled={actionLoading}
                       >
                         {mov.tipo_movimiento === 'egreso'
                           ? resolverEstado(mov) === 'pagado'
@@ -209,7 +211,7 @@ export default function MovimientosTable({
                       type="button"
                       className="btn-inline secondary"
                       title="Editar"
-                      disabled={!mov.activo}
+                      disabled={!mov.activo || actionLoading}
                       onClick={() => (mov.esProyectado ? onEditarFijo?.(mov) : onEditar(mov))}
                     >
                       ✏️
@@ -220,7 +222,7 @@ export default function MovimientosTable({
                       type="button"
                       className="btn-inline danger"
                       title="Eliminar"
-                      disabled={!mov.activo}
+                      disabled={!mov.activo || actionLoading}
                       onClick={() => (mov.esProyectado ? onEliminarFijo?.(mov) : onEliminar(mov.id))}
                     >
                       🗑️

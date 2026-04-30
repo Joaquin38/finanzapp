@@ -14,7 +14,8 @@ export default function GastosFijosPanel({
   onEditar,
   onAjustar,
   onEliminarEnCiclo,
-  readOnly = false
+  readOnly = false,
+  loading = false
 }) {
   const [mostrarAlta, setMostrarAlta] = useState(false);
   const [form, setForm] = useState({
@@ -63,6 +64,7 @@ export default function GastosFijosPanel({
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    if (loading) return;
     await onCrear({
       hogar_id: 1,
       descripcion: form.descripcion,
@@ -98,7 +100,7 @@ export default function GastosFijosPanel({
   };
 
   const confirmarAjuste = async () => {
-    if (!gastoAjustando) return;
+    if (!gastoAjustando || loading) return;
     await onAjustar(gastoAjustando.id, {
       ciclo_aplicacion: formAjuste.ciclo_aplicacion,
       alcance: formAjuste.alcance,
@@ -110,7 +112,7 @@ export default function GastosFijosPanel({
   };
 
   const confirmarFinalizacion = async () => {
-    if (!gastoFinalizando) return;
+    if (!gastoFinalizando || loading) return;
     await onEliminarEnCiclo(gastoFinalizando.id, ciclo);
     setGastoFinalizando(null);
   };
@@ -129,7 +131,7 @@ export default function GastosFijosPanel({
   };
 
   const confirmarEdicion = async () => {
-    if (!gastoEditando) return;
+    if (!gastoEditando || loading) return;
     await onEditar(gastoEditando.id, {
       descripcion: formEditar.descripcion,
       monto_base: Number(formEditar.monto_base || 0),
@@ -188,7 +190,7 @@ export default function GastosFijosPanel({
         </div>
         {!readOnly && (
           <div className="panel-header-actions">
-            <button type="button" onClick={() => setMostrarAlta(true)}>
+            <button type="button" onClick={() => setMostrarAlta(true)} disabled={loading}>
               + Nuevo valor fijo
             </button>
           </div>
@@ -222,16 +224,17 @@ export default function GastosFijosPanel({
                 <td>
                   {!readOnly && (
                     <div className="acciones-inline">
-                      <button type="button" className="btn-inline" onClick={() => abrirEdicion(gasto)}>
+                      <button type="button" className="btn-inline" onClick={() => abrirEdicion(gasto)} disabled={loading}>
                         ✏️
                       </button>
-                      <button type="button" className="btn-inline" onClick={() => abrirAjuste(gasto)}>
+                      <button type="button" className="btn-inline" onClick={() => abrirAjuste(gasto)} disabled={loading}>
                         Ajustar
                       </button>
                       <button
                         type="button"
                         className="btn-inline danger"
                         onClick={() => setGastoFinalizando(gasto)}
+                        disabled={loading}
                         title={`Finalizar desde ciclo ${ciclo}`}
                       >
                         Finalizar
@@ -304,11 +307,12 @@ export default function GastosFijosPanel({
                 emptyLabel="Sin fin"
               />
               <div className="confirm-actions full-width">
-                <button type="button" className="btn-inline" onClick={() => setGastoEditando(null)}>
+                <button type="button" className="btn-inline" onClick={() => setGastoEditando(null)} disabled={loading}>
                   Cancelar
                 </button>
-                <button type="submit" className="btn-inline success">
-                  Guardar
+                <button type="submit" className="btn-inline success btn-with-spinner" disabled={loading}>
+                  {loading && <span className="btn-spinner" aria-hidden="true" />}
+                  {loading ? 'Guardando...' : 'Guardar'}
                 </button>
               </div>
             </form>
@@ -378,11 +382,12 @@ export default function GastosFijosPanel({
               />
 
               <div className="confirm-actions full-width">
-                <button type="button" className="btn-inline secondary" onClick={() => setMostrarAlta(false)}>
+                <button type="button" className="btn-inline secondary" onClick={() => setMostrarAlta(false)} disabled={loading}>
                   Cancelar
                 </button>
-                <button type="submit" className="btn-inline success">
-                  Guardar valor fijo
+                <button type="submit" className="btn-inline success btn-with-spinner" disabled={loading}>
+                  {loading && <span className="btn-spinner" aria-hidden="true" />}
+                  {loading ? 'Guardando...' : 'Guardar valor fijo'}
                 </button>
               </div>
             </form>
@@ -478,11 +483,12 @@ export default function GastosFijosPanel({
                 <input value={formAjuste.nota} onChange={(e) => setFormAjuste((p) => ({ ...p, nota: e.target.value }))} />
               </label>
               <div className="confirm-actions full-width">
-                <button type="button" className="btn-inline" onClick={() => setGastoAjustando(null)}>
+                <button type="button" className="btn-inline" onClick={() => setGastoAjustando(null)} disabled={loading}>
                   Cancelar
                 </button>
-                <button type="submit" className="btn-inline success">
-                  Aplicar
+                <button type="submit" className="btn-inline success btn-with-spinner" disabled={loading}>
+                  {loading && <span className="btn-spinner" aria-hidden="true" />}
+                  {loading ? 'Aplicando...' : 'Aplicar'}
                 </button>
               </div>
             </form>
@@ -505,11 +511,12 @@ export default function GastosFijosPanel({
               <p>El historico anterior se conserva y este valor fijo deja de generar movimientos desde ese ciclo en adelante.</p>
             </div>
             <div className="confirm-actions">
-              <button type="button" className="btn-inline secondary" onClick={() => setGastoFinalizando(null)}>
+              <button type="button" className="btn-inline secondary" onClick={() => setGastoFinalizando(null)} disabled={loading}>
                 Cancelar
               </button>
-              <button type="button" className="btn-inline danger" onClick={confirmarFinalizacion}>
-                Confirmar finalizacion
+              <button type="button" className="btn-inline danger btn-with-spinner" onClick={confirmarFinalizacion} disabled={loading}>
+                {loading && <span className="btn-spinner" aria-hidden="true" />}
+                {loading ? 'Finalizando...' : 'Confirmar finalizacion'}
               </button>
             </div>
           </div>

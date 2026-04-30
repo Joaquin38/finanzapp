@@ -54,6 +54,7 @@ export default function ConfiguracionPanel({
 
   const guardarCategoria = async (event) => {
     event.preventDefault();
+    if (loading) return;
     if (!form.nombre.trim()) return;
 
     try {
@@ -94,6 +95,7 @@ export default function ConfiguracionPanel({
   };
 
   const eliminarCategoria = async (categoria) => {
+    if (loading) return;
     const confirmado = window.confirm(`Eliminar la categoría "${categoria.nombre}"?`);
     if (!confirmado) return;
 
@@ -163,8 +165,9 @@ export default function ConfiguracionPanel({
               Cancelar
             </button>
           )}
-          <button type="submit" disabled={loading || !form.nombre.trim()}>
-            {editandoId ? 'Guardar cambios' : 'Crear categoría'}
+          <button type="submit" className="btn-with-spinner" disabled={loading || !form.nombre.trim()}>
+            {loading && <span className="btn-spinner" aria-hidden="true" />}
+            {loading ? 'Guardando...' : editandoId ? 'Guardar cambios' : 'Crear categoría'}
           </button>
         </div>
       </form>
@@ -195,10 +198,10 @@ export default function ConfiguracionPanel({
                   </td>
                   <td>
                     <div className="acciones-inline">
-                      <button type="button" className="btn-inline secondary" onClick={() => editarCategoria(categoria)} title="Editar">
+                      <button type="button" className="btn-inline secondary" onClick={() => editarCategoria(categoria)} title="Editar" disabled={loading}>
                         ✎
                       </button>
-                      <button type="button" className="btn-inline danger" onClick={() => eliminarCategoria(categoria)} title="Eliminar">
+                      <button type="button" className="btn-inline danger" onClick={() => eliminarCategoria(categoria)} title="Eliminar" disabled={loading}>
                         ×
                       </button>
                     </div>

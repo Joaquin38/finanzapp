@@ -107,6 +107,7 @@ export default function AhorrosPanel({
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    if (loading) return;
     const monto = parseMonto(form.monto);
     if (!monto || monto <= 0 || !categoriaAhorro) return;
 
@@ -197,8 +198,9 @@ export default function AhorrosPanel({
           <span>{form.moneda === 'USD' ? `Cotizacion: ${formatMoney(cotizacionOficial)}` : 'Impacto directo en ARS'}</span>
           <strong>{Number.isFinite(valorPreviewArs) ? formatMoney(valorPreviewArs) : formatMoney(0)}</strong>
         </div>
-        <button type="submit" disabled={loading || !categoriaAhorro || (form.moneda === 'USD' && cotizacionOficial <= 0)}>
-          Registrar ahorro
+        <button type="submit" className="btn-with-spinner" disabled={loading || !categoriaAhorro || (form.moneda === 'USD' && cotizacionOficial <= 0)}>
+          {loading && <span className="btn-spinner" aria-hidden="true" />}
+          {loading ? 'Registrando...' : 'Registrar ahorro'}
         </button>
       </form>
 

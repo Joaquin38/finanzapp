@@ -137,6 +137,7 @@ export default function App() {
   const [error, setError] = useState('');
   const [toasts, setToasts] = useState([]);
   const toastIdRef = useRef(0);
+  const actionLockRef = useRef(false);
   const [openModal, setOpenModal] = useState(false);
   const [gastoRapidoAbierto, setGastoRapidoAbierto] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
@@ -225,6 +226,20 @@ export default function App() {
     window.setTimeout(() => dismissToast(id), type === 'error' ? 6500 : 5000);
   };
 
+  const beginAction = (cycleAction = false) => {
+    if (actionLockRef.current) return false;
+    actionLockRef.current = true;
+    setLoading(true);
+    if (cycleAction) setCycleActionLoading(true);
+    return true;
+  };
+
+  const endAction = () => {
+    actionLockRef.current = false;
+    setLoading(false);
+    setCycleActionLoading(false);
+  };
+
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     try {
@@ -305,6 +320,7 @@ export default function App() {
     } else {
       return;
     }
+    if (!beginAction()) return;
 
     setEstadoOverrides((prev) => ({ ...prev, [mov.id]: siguiente }));
 
@@ -333,6 +349,8 @@ export default function App() {
       setEstadoOverrides((prev) => ({ ...prev, [mov.id]: estadoActual }));
       setError(err.message);
       addToast({ type: 'error', message: err.message || 'No se pudo actualizar el estado.' });
+    } finally {
+      endAction();
     }
   };
 
@@ -590,10 +608,9 @@ export default function App() {
       setError('Tu rol no permite operar en este hogar');
       return;
     }
+    if (!beginAction(true)) return;
 
     try {
-      setCycleActionLoading(true);
-      setLoading(true);
       setError('');
 
       if (modoModal === 'editar' && movimientoEditando) {
@@ -635,8 +652,7 @@ export default function App() {
       setError(err.message);
       addToast({ type: 'error', message: err.message || 'No se pudo guardar el movimiento.' });
     } finally {
-      setLoading(false);
-      setCycleActionLoading(false);
+      endAction();
     }
   };
 
@@ -645,6 +661,7 @@ export default function App() {
       setError('Tu rol no permite gestionar valores fijos');
       return;
     }
+    if (!beginAction()) return;
 
     try {
       setError('');
@@ -655,6 +672,8 @@ export default function App() {
     } catch (err) {
       setError(err.message);
       addToast({ type: 'error', message: err.message || 'No se pudo crear el valor fijo.' });
+    } finally {
+      endAction();
     }
   };
 
@@ -663,6 +682,7 @@ export default function App() {
       setError('Tu rol no permite gestionar valores fijos');
       return;
     }
+    if (!beginAction()) return;
 
     try {
       setError('');
@@ -672,6 +692,8 @@ export default function App() {
     } catch (err) {
       setError(err.message);
       addToast({ type: 'error', message: err.message || 'No se pudo actualizar el valor fijo.' });
+    } finally {
+      endAction();
     }
   };
 
@@ -680,6 +702,7 @@ export default function App() {
       setError('Tu rol no permite ajustar valores fijos');
       return;
     }
+    if (!beginAction()) return;
 
     try {
       setError('');
@@ -689,6 +712,8 @@ export default function App() {
     } catch (err) {
       setError(err.message);
       addToast({ type: 'error', message: err.message || 'No se pudo aplicar el ajuste.' });
+    } finally {
+      endAction();
     }
   };
 
@@ -697,6 +722,7 @@ export default function App() {
       setError('Tu rol no permite finalizar valores fijos');
       return;
     }
+    if (!beginAction()) return;
 
     try {
       setError('');
@@ -706,6 +732,8 @@ export default function App() {
     } catch (err) {
       setError(err.message);
       addToast({ type: 'error', message: err.message || 'No se pudo finalizar el valor fijo.' });
+    } finally {
+      endAction();
     }
   };
 
@@ -788,10 +816,9 @@ export default function App() {
       setError('Tu rol no permite operar en este hogar');
       return;
     }
+    if (!beginAction(true)) return;
 
     try {
-      setCycleActionLoading(true);
-      setLoading(true);
       setError('');
       await createMovimiento({
         hogar_id: hogarId,
@@ -815,8 +842,7 @@ export default function App() {
       setError(err.message);
       addToast({ type: 'error', message: err.message || 'No se pudo registrar el gasto.' });
     } finally {
-      setLoading(false);
-      setCycleActionLoading(false);
+      endAction();
     }
   };
 
@@ -825,9 +851,9 @@ export default function App() {
       setError('Tu rol no permite operar en este hogar');
       return;
     }
+    if (!beginAction()) return;
 
     try {
-      setLoading(true);
       setError('');
       await createMovimiento({
         ...payload,
@@ -841,12 +867,13 @@ export default function App() {
       setError(err.message);
       addToast({ type: 'error', message: err.message || 'No se pudo registrar el ahorro.' });
     } finally {
-      setLoading(false);
+      endAction();
     }
   };
 
   const confirmarEliminar = async () => {
     if (!deleteTargetId) return;
+    if (!beginAction()) return;
 
     try {
       setError('');
@@ -857,6 +884,8 @@ export default function App() {
     } catch (err) {
       setError(err.message);
       addToast({ type: 'error', message: err.message || 'No se pudo eliminar el movimiento.' });
+    } finally {
+      endAction();
     }
   };
 
@@ -1169,9 +1198,9 @@ export default function App() {
       setError('Tu rol no permite cerrar ciclos');
       return;
     }
+    if (!beginAction(true)) return;
 
     try {
-      setLoading(true);
       setError('');
 
       await cerrarCiclo({
@@ -1191,7 +1220,7 @@ export default function App() {
       setError(err.message);
       addToast({ type: 'error', message: err.message || 'No se pudo cerrar el ciclo.' });
     } finally {
-      setLoading(false);
+      endAction();
     }
   };
 
@@ -1200,9 +1229,9 @@ export default function App() {
       setError('Tu rol no permite reabrir ciclos');
       return;
     }
+    if (!beginAction(true)) return;
 
     try {
-      setLoading(true);
       setError('');
       await reabrirCiclo(hogarId, cicloSeleccionado);
       await cargarDatos();
@@ -1211,7 +1240,7 @@ export default function App() {
       setError(err.message);
       addToast({ type: 'error', message: err.message || 'No se pudo reabrir el ciclo.' });
     } finally {
-      setLoading(false);
+      endAction();
     }
   };
 
@@ -1453,6 +1482,7 @@ export default function App() {
                 onOrdenChange={setOrdenGrilla}
                 getEstadoMovimiento={getEstadoMovimiento}
                 onToggleEstadoPago={toggleEstadoMovimiento}
+                actionLoading={loading}
               />
             </>
           )}
@@ -1468,6 +1498,7 @@ export default function App() {
               ciclo={cicloSeleccionado}
               onCicloChange={setCicloSeleccionado}
               readOnly={!canAccessFixedValues}
+              loading={loading}
               onCrear={handleCrearGastoFijo}
               onEditar={handleEditarGastoFijo}
               onAjustar={handleAjustarGastoFijo}
@@ -1605,11 +1636,12 @@ export default function App() {
             <h3>🗑️ Confirmar eliminación</h3>
             <p>¿Seguro querés eliminar este movimiento? Esta acción no se puede deshacer.</p>
             <div className="confirm-actions">
-              <button type="button" className="btn-inline" onClick={() => setDeleteTargetId(null)}>
+              <button type="button" className="btn-inline" onClick={() => setDeleteTargetId(null)} disabled={loading}>
                 Cancelar
               </button>
-              <button type="button" className="btn-inline danger" onClick={confirmarEliminar}>
-                Eliminar
+              <button type="button" className="btn-inline danger btn-with-spinner" onClick={confirmarEliminar} disabled={loading}>
+                {loading && <ButtonSpinner />}
+                {loading ? 'Eliminando...' : 'Eliminar'}
               </button>
             </div>
           </div>
@@ -1687,11 +1719,12 @@ export default function App() {
                 />
               </label>
               <div className="confirm-actions full-width">
-                <button type="button" className="btn-inline" onClick={() => setFijoEditModal(null)}>
+                <button type="button" className="btn-inline" onClick={() => setFijoEditModal(null)} disabled={loading}>
                   Cancelar
                 </button>
-                <button type="submit" className="btn-inline success">
-                  Guardar
+                <button type="submit" className="btn-inline success btn-with-spinner" disabled={loading}>
+                  {loading && <ButtonSpinner />}
+                  {loading ? 'Guardando...' : 'Guardar'}
                 </button>
               </div>
             </form>
@@ -1763,7 +1796,7 @@ export default function App() {
             </div>
 
             <div className="confirm-actions">
-              <button type="button" className="btn-inline" onClick={() => setCierreCicloAbierto(false)}>
+              <button type="button" className="btn-inline" onClick={() => setCierreCicloAbierto(false)} disabled={loading || cycleActionLoading}>
                 Cancelar
               </button>
               <button

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createConsumoTarjeta, deleteConsumoTarjeta, getTarjetasCredito, updateCierreTarjeta, updateConsumoTarjeta } from '../services/api.js';
 
 const moneyFormat = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
@@ -105,6 +105,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
   const [vistaTarjeta, setVistaTarjeta] = useState('principal');
   const [loading, setLoading] = useState(false);
   const [loadingAction, setLoadingAction] = useState('');
+  const actionLockRef = useRef(false);
 
   const tarjetaActual = tarjetas.find((tarjeta) => Number(tarjeta.id) === Number(form.tarjeta_id)) || tarjetas[0];
   const resumenSeleccionadoCerrado = cierre?.estado === 'cerrado';
@@ -251,6 +252,8 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
 
   const handleGuardarCierre = async () => {
     if (!cierre?.id || cierre?.estado === 'cerrado' || !cierreForm.fecha_cierre) return;
+    if (actionLockRef.current) return;
+    actionLockRef.current = true;
     setLoading(true);
     setLoadingAction('cierre-form');
 
@@ -266,6 +269,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
     } catch (err) {
       onToast?.({ type: 'error', message: err.message || 'No se pudo guardar el resumen.' });
     } finally {
+      actionLockRef.current = false;
       setLoading(false);
       setLoadingAction('');
     }
@@ -287,6 +291,8 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    if (actionLockRef.current) return;
+    actionLockRef.current = true;
     setLoading(true);
     setLoadingAction('consumo');
 
@@ -319,6 +325,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
     } catch (err) {
       onToast?.({ type: 'error', message: err.message || 'No se pudo guardar el consumo.' });
     } finally {
+      actionLockRef.current = false;
       setLoading(false);
       setLoadingAction('');
     }
@@ -352,6 +359,8 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
   const handleDelete = async (consumo) => {
     if (resumenSeleccionadoCerrado && consumo.ciclo_asignado === selectedCiclo) return;
     if (!window.confirm(`Eliminar consumo "${consumo.descripcion}"?`)) return;
+    if (actionLockRef.current) return;
+    actionLockRef.current = true;
     setLoading(true);
     setLoadingAction('delete-consumo');
     try {
@@ -361,12 +370,15 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
     } catch (err) {
       onToast?.({ type: 'error', message: err.message || 'No se pudo eliminar el consumo.' });
     } finally {
+      actionLockRef.current = false;
       setLoading(false);
       setLoadingAction('');
     }
   };
   const handleToggleCierre = async () => {
     if (!cierre?.id) return;
+    if (actionLockRef.current) return;
+    actionLockRef.current = true;
     setLoading(true);
     setLoadingAction('toggle-cierre');
     try {
@@ -377,6 +389,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
     } catch (err) {
       onToast?.({ type: 'error', message: err.message || 'No se pudo cambiar el estado del resumen.' });
     } finally {
+      actionLockRef.current = false;
       setLoading(false);
       setLoadingAction('');
     }
@@ -397,6 +410,8 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
 
   const handleToggleResumenHistorial = async (item) => {
     if (!item?.id) return;
+    if (actionLockRef.current) return;
+    actionLockRef.current = true;
     setLoading(true);
     setLoadingAction('historial-cierre');
     try {
@@ -407,6 +422,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
     } catch (err) {
       onToast?.({ type: 'error', message: err.message || 'No se pudo cambiar el estado del resumen.' });
     } finally {
+      actionLockRef.current = false;
       setLoading(false);
       setLoadingAction('');
     }
@@ -520,11 +536,12 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
           <div className="tarjeta-config-buttons">
             <button
               type="button"
-              className="btn-inline tarjeta-save-config"
+              className="btn-inline tarjeta-save-config btn-with-spinner"
               onClick={handleGuardarCierre}
               disabled={loading || !cierre?.id || resumenSeleccionadoCerrado || !cierreTieneCambios || !cierreForm.fecha_cierre}
             >
-              Guardar configuracion del resumen
+              {loadingAction === 'cierre-form' && <span className="btn-spinner" aria-hidden="true" />}
+              {loadingAction === 'cierre-form' ? 'Guardando...' : 'Guardar configuracion del resumen'}
             </button>
             <button type="button" className="btn-inline secondary tarjeta-close-action btn-with-spinner" onClick={handleToggleCierre} disabled={loading || !cierre?.id}>
               {loadingAction === 'toggle-cierre' && <span className="btn-spinner" aria-hidden="true" />}
@@ -768,9 +785,9 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
                   </td>
                   <td>
                     <div className="acciones-inline">
-                      <button className="icon-btn" type="button" onClick={() => setDetailItem(consumo)} title="Ver detalle">i</button>
-                      <button className="icon-btn" type="button" onClick={() => handleEdit(consumo)} title="Editar">✎</button>
-                      <button className="icon-btn danger" type="button" onClick={() => handleDelete(consumo)} title="Eliminar">×</button>
+                      <button className="icon-btn" type="button" onClick={() => setDetailItem(consumo)} title="Ver detalle" disabled={loading}>i</button>
+                      <button className="icon-btn" type="button" onClick={() => handleEdit(consumo)} title="Editar" disabled={loading}>✎</button>
+                      <button className="icon-btn danger" type="button" onClick={() => handleDelete(consumo)} title="Eliminar" disabled={loading}>×</button>
                     </div>
                   </td>
                 </tr>

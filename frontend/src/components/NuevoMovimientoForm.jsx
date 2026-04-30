@@ -91,6 +91,7 @@ export default function NuevoMovimientoForm({ categorias, onCrear, loading, modo
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    if (loading) return;
     const monto = parseMonto(form.monto_ars);
 
     await onCrear({
@@ -186,7 +187,8 @@ export default function NuevoMovimientoForm({ categorias, onCrear, loading, modo
           </label>
         )}
 
-        <button type="submit" className="full-width movement-submit" disabled={loading}>
+        <button type="submit" className="full-width movement-submit btn-with-spinner" disabled={loading}>
+          {loading && <span className="btn-spinner" aria-hidden="true" />}
           {loading ? 'Guardando...' : modo === 'editar' ? 'Guardar cambios' : 'Guardar movimiento'}
         </button>
       </form>
