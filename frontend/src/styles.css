@@ -3534,6 +3534,10 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   border-left-width: 4px;
 }
 .tarjeta-section-config { border-left-color: #2563eb; }
+.tarjeta-section-card.tarjeta-section-config {
+  z-index: 20;
+  overflow: visible;
+}
 .tarjeta-section-history { border-left-color: #64748b; }
 .tarjeta-section-form { border-left-color: #16a34a; }
 .tarjeta-section-consumos { border-left-color: #0f766e; }
@@ -3749,10 +3753,6 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
 }
 .tarjeta-form-group-extra {
   grid-template-columns: minmax(180px, 0.8fr) minmax(320px, 2fr);
-}
-.tarjeta-subscription-check {
-  align-self: stretch;
-  min-height: 54px;
 }
 .tarjeta-form-group-title {
   grid-column: 1 / -1;

@@ -739,6 +739,13 @@ async function asegurarTarjetasCredito() {
     )
   `);
   await pool.query('ALTER TABLE consumos_tarjeta ADD COLUMN IF NOT EXISTS repite_mes_siguiente BOOLEAN NOT NULL DEFAULT FALSE');
+  await pool.query(`
+    UPDATE consumos_tarjeta
+    SET repite_mes_siguiente = CASE
+      WHEN LOWER(COALESCE(categoria, '')) IN ('suscripcion', 'suscripciones') AND cantidad_cuotas = 1 THEN true
+      ELSE false
+    END
+  `);
   await pool.query('CREATE INDEX IF NOT EXISTS idx_tarjetas_credito_hogar ON tarjetas_credito (hogar_id, activa)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_cierres_tarjeta_tarjeta_ciclo ON cierres_tarjeta (tarjeta_id, ciclo)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_consumos_tarjeta_cierre ON consumos_tarjeta (cierre_id)');
@@ -872,6 +879,19 @@ function sumarMesesCiclo(ciclo, offset) {
 
 function compararCiclos(a, b) {
   return String(a || '').localeCompare(String(b || ''));
+}
+
+function normalizarTexto(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+}
+
+function esCategoriaSuscripcion(categoria) {
+  const normalized = normalizarTexto(categoria);
+  return normalized === 'suscripcion' || normalized === 'suscripciones';
 }
 
 function fechaPorDiaDeCiclo(ciclo, dia) {
@@ -2380,7 +2400,6 @@ app.post('/tarjetas-credito/consumos', async (req, res) => {
     monto_total,
     cantidad_cuotas = 1,
     monto_cuota,
-    repite_mes_siguiente = false,
     titular,
     observaciones
   } = req.body || {};
@@ -2423,8 +2442,9 @@ app.post('/tarjetas-credito/consumos', async (req, res) => {
     }
     const totalFinal = esNumeroPositivo(montoTotal) ? montoTotal : Number((montoCuota * cuotas).toFixed(2));
     const cuotaFinal = esNumeroPositivo(montoCuota) ? montoCuota : Number((totalFinal / cuotas).toFixed(2));
+    const repiteMesSiguiente = cuotas === 1 && esCategoriaSuscripcion(categoria);
     await asegurarCierresCuotasAbiertos(tarjeta, cicloAsignado, cuotas);
-    await asegurarSuscripcionMesSiguienteAbierta(tarjeta, cicloAsignado, Boolean(repite_mes_siguiente));
+    await asegurarSuscripcionMesSiguienteAbierta(tarjeta, cicloAsignado, repiteMesSiguiente);
 
     const { rows } = await pool.query(
       `
@@ -2446,7 +2466,7 @@ app.post('/tarjetas-credito/consumos', async (req, res) => {
         totalFinal,
         cuotas,
         cuotaFinal,
-        Boolean(repite_mes_siguiente),
+        repiteMesSiguiente,
         titular ? String(titular).trim() : null,
         observaciones ? String(observaciones).trim() : null
       ]
@@ -2471,7 +2491,6 @@ app.patch('/tarjetas-credito/consumos/:id', async (req, res) => {
     monto_total,
     cantidad_cuotas = 1,
     monto_cuota,
-    repite_mes_siguiente = false,
     titular,
     observaciones
   } = req.body || {};
@@ -2527,8 +2546,9 @@ app.patch('/tarjetas-credito/consumos/:id', async (req, res) => {
     }
     const totalFinal = esNumeroPositivo(montoTotal) ? montoTotal : Number((montoCuota * cuotas).toFixed(2));
     const cuotaFinal = esNumeroPositivo(montoCuota) ? montoCuota : Number((totalFinal / cuotas).toFixed(2));
+    const repiteMesSiguiente = cuotas === 1 && esCategoriaSuscripcion(categoria);
     await asegurarCierresCuotasAbiertos(tarjeta, cicloAsignado, cuotas);
-    await asegurarSuscripcionMesSiguienteAbierta(tarjeta, cicloAsignado, Boolean(repite_mes_siguiente));
+    await asegurarSuscripcionMesSiguienteAbierta(tarjeta, cicloAsignado, repiteMesSiguiente);
 
     const { rows } = await pool.query(
       `
@@ -2561,7 +2581,7 @@ app.patch('/tarjetas-credito/consumos/:id', async (req, res) => {
         totalFinal,
         cuotas,
         cuotaFinal,
-        Boolean(repite_mes_siguiente),
+        repiteMesSiguiente,
         titular ? String(titular).trim() : null,
         observaciones ? String(observaciones).trim() : null,
         consumoId

@@ -13,7 +13,6 @@ const initialForm = {
   cantidad_cuotas: '1',
   monto_cuota: '',
   tarjeta_id: '',
-  repite_mes_siguiente: false,
   titular: '',
   observaciones: ''
 };
@@ -110,7 +109,6 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
   const [error, setError] = useState('');
 
   const tarjetaActual = tarjetas.find((tarjeta) => Number(tarjeta.id) === Number(form.tarjeta_id)) || tarjetas[0];
-  const compraEnCuotas = Number(form.cantidad_cuotas || 1) > 1;
   const resumenSeleccionadoCerrado = cierre?.estado === 'cerrado';
   const cierreTieneCambios = cierreForm.fecha_cierre !== savedCierreForm.fecha_cierre
     || cierreForm.fecha_vencimiento !== savedCierreForm.fecha_vencimiento;
@@ -308,7 +306,6 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
         monto_total: parseAmount(form.monto_total),
         cantidad_cuotas: Number(form.cantidad_cuotas || 1),
         monto_cuota: parseAmount(form.monto_cuota),
-        repite_mes_siguiente: !compraEnCuotas && Boolean(form.repite_mes_siguiente),
         titular: form.titular || null,
         observaciones: form.observaciones || null
       };
@@ -346,7 +343,6 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
       cantidad_cuotas: String(consumo.cantidad_cuotas || 1),
       monto_cuota: String(consumo.monto_cuota || ''),
       tarjeta_id: String(consumo.tarjeta_id || tarjetaActual?.id || ''),
-      repite_mes_siguiente: Boolean(consumo.repite_mes_siguiente),
       titular: consumo.titular || '',
       observaciones: consumo.observaciones || ''
     });
@@ -678,17 +674,6 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
             <label>
               Titular / adicional
               <input value={form.titular} onChange={(e) => handleChange('titular', e.target.value)} placeholder="Opcional" />
-            </label>
-            <label className="checkbox-card tarjeta-subscription-check">
-              <span className="checkbox-row">
-                <input
-                  type="checkbox"
-                  checked={!compraEnCuotas && Boolean(form.repite_mes_siguiente)}
-                  disabled={compraEnCuotas}
-                  onChange={(e) => handleChange('repite_mes_siguiente', e.target.checked)}
-                />
-                <span>Suscripcion: repetir en el resumen siguiente</span>
-              </span>
             </label>
             <label className="movement-form-description tarjeta-field-wide">
               <div className="field-heading">
