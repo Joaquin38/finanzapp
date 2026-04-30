@@ -9,6 +9,7 @@ import {
   deleteGastoFijoEnCiclo,
   deleteMovimiento,
   getCategorias,
+  getAjustesGastoFijo,
   getCurrentUser,
   getEstadoCierreCiclo,
   getCotizaciones,
@@ -1503,6 +1504,7 @@ export default function App() {
               onEditar={handleEditarGastoFijo}
               onAjustar={handleAjustarGastoFijo}
               onEliminarEnCiclo={handleEliminarGastoFijoEnCiclo}
+              onHistorialAjustes={getAjustesGastoFijo}
             />
           )}
 

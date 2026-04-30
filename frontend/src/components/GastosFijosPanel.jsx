@@ -14,6 +14,7 @@ export default function GastosFijosPanel({
   onEditar,
   onAjustar,
   onEliminarEnCiclo,
+  onHistorialAjustes,
   readOnly = false,
   loading = false
 }) {
@@ -46,6 +47,9 @@ export default function GastosFijosPanel({
     nota: ''
   });
   const [gastoFinalizando, setGastoFinalizando] = useState(null);
+  const [historialAjustes, setHistorialAjustes] = useState(null);
+  const [historialLoading, setHistorialLoading] = useState(false);
+  const [historialError, setHistorialError] = useState('');
 
   useEffect(() => {
     setForm((current) => ({
@@ -101,14 +105,37 @@ export default function GastosFijosPanel({
 
   const confirmarAjuste = async () => {
     if (!gastoAjustando || loading) return;
+    const valorIngresado = Number(formAjuste.valor || 0);
+    const valorPersistido = formAjuste.tipo_ajuste === 'monto_fijo'
+      ? Number((valorIngresado - montoActualAjuste).toFixed(2))
+      : valorIngresado;
+    if (!valorPersistido) return;
     await onAjustar(gastoAjustando.id, {
       ciclo_aplicacion: formAjuste.ciclo_aplicacion,
       alcance: formAjuste.alcance,
       tipo_ajuste: formAjuste.tipo_ajuste,
-      valor: Number(formAjuste.valor || 0),
+      valor: valorPersistido,
       nota: formAjuste.nota || null
     });
     setGastoAjustando(null);
+  };
+
+  const abrirHistorial = async (gasto) => {
+    if (!onHistorialAjustes) return;
+    setHistorialAjustes({ gasto, items: [] });
+    setHistorialError('');
+    setHistorialLoading(true);
+    try {
+      const data = await onHistorialAjustes(gasto.id);
+      setHistorialAjustes({
+        gasto: data.gasto || gasto,
+        items: data.items || []
+      });
+    } catch (err) {
+      setHistorialError(err.message);
+    } finally {
+      setHistorialLoading(false);
+    }
   };
 
   const confirmarFinalizacion = async () => {
@@ -166,7 +193,7 @@ export default function GastosFijosPanel({
   const montoEstimado =
     formAjuste.tipo_ajuste === 'porcentaje'
       ? montoActualAjuste + (montoActualAjuste * valorAjuste) / 100
-      : montoActualAjuste + valorAjuste;
+      : valorAjuste;
   const cicloHastaImpacto = gastoAjustando?.activo_hasta_ciclo || null;
   const impactoAjuste =
     formAjuste.alcance === 'solo_ciclo'
@@ -178,7 +205,7 @@ export default function GastosFijosPanel({
   const detalleResultado =
     formAjuste.tipo_ajuste === 'porcentaje'
       ? `${valorAjuste >= 0 ? '+' : ''}${valorAjuste.toLocaleString('es-AR')}% sobre el valor actual`
-      : `${valorAjuste >= 0 ? '+' : ''}${formatMoney(valorAjuste)} sobre el valor actual`;
+      : `Queda en ${formatMoney(valorAjuste)}`;
 
   return (
     <section className="panel">
@@ -229,6 +256,9 @@ export default function GastosFijosPanel({
                       </button>
                       <button type="button" className="btn-inline" onClick={() => abrirAjuste(gasto)} disabled={loading}>
                         Ajustar
+                      </button>
+                      <button type="button" className="btn-inline secondary" onClick={() => abrirHistorial(gasto)} disabled={loading || historialLoading}>
+                        Historial
                       </button>
                       <button
                         type="button"
@@ -469,14 +499,24 @@ export default function GastosFijosPanel({
               />
               <label>
                 Tipo ajuste
-                <select value={formAjuste.tipo_ajuste} onChange={(e) => setFormAjuste((p) => ({ ...p, tipo_ajuste: e.target.value }))}>
+                <select
+                  value={formAjuste.tipo_ajuste}
+                  onChange={(e) => setFormAjuste((p) => ({
+                    ...p,
+                    tipo_ajuste: e.target.value,
+                    valor: e.target.value === 'monto_fijo' ? String(montoActualAjuste.toFixed(2)) : ''
+                  }))}
+                >
                   <option value="porcentaje">Porcentaje</option>
                   <option value="monto_fijo">Monto fijo</option>
                 </select>
               </label>
               <label>
-                {formAjuste.tipo_ajuste === 'porcentaje' ? 'Porcentaje de ajuste' : 'Monto a sumar o restar'}
+                {formAjuste.tipo_ajuste === 'porcentaje' ? 'Porcentaje de ajuste' : 'Monto final'}
                 <input type="number" step="0.01" value={formAjuste.valor} onChange={(e) => setFormAjuste((p) => ({ ...p, valor: e.target.value }))} required />
+                {formAjuste.tipo_ajuste === 'monto_fijo' && (
+                  <small className="field-helper">Ingresá el importe en el que debe quedar este valor fijo.</small>
+                )}
               </label>
               <label className="full-width">
                 Nota
@@ -519,6 +559,67 @@ export default function GastosFijosPanel({
                 {loading ? 'Finalizando...' : 'Confirmar finalizacion'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {historialAjustes && (
+        <div className="modal-overlay" role="dialog" aria-modal="true">
+          <div className="modal-content">
+            <div className="modal-header">
+              <div>
+                <h3>Historial de ajustes</h3>
+                <small>{historialAjustes.gasto?.descripcion || 'Valor fijo'}</small>
+              </div>
+              <button type="button" className="close-btn" onClick={() => setHistorialAjustes(null)} disabled={historialLoading}>
+                x
+              </button>
+            </div>
+            {historialError && <p className="error full-width">{historialError}</p>}
+            {historialLoading ? (
+              <div className="adjustment-history-loading">
+                <span className="btn-spinner" aria-hidden="true" />
+                Cargando historial...
+              </div>
+            ) : (
+              <div className="table-wrapper">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th>Tipo</th>
+                      <th>Valor</th>
+                      <th>Antes</th>
+                      <th>Despues</th>
+                      <th>Alcance</th>
+                      <th>Nota</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(historialAjustes.items || []).map((ajuste) => (
+                      <tr key={ajuste.id}>
+                        <td>{String(ajuste.fecha_aplicacion || '').slice(0, 10)}</td>
+                        <td>{ajuste.tipo_ajuste === 'porcentaje' ? 'Porcentaje' : 'Monto final'}</td>
+                        <td>
+                          {ajuste.tipo_ajuste === 'porcentaje'
+                            ? `${Number(ajuste.valor || 0).toLocaleString('es-AR')}%`
+                            : formatMoney(ajuste.monto_posterior)}
+                        </td>
+                        <td>{formatMoney(ajuste.monto_anterior)}</td>
+                        <td>{formatMoney(ajuste.monto_posterior)}</td>
+                        <td>{ajuste.ciclo_hasta_aplicacion ? `Hasta ${ajuste.ciclo_hasta_aplicacion}` : 'Desde fecha'}</td>
+                        <td>{ajuste.nota || '-'}</td>
+                      </tr>
+                    ))}
+                    {(!historialAjustes.items || historialAjustes.items.length === 0) && (
+                      <tr>
+                        <td colSpan={7}>Sin ajustes aplicados.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       )}

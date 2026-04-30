@@ -741,6 +741,23 @@ export async function createAjusteGastoFijo(id, payload) {
   }
 }
 
+export async function getAjustesGastoFijo(id) {
+  try {
+    const response = await fetch(`${API_URL}/gastos-fijos/${id}/ajustes`, {
+      headers: getAuthHeaders()
+    });
+
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.error || 'No se pudo obtener el historial de ajustes');
+    }
+
+    return response.json();
+  } catch (error) {
+    throw new Error(normalizeFetchError(error));
+  }
+}
+
 export async function deleteGastoFijoEnCiclo(id, ciclo) {
   try {
     const query = ciclo ? `?ciclo=${encodeURIComponent(ciclo)}` : '';

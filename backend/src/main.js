@@ -3982,6 +3982,55 @@ app.delete('/cierres-ciclo', exigirGestionHogar, async (req, res) => {
   }
 });
 
+app.get('/gastos-fijos/:id/ajustes', async (req, res) => {
+  const gastoFijoId = Number(req.params.id);
+  if (!gastoFijoId) return res.status(400).json({ error: 'id invalido' });
+
+  try {
+    await asegurarAlcanceAjustesGastosFijos();
+
+    const { rows: gastoRows } = await pool.query(
+      `
+      SELECT gf.id, gf.hogar_id, gf.descripcion, gf.moneda, gf.monto_base, c.nombre AS categoria
+      FROM gastos_fijos gf
+      JOIN categorias c ON c.id = gf.categoria_id
+      WHERE gf.id = $1
+      `,
+      [gastoFijoId]
+    );
+    if (gastoRows.length === 0) return res.status(404).json({ error: 'Valor fijo no encontrado' });
+    const gasto = gastoRows[0];
+    if (!puedeOperarHogar(req.usuario, Number(gasto.hogar_id))) {
+      return res.status(403).json({ error: 'No tenes permisos para consultar ajustes' });
+    }
+
+    const { rows: ajustes } = await pool.query(
+      `
+      SELECT id, gasto_fijo_id, fecha_aplicacion, ciclo_hasta_aplicacion, tipo_ajuste, valor, nota, creado_en
+      FROM ajustes_gastos_fijos
+      WHERE gasto_fijo_id = $1
+      ORDER BY fecha_aplicacion ASC, id ASC
+      `,
+      [gastoFijoId]
+    );
+
+    let montoActual = Number(gasto.monto_base || 0);
+    const items = ajustes.map((ajuste) => {
+      const monto_anterior = montoActual;
+      montoActual = aplicarAjustes(montoActual, [ajuste]);
+      return {
+        ...ajuste,
+        monto_anterior: Number(monto_anterior.toFixed(2)),
+        monto_posterior: Number(montoActual.toFixed(2))
+      };
+    });
+
+    return res.status(200).json({ gasto, items });
+  } catch (error) {
+    return res.status(500).json({ error: 'Error consultando ajustes de valor fijo', detalle: error.message });
+  }
+});
+
 app.post('/gastos-fijos/:id/ajustes', async (req, res) => {
   const gastoFijoId = Number(req.params.id);
   const { fecha_aplicacion, ciclo_aplicacion, alcance, tipo_ajuste, valor, nota } = req.body;
