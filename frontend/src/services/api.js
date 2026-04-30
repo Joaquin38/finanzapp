@@ -667,9 +667,10 @@ export async function updateConsumoTarjeta(consumoId, payload) {
   }
 }
 
-export async function deleteConsumoTarjeta(consumoId) {
+export async function deleteConsumoTarjeta(consumoId, cicloActual = '') {
   try {
-    const response = await fetch(`${API_URL}/tarjetas-credito/consumos/${consumoId}`, {
+    const query = cicloActual ? `?ciclo_actual=${encodeURIComponent(cicloActual)}` : '';
+    const response = await fetch(`${API_URL}/tarjetas-credito/consumos/${consumoId}${query}`, {
       method: 'DELETE',
       headers: getAuthHeaders()
     });

@@ -2597,7 +2597,9 @@ app.patch('/tarjetas-credito/consumos/:id', async (req, res) => {
 
 app.delete('/tarjetas-credito/consumos/:id', async (req, res) => {
   const consumoId = Number(req.params.id);
+  const cicloActual = String(req.query.ciclo_actual || '');
   if (!consumoId) return res.status(400).json({ error: 'id invalido' });
+  if (cicloActual && !cicloEsValido(cicloActual)) return res.status(400).json({ error: 'ciclo_actual invalido' });
 
   try {
     await asegurarTarjetasCredito();
@@ -2613,9 +2615,17 @@ app.delete('/tarjetas-credito/consumos/:id', async (req, res) => {
       [consumoId]
     );
     if (permisoRows.length === 0) return res.status(404).json({ error: 'Consumo no encontrado' });
-    if (!puedeOperarHogar(req.usuario, Number(permisoRows[0].hogar_id))) return res.status(403).json({ error: 'No tenes permisos para operar este consumo' });
-    if (permisoRows[0].estado === 'cerrado') return res.status(409).json({ error: 'El resumen asignado esta cerrado' });
-    await asegurarCierresCuotasAbiertos(permisoRows[0], permisoRows[0].ciclo_asignado, permisoRows[0].cantidad_cuotas);
+    const consumo = permisoRows[0];
+    if (!puedeOperarHogar(req.usuario, Number(consumo.hogar_id))) return res.status(403).json({ error: 'No tenes permisos para operar este consumo' });
+    if (cicloActual) {
+      const { rows: cierreActualRows } = await pool.query(
+        'SELECT estado FROM cierres_tarjeta WHERE tarjeta_id = $1 AND ciclo = $2',
+        [consumo.id, cicloActual]
+      );
+      if (cierreActualRows[0]?.estado === 'cerrado') return res.status(409).json({ error: 'El resumen seleccionado esta cerrado' });
+    } else if (consumo.estado === 'cerrado') {
+      return res.status(409).json({ error: 'El resumen asignado esta cerrado' });
+    }
 
     await pool.query('DELETE FROM consumos_tarjeta WHERE id = $1', [consumoId]);
     return res.status(200).json({ ok: true });

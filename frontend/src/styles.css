@@ -3310,42 +3310,47 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
 
 .toast-stack {
   position: fixed;
-  right: 18px;
-  bottom: 18px;
+  right: 24px;
+  bottom: 24px;
   z-index: 5000;
   display: grid;
-  gap: 10px;
-  width: min(360px, calc(100vw - 32px));
+  gap: 12px;
+  width: min(460px, calc(100vw - 32px));
   pointer-events: none;
 }
 .app-toast {
   display: grid;
   grid-template-columns: 1fr auto;
   align-items: center;
-  gap: 12px;
-  padding: 12px 12px 12px 14px;
-  border: 1px solid #cbd5e1;
-  border-left: 4px solid #16a34a;
+  gap: 16px;
+  min-height: 58px;
+  padding: 16px 16px 16px 18px;
+  border: 2px solid #86efac;
+  border-left: 7px solid #16a34a;
   border-radius: 10px;
-  background: #ffffff;
-  color: #0f172a;
-  box-shadow: 0 18px 38px rgba(15, 23, 42, 0.16);
-  font-size: 13px;
-  font-weight: 700;
+  background: #f0fdf4;
+  color: #052e16;
+  box-shadow: 0 22px 52px rgba(15, 23, 42, 0.28);
+  font-size: 15px;
+  line-height: 1.35;
+  font-weight: 800;
   pointer-events: auto;
 }
 .app-toast.error {
+  background: #fef2f2;
+  border-color: #fca5a5;
   border-left-color: #ef4444;
+  color: #450a0a;
 }
 .app-toast button {
   display: inline-grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
+  width: 30px;
+  height: 30px;
   border: 0;
   border-radius: 999px;
-  background: #f1f5f9;
-  color: #475569;
+  background: rgba(15, 23, 42, 0.08);
+  color: currentColor;
   cursor: pointer;
   font-weight: 800;
 }
@@ -4623,14 +4628,19 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   color: #ffffff;
 }
 :root[data-theme='dark'] .app-toast {
-  background: var(--surface);
-  border-color: var(--border-strong);
-  color: var(--text-primary);
-  box-shadow: 0 20px 42px rgba(0, 0, 0, 0.38);
+  background: #052e16;
+  border-color: #22c55e;
+  color: #dcfce7;
+  box-shadow: 0 24px 58px rgba(0, 0, 0, 0.68);
+}
+:root[data-theme='dark'] .app-toast.error {
+  background: #450a0a;
+  border-color: #ef4444;
+  color: #fee2e2;
 }
 :root[data-theme='dark'] .app-toast button {
-  background: var(--surface-soft);
-  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.14);
+  color: currentColor;
 }
 :root[data-theme='dark'] .btn-inline.secondary .btn-spinner,
 :root[data-theme='dark'] .hero-action-btn.secondary .btn-spinner {

@@ -222,7 +222,7 @@ export default function App() {
     toastIdRef.current += 1;
     const id = `${Date.now()}-${toastIdRef.current}`;
     setToasts((prev) => [...prev, { id, type, message }].slice(-4));
-    window.setTimeout(() => dismissToast(id), 3800);
+    window.setTimeout(() => dismissToast(id), type === 'error' ? 6500 : 5000);
   };
 
   useEffect(() => {
@@ -1368,8 +1368,6 @@ export default function App() {
             <span>Actualizado: {ultimaActualizacion}</span>
           </div>
         </header>
-
-        {error && <p className="error">{error}</p>}
 
         {(seccionActiva === 'dashboard' || seccionActiva === 'movimientos') && cycleControlPanel}
 
