@@ -46,12 +46,16 @@ CREATE TABLE IF NOT EXISTS consumos_tarjeta (
   cantidad_cuotas SMALLINT NOT NULL DEFAULT 1 CHECK (cantidad_cuotas >= 1),
   monto_cuota NUMERIC(14,2) NOT NULL CHECK (monto_cuota > 0),
   cuota_inicial SMALLINT NOT NULL DEFAULT 1 CHECK (cuota_inicial >= 1),
+  repite_mes_siguiente BOOLEAN NOT NULL DEFAULT FALSE,
   titular VARCHAR(120),
   observaciones TEXT,
   creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   actualizado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CHECK (cierre_id IS NOT NULL OR ciclo_asignado IS NOT NULL)
 );
+
+ALTER TABLE consumos_tarjeta
+  ADD COLUMN IF NOT EXISTS repite_mes_siguiente BOOLEAN NOT NULL DEFAULT FALSE;
 
 CREATE INDEX IF NOT EXISTS idx_tarjetas_credito_hogar
   ON tarjetas_credito (hogar_id, activa);

@@ -3726,6 +3726,10 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
 .tarjeta-form-group-extra {
   grid-template-columns: minmax(180px, 0.8fr) minmax(320px, 2fr);
 }
+.tarjeta-subscription-check {
+  align-self: stretch;
+  min-height: 54px;
+}
 .tarjeta-form-group-title {
   grid-column: 1 / -1;
   color: var(--text-muted);
