@@ -154,8 +154,26 @@ export default function MenuLateral({
 
       <div className="menu-top">
         <h3>Menu</h3>
-        <button type="button" className="toggle-menu" onClick={onToggle}>
-          {collapsed ? '>>' : '<<'}
+        <button
+          type="button"
+          className="toggle-menu"
+          onClick={onToggle}
+          aria-label={collapsed ? 'Desplegar menu' : 'Colapsar menu'}
+          title={collapsed ? 'Desplegar menu' : 'Colapsar menu'}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            {collapsed ? (
+              <>
+                <path d="M9 6l6 6-6 6" />
+                <path d="M4 6l6 6-6 6" />
+              </>
+            ) : (
+              <>
+                <path d="M15 6l-6 6 6 6" />
+                <path d="M20 6l-6 6 6 6" />
+              </>
+            )}
+          </svg>
         </button>
       </div>
 
