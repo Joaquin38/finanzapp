@@ -2837,6 +2837,7 @@ app.get('/movimientos', async (req, res) => {
           m.activo,
           m.eliminado_en,
           m.creado_por_usuario_id,
+          m.creado_en,
           u.nombre AS creado_por_usuario_nombre,
           tm.codigo AS tipo_movimiento,
           c.nombre AS categoria
@@ -2868,6 +2869,7 @@ app.get('/movimientos', async (req, res) => {
           m.activo,
           m.eliminado_en,
           m.creado_por_usuario_id,
+          m.creado_en,
           u.nombre AS creado_por_usuario_nombre,
           tm.codigo AS tipo_movimiento,
           c.nombre AS categoria

@@ -14,6 +14,19 @@ function formatFecha(fecha) {
   return `${dia}/${mes}/${anio}`;
 }
 
+function formatFechaHora(fecha) {
+  if (!fecha) return '-';
+  const date = new Date(fecha);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleString('es-AR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
+
 function formatMoney(value) {
   return `$${Number(value || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
@@ -56,6 +69,24 @@ export default function MovimientosTable({
       : '';
   const claseBadgeEspecial = (mov) =>
     mov.clasificacion_movimiento === 'saldo_inicial' ? 'badge-special-saldo' : 'badge-special-ajuste';
+  const auditoriaMovimiento = (mov) => {
+    if (mov.esProyectado) return null;
+    const usuario = mov.creado_por_usuario_nombre || (mov.creado_por_usuario_id ? `Usuario #${mov.creado_por_usuario_id}` : 'Sin usuario');
+    return { usuario, fecha: formatFechaHora(mov.creado_en) };
+  };
+  const renderAuditoria = (mov) => {
+    const auditoria = auditoriaMovimiento(mov);
+    if (!auditoria) return null;
+    return (
+      <span className="movement-audit" tabIndex={0} aria-label={`Registrado por ${auditoria.usuario} el ${auditoria.fecha}`}>
+        i
+        <span className="movement-audit-tooltip">
+          <span>Registrado por {auditoria.usuario}</span>
+          <span>{auditoria.fecha}</span>
+        </span>
+      </span>
+    );
+  };
   const sortIndicator = (campo) => (orden.campo === campo ? (orden.direccion === 'asc' ? ' ▲' : ' ▼') : '');
   const toggleSort = (campo) => {
     onOrdenChange((prev) => {
@@ -151,7 +182,12 @@ export default function MovimientosTable({
           <tbody>
             {movimientos.map((mov) => (
               <tr key={mov.id} className={mov.esProyectado ? 'row-proyectado' : ''}>
-                <td>{formatFecha(mov.fecha)}</td>
+                <td>
+                  <div className="movement-date-cell">
+                    {renderAuditoria(mov)}
+                    <span>{formatFecha(mov.fecha)}</span>
+                  </div>
+                </td>
                 <td>
                   <span className={`badge badge-${mov.tipo_movimiento}`}>{mov.tipo_movimiento}</span>
                   <span className={`badge ${mov.esProyectado ? 'badge-fijo' : 'badge-origen'}`}>{etiquetaOrigen(mov)}</span>

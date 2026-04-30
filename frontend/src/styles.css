@@ -3254,6 +3254,66 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   gap: 6px;
   margin-top: 4px;
 }
+.movement-date-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+.movement-audit {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border: 1px solid rgba(100, 116, 139, 0.42);
+  border-radius: 999px;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: help;
+  opacity: 0.72;
+}
+.movement-audit:hover,
+.movement-audit:focus {
+  opacity: 1;
+  outline: none;
+  border-color: rgba(59, 130, 246, 0.55);
+  color: #2563eb;
+}
+.movement-audit-tooltip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  z-index: 20;
+  display: none;
+  min-width: 190px;
+  transform: translateX(-50%);
+  padding: 8px 10px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.12);
+  color: #334155;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.35;
+  white-space: normal;
+}
+.movement-audit-tooltip span {
+  display: block;
+}
+.movement-audit-tooltip span + span {
+  margin-top: 2px;
+  color: #64748b;
+  font-weight: 500;
+}
+.movement-audit:hover .movement-audit-tooltip,
+.movement-audit:focus .movement-audit-tooltip {
+  display: block;
+}
 
 .acciones-inline { display: flex; gap: 6px; }
 .acciones-inline {
@@ -4347,6 +4407,24 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   background: var(--surface);
   border-color: var(--border);
   box-shadow: var(--shadow-soft);
+}
+:root[data-theme='dark'] .movement-audit {
+  border-color: rgba(148, 163, 184, 0.42);
+  color: #94a3b8;
+}
+:root[data-theme='dark'] .movement-audit:hover,
+:root[data-theme='dark'] .movement-audit:focus {
+  border-color: rgba(56, 189, 248, 0.55);
+  color: #7dd3fc;
+}
+:root[data-theme='dark'] .movement-audit-tooltip {
+  background: rgba(15, 23, 42, 0.96);
+  border-color: rgba(148, 163, 184, 0.28);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.32);
+  color: #e2e8f0;
+}
+:root[data-theme='dark'] .movement-audit-tooltip span + span {
+  color: #94a3b8;
 }
 :root[data-theme='dark'] .house-users-card,
 :root[data-theme='dark'] .unassigned-user,
