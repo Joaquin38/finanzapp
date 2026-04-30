@@ -337,7 +337,9 @@ label,
 }
 
 .menu-shell.collapsed {
-  width: 64px;
+  width: 76px;
+  padding: 14px 8px;
+  align-items: center;
 }
 
 .menu-brand {
@@ -373,16 +375,29 @@ label,
 }
 .menu-shell.collapsed .menu-brand {
   justify-content: center;
-  padding: 2px 0 12px;
+  width: 100%;
+  padding: 0 0 12px;
 }
 .menu-shell.collapsed .menu-brand-logo {
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
 }
 
 .menu-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .menu-top h3 { margin: 0; }
 .toggle-menu { background: transparent; border: 1px solid rgba(148, 163, 184, 0.18); color: #cbd5e1; border-radius: 8px; padding: 6px 8px; }
+.menu-shell.collapsed .menu-top {
+  justify-content: center;
+  width: 100%;
+}
+.menu-shell.collapsed .toggle-menu {
+  width: 38px;
+  height: 34px;
+  padding: 0;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.68);
+}
 
 .menu-shell nav {
   display: grid;
@@ -391,6 +406,11 @@ label,
   margin-top: 16px;
   flex: 1;
   min-height: 0;
+}
+.menu-shell.collapsed nav {
+  width: 100%;
+  justify-items: center;
+  gap: 10px;
 }
 .menu-item {
   position: relative;
@@ -518,8 +538,13 @@ label,
   border-color: rgba(96, 165, 250, 0.18);
 }
 .menu-shell.collapsed .menu-item {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
   justify-content: center;
-  padding: 9px;
+  padding: 0;
+  border-radius: 12px;
 }
 .menu-shell.collapsed .menu-brand-text,
 .menu-shell.collapsed .menu-top h3,
@@ -528,8 +553,34 @@ label,
   display: none;
 }
 .menu-shell.collapsed .menu-section {
-  padding-top: 10px;
-  margin-top: 8px;
+  width: 100%;
+  justify-items: center;
+  padding-top: 12px;
+  margin-top: 4px;
+  border-top-color: rgba(148, 163, 184, 0.1);
+}
+.menu-shell.collapsed .menu-section:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+.menu-shell.collapsed .menu-icon {
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  border-radius: 10px;
+}
+.menu-shell.collapsed .menu-item.activo {
+  background: rgba(14, 165, 233, 0.18);
+  border-color: rgba(125, 211, 252, 0.62);
+  box-shadow: inset 3px 0 0 #67e8f9, 0 10px 22px rgba(14, 165, 233, 0.16);
+}
+.menu-shell.collapsed .menu-item.activo::before {
+  display: none;
+}
+.menu-shell.collapsed .menu-item.activo .menu-icon {
+  background: transparent;
+  border-color: transparent;
+  color: #e0f2fe;
 }
 
 .sidebar-account {
@@ -574,11 +625,17 @@ label,
   color: #1d4ed8;
 }
 .menu-shell.collapsed .sidebar-account {
+  width: 100%;
   padding-top: 10px;
 }
 .menu-shell.collapsed .sidebar-account-trigger {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
   justify-content: center;
-  padding: 8px;
+  margin: 0 auto;
+  padding: 0;
+  border-radius: 12px;
 }
 
 .hero { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; margin-bottom: 20px; }
@@ -3240,6 +3297,9 @@ button:is(
 }
 
 .table-wrapper { overflow-x: auto; margin-top: 12px; border-radius: 10px; }
+.panel-table .table-wrapper {
+  padding-bottom: 8px;
+}
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; border-bottom: 1px solid #e2e8f0; padding: 10px 6px; font-size: 14px; }
 tbody tr:hover { background: rgba(226, 232, 240, 0.35); }
@@ -3285,12 +3345,13 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
 }
 .movement-audit-tooltip {
   position: absolute;
-  left: 50%;
-  bottom: calc(100% + 8px);
+  left: 0;
+  top: calc(100% + 8px);
   z-index: 20;
   display: none;
-  min-width: 190px;
-  transform: translateX(-50%);
+  width: max-content;
+  min-width: 184px;
+  max-width: 240px;
   padding: 8px 10px;
   border: 1px solid rgba(148, 163, 184, 0.28);
   border-radius: 8px;
@@ -5070,6 +5131,20 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
 }
 
 @media (max-width: 640px) {
+  .movement-date-cell {
+    gap: 6px;
+  }
+  .movement-audit {
+    width: 18px;
+    height: 18px;
+    font-size: 11px;
+  }
+  .movement-audit-tooltip {
+    min-width: 180px;
+    max-width: min(230px, calc(100vw - 40px));
+    padding: 9px 10px;
+    font-size: 11px;
+  }
   .container,
   .contenido-principal,
   .contenido-principal > *,
