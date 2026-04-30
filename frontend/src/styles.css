@@ -3846,6 +3846,17 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   background: var(--surface-soft);
   color: var(--text-primary);
 }
+.tarjeta-cuota-label {
+  display: inline-grid;
+  gap: 2px;
+  font-weight: 900;
+  color: var(--text-primary);
+}
+.tarjeta-cuota-label small {
+  margin-top: 0;
+  font-size: 11px;
+  font-weight: 700;
+}
 .tarjeta-history {
   display: grid;
   gap: 10px;

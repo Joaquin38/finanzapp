@@ -80,6 +80,14 @@ function addMonthsToCycle(ciclo, offset) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 }
 
+function resolvePreviewCycle(fechaCompra, fechaCierreReferencia) {
+  if (!fechaCompra) return '';
+  const cicloCompra = String(fechaCompra).slice(0, 7);
+  const diaCierre = Number(String(fechaCierreReferencia || '').slice(8, 10) || 31);
+  const diaCompra = Number(String(fechaCompra).slice(8, 10) || 1);
+  return diaCompra > diaCierre ? addMonthsToCycle(cicloCompra, 1) : cicloCompra;
+}
+
 export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = [], formatMoney, onToast }) {
   const [tarjetas, setTarjetas] = useState([]);
   const [consumos, setConsumos] = useState([]);
@@ -91,6 +99,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
   const [historialResumenes, setHistorialResumenes] = useState([]);
   const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState(null);
+  const [editingCicloBase, setEditingCicloBase] = useState('');
   const [detailItem, setDetailItem] = useState(null);
   const [filters, setFilters] = useState({ ciclo: '', categoria: '', moneda: '', cuotas: '', texto: '' });
   const [calcSource, setCalcSource] = useState('total');
@@ -128,32 +137,24 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
     const byCycle = new Map();
 
     consumos.forEach((item) => {
-      const cuotas = Number(item.cantidad_cuotas || 1);
-      const cuotaInicial = Number(item.cuota_inicial || 1);
-      if (cuotas <= 1) return;
-
-      const pendientes = Math.max(cuotas - cuotaInicial, 0);
-      for (let index = 1; index <= pendientes; index += 1) {
-        const futureCycle = addMonthsToCycle(item.ciclo_asignado, index);
-        if (!byCycle.has(futureCycle)) {
-          byCycle.set(futureCycle, { ciclo: futureCycle, totalArs: 0, totalUsd: 0, consumos: new Set() });
-        }
-        const bucket = byCycle.get(futureCycle);
-        if (item.moneda === 'USD') bucket.totalUsd += Number(item.monto_cuota || 0);
-        else bucket.totalArs += Number(item.monto_cuota || 0);
-        bucket.consumos.add(item.id);
+      if (String(item.ciclo_asignado).localeCompare(String(selectedCiclo)) <= 0) return;
+      if (!byCycle.has(item.ciclo_asignado)) {
+        byCycle.set(item.ciclo_asignado, { ciclo: item.ciclo_asignado, totalArs: 0, totalUsd: 0, consumos: new Set() });
       }
+      const bucket = byCycle.get(item.ciclo_asignado);
+      if (item.moneda === 'USD') bucket.totalUsd += Number(item.monto_resumen || item.monto_cuota || 0);
+      else bucket.totalArs += Number(item.monto_resumen || item.monto_cuota || 0);
+      bucket.consumos.add(item.id);
     });
 
     return Array.from(byCycle.values())
       .map((item) => ({ ...item, cantidadConsumos: item.consumos.size }))
       .sort((a, b) => String(a.ciclo).localeCompare(String(b.ciclo)));
-  }, [consumos]);
+  }, [consumos, selectedCiclo]);
   const previewCicloAsignado = useMemo(() => {
-    if (!form.fecha_compra || !savedCierreForm.fecha_cierre) return selectedCiclo;
-    return form.fecha_compra <= savedCierreForm.fecha_cierre ? selectedCiclo : addMonthsToCycle(selectedCiclo, 1);
+    return resolvePreviewCycle(form.fecha_compra, savedCierreForm.fecha_cierre) || selectedCiclo;
   }, [form.fecha_compra, savedCierreForm.fecha_cierre, selectedCiclo]);
-  const previewPasaAlSiguiente = previewCicloAsignado !== selectedCiclo;
+  const previewPasaAlSiguiente = String(previewCicloAsignado).localeCompare(String(selectedCiclo)) > 0;
   const consumoAsignadoAResumenCerrado = resumenSeleccionadoCerrado && previewCicloAsignado === selectedCiclo;
   const resumenAnalisis = useMemo(() => {
     const actuales = consumos.filter((item) => item.ciclo_asignado === selectedCiclo);
@@ -165,14 +166,14 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
     let consumoMayor = null;
 
     actuales.forEach((item) => {
-      const monto = Number(item.monto_total || 0);
+      const monto = Number(item.monto_resumen || item.monto_cuota || item.monto_total || 0);
       const categoria = item.categoria || 'Sin categoria';
       categorias.set(categoria, (categorias.get(categoria) || 0) + monto);
       if (item.moneda === 'USD') totalUsd += monto;
       else totalArs += monto;
       if (Number(item.cantidad_cuotas || 1) > 1) totalCuotas += monto;
       else totalUnPago += monto;
-      if (!consumoMayor || monto > Number(consumoMayor.monto_total || 0)) consumoMayor = item;
+      if (!consumoMayor || monto > Number(consumoMayor.monto_resumen || consumoMayor.monto_cuota || 0)) consumoMayor = item;
     });
 
     const categoriaPrincipal = Array.from(categorias.entries())
@@ -281,7 +282,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
     try {
       const payload = {
         tarjeta_id: Number(form.tarjeta_id),
-        ciclo_actual: selectedCiclo,
+        ciclo_actual: editingId ? editingCicloBase || selectedCiclo : selectedCiclo,
         fecha_compra: form.fecha_compra,
         descripcion: form.descripcion,
         categoria: form.categoria || null,
@@ -301,6 +302,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
         categoria: prev.categoria
       }));
       setEditingId(null);
+      setEditingCicloBase('');
       await cargarTarjetas();
       onToast?.({ message: editingId ? 'Consumo actualizado.' : 'Consumo guardado.' });
     } catch (err) {
@@ -314,7 +316,8 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
 
   const handleEdit = (consumo) => {
     if (resumenSeleccionadoCerrado && consumo.ciclo_asignado === selectedCiclo) return;
-    setEditingId(consumo.id);
+    setEditingId(consumo.compra_id || consumo.id);
+    setEditingCicloBase(consumo.ciclo_compra || consumo.ciclo_asignado || selectedCiclo);
     setForm({
       fecha_compra: String(consumo.fecha_compra || '').slice(0, 10),
       descripcion: consumo.descripcion || '',
@@ -332,6 +335,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
 
   const handleCancelEdit = () => {
     setEditingId(null);
+    setEditingCicloBase('');
     setForm((prev) => ({ ...initialForm, fecha_compra: prev.fecha_compra, tarjeta_id: prev.tarjeta_id }));
   };
 
@@ -342,7 +346,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
     setLoadingAction('delete-consumo');
     setError('');
     try {
-      await deleteConsumoTarjeta(consumo.id);
+      await deleteConsumoTarjeta(consumo.compra_id || consumo.id);
       await cargarTarjetas();
       onToast?.({ message: 'Consumo eliminado.' });
     } catch (err) {
@@ -376,6 +380,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
     if (!cicloResumen) return;
     setDetailItem(null);
     setEditingId(null);
+    setEditingCicloBase('');
     handleCicloChange(cicloResumen);
     setVistaTarjeta('principal');
   };
@@ -728,11 +733,18 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
                   <td>{consumo.categoria || 'Sin categoria'}</td>
                   <td>{consumo.moneda}</td>
                   <td>{consumo.moneda === 'USD' ? `US$ ${Number(consumo.monto_total).toLocaleString('es-AR', moneyFormat)}` : formatMoney(consumo.monto_total)}</td>
-                  <td>{Number(consumo.cantidad_cuotas || 1) > 1 ? `${consumo.cantidad_cuotas} cuotas` : '1 cuota'}</td>
-                  <td>{consumo.moneda === 'USD' ? `US$ ${Number(consumo.monto_cuota).toLocaleString('es-AR', moneyFormat)}` : formatMoney(consumo.monto_cuota)}</td>
+                  <td>
+                    {Number(consumo.cantidad_cuotas || 1) > 1 ? (
+                      <span className="tarjeta-cuota-label">
+                        {consumo.cuota_label || `${consumo.cuota_numero || 1}/${consumo.cantidad_cuotas}`}
+                        <small>{consumo.cantidad_cuotas} cuotas</small>
+                      </span>
+                    ) : '1 cuota'}
+                  </td>
+                  <td>{consumo.moneda === 'USD' ? `US$ ${Number(consumo.monto_resumen || consumo.monto_cuota).toLocaleString('es-AR', moneyFormat)}` : formatMoney(consumo.monto_resumen || consumo.monto_cuota)}</td>
                   <td>
                     <span className="pill">{formatCycleLabel(consumo.ciclo_asignado)}</span>
-                    <small>{consumo.resumen_relativo === 'actual' ? 'Actual' : 'Siguiente'}</small>
+                    <small>{consumo.ciclo_asignado === selectedCiclo ? 'Actual' : 'Futuro'}</small>
                   </td>
                   <td>
                     <div className="acciones-inline">
@@ -763,6 +775,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
             <span>Descripcion <strong>{detailItem.descripcion}</strong></span>
             <span>Titular <strong>{detailItem.titular || 'Sin titular'}</strong></span>
             <span>Resumen <strong>{formatCycleLabel(detailItem.ciclo_asignado)}</strong></span>
+            <span>Cuota <strong>{detailItem.cuota_label || '1/1'}</strong></span>
             <span>Observaciones <strong>{detailItem.observaciones || 'Sin observaciones'}</strong></span>
           </div>
         </section>

@@ -860,6 +860,17 @@ function siguienteCiclo(ciclo) {
   return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
 }
 
+function sumarMesesCiclo(ciclo, offset) {
+  if (!cicloEsValido(ciclo)) return null;
+  const [anioTexto, mesTexto] = String(ciclo).split('-');
+  const fecha = new Date(Number(anioTexto), Number(mesTexto) - 1 + Number(offset || 0), 1);
+  return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function compararCiclos(a, b) {
+  return String(a || '').localeCompare(String(b || ''));
+}
+
 function cicloTarjetaPorFechaCompra(fechaCompra, diaCierre) {
   const fecha = new Date(`${fechaCompra}T00:00:00`);
   const cicloBase = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
@@ -910,6 +921,63 @@ async function obtenerOCrearCierreTarjeta(tarjeta, ciclo) {
     [tarjeta.id, ciclo]
   );
   return rows[0] || null;
+}
+
+async function resolverResumenCompraTarjeta(tarjeta, fechaCompra) {
+  const fecha = new Date(`${fechaCompra}T00:00:00`);
+  const cicloCompra = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
+  const cierreCompra = await obtenerOCrearCierreTarjeta(tarjeta, cicloCompra);
+  const fechaCierreCompra = String(cierreCompra?.fecha_cierre || '').slice(0, 10);
+  const cicloAsignado = fechaCierreCompra && fechaCompra > fechaCierreCompra ? siguienteCiclo(cicloCompra) : cicloCompra;
+  const cierreAsignado = cicloAsignado === cicloCompra
+    ? cierreCompra
+    : await obtenerOCrearCierreTarjeta(tarjeta, cicloAsignado);
+  return { cicloAsignado, cierreAsignado };
+}
+
+async function obtenerOCrearCierresCuotasTarjeta(tarjeta, cicloInicial, cantidadCuotas) {
+  const cierres = [];
+  const totalCuotas = Math.max(Number(cantidadCuotas || 1), 1);
+  for (let index = 0; index < totalCuotas; index += 1) {
+    const cicloCuota = sumarMesesCiclo(cicloInicial, index);
+    const cierre = await obtenerOCrearCierreTarjeta(tarjeta, cicloCuota);
+    if (cierre) cierres.push(cierre);
+  }
+  return cierres;
+}
+
+async function asegurarCierresCuotasAbiertos(tarjeta, cicloInicial, cantidadCuotas) {
+  const cierres = await obtenerOCrearCierresCuotasTarjeta(tarjeta, cicloInicial, cantidadCuotas);
+  const cerrado = cierres.find((item) => item.estado === 'cerrado');
+  if (cerrado) {
+    const error = new Error(`El resumen ${cerrado.ciclo} esta cerrado`);
+    error.statusCode = 409;
+    throw error;
+  }
+  return cierres;
+}
+
+function expandirConsumosTarjeta(consumosBase) {
+  return consumosBase.flatMap((item) => {
+    const cuotas = Math.max(Number(item.cantidad_cuotas || 1), 1);
+    return Array.from({ length: cuotas }, (_, index) => {
+      const cuotaNumero = Number(item.cuota_inicial || 1) + index;
+      const cicloCuota = sumarMesesCiclo(item.ciclo_asignado, index);
+      return {
+        ...item,
+        id: `${item.id}-${cuotaNumero}`,
+        compra_id: item.id,
+        cierre_id_origen: item.cierre_id,
+        ciclo_compra: item.ciclo_asignado,
+        ciclo_asignado: cicloCuota,
+        resumen_relativo: item.resumen_relativo,
+        monto_resumen: Number(item.monto_cuota || 0),
+        cuota_numero: cuotaNumero,
+        cuota_label: cuotas > 1 ? `${cuotaNumero}/${cuotas}` : '1/1',
+        es_cuota_generada: cuotas > 1
+      };
+    });
+  });
 }
 
 async function asegurarEstadosGastosFijosPorCiclo() {
@@ -2149,64 +2217,79 @@ app.get('/tarjetas-credito', async (req, res) => {
       [hogarId]
     );
     let cierreActual = null;
+    let tarjetaActual = null;
 
     if (cicloEsValido(ciclo) && tarjetas[0]) {
-      const tarjetaActual = tarjetas.find((tarjeta) => Number(tarjeta.id) === tarjetaIdSeleccionada) || tarjetas[0];
+      tarjetaActual = tarjetas.find((tarjeta) => Number(tarjeta.id) === tarjetaIdSeleccionada) || tarjetas[0];
       cierreActual = await obtenerOCrearCierreTarjeta(tarjetaActual, ciclo);
     }
 
-    const cicloSiguiente = cicloEsValido(ciclo) ? siguienteCiclo(ciclo) : null;
     const tarjetaConsultaId = cierreActual?.tarjeta_id || null;
-    const { rows: consumos } = cicloEsValido(ciclo)
+    const { rows: consumosBase } = cicloEsValido(ciclo)
       ? await pool.query(
           `
           SELECT ct.id, ct.tarjeta_id, ct.cierre_id, ct.ciclo_asignado, ct.fecha_compra,
                  ct.descripcion, ct.categoria, ct.moneda, ct.monto_total,
                  ct.cantidad_cuotas, ct.monto_cuota, ct.cuota_inicial, ct.titular, ct.observaciones,
                  crt.fecha_cierre,
-                 CASE WHEN ct.ciclo_asignado = $2 THEN 'actual' ELSE 'siguiente' END AS resumen_relativo
+                 CASE WHEN ct.ciclo_asignado = $2 THEN 'actual' ELSE 'futuro' END AS resumen_relativo
           FROM consumos_tarjeta ct
           JOIN tarjetas_credito tc ON tc.id = ct.tarjeta_id
           LEFT JOIN cierres_tarjeta crt ON crt.id = ct.cierre_id
           WHERE tc.hogar_id = $1
-            AND COALESCE(ct.ciclo_asignado, '') IN ($2, $3)
-            AND ($4::BIGINT IS NULL OR ct.tarjeta_id = $4)
+            AND ($3::BIGINT IS NULL OR ct.tarjeta_id = $3)
           ORDER BY ct.fecha_compra DESC, ct.id DESC
           `,
-          [hogarId, ciclo, cicloSiguiente, tarjetaConsultaId]
+          [hogarId, ciclo, tarjetaConsultaId]
         )
       : { rows: [] };
+    if (tarjetaActual) {
+      await Promise.all(
+        consumosBase
+          .filter((item) => Number(item.cantidad_cuotas || 1) > 1)
+          .map((item) => obtenerOCrearCierresCuotasTarjeta(tarjetaActual, item.ciclo_asignado, item.cantidad_cuotas))
+      );
+    }
+    const consumosExpandidos = expandirConsumosTarjeta(consumosBase);
+    const consumos = consumosExpandidos
+      .filter((item) => compararCiclos(item.ciclo_asignado, ciclo) >= 0)
+      .sort((a, b) => compararCiclos(b.ciclo_asignado, a.ciclo_asignado) || new Date(b.fecha_compra) - new Date(a.fecha_compra));
 
     const resumen = consumos.filter((item) => item.ciclo_asignado === ciclo).reduce(
       (acc, item) => {
-        if (item.moneda === 'USD') acc.total_usd += Number(item.monto_total || 0);
-        else acc.total_ars += Number(item.monto_total || 0);
+        if (item.moneda === 'USD') acc.total_usd += Number(item.monto_resumen || item.monto_cuota || 0);
+        else acc.total_ars += Number(item.monto_resumen || item.monto_cuota || 0);
         acc.consumos += 1;
-        if (Number(item.cantidad_cuotas || 1) > 1) {
-          acc.cuotas_futuras += Math.max(Number(item.cantidad_cuotas || 1) - Number(item.cuota_inicial || 1), 0);
-        }
         return acc;
       },
       { total_ars: 0, total_usd: 0, consumos: 0, cuotas_futuras: 0 }
     );
+    resumen.cuotas_futuras = consumos.filter((item) => compararCiclos(item.ciclo_asignado, ciclo) > 0).length;
 
-    const { rows: historialResumenes } = tarjetaConsultaId
+    const { rows: cierresHistorial } = tarjetaConsultaId
       ? await pool.query(
           `
-          SELECT cr.id, cr.tarjeta_id, cr.ciclo, cr.fecha_cierre, cr.fecha_vencimiento, cr.estado,
-                 COALESCE(SUM(CASE WHEN ct.moneda = 'ARS' THEN ct.monto_total ELSE 0 END), 0) AS total_ars,
-                 COALESCE(SUM(CASE WHEN ct.moneda = 'USD' THEN ct.monto_total ELSE 0 END), 0) AS total_usd,
-                 COUNT(ct.id) AS consumos
+          SELECT cr.id, cr.tarjeta_id, cr.ciclo, cr.fecha_cierre, cr.fecha_vencimiento, cr.estado
           FROM cierres_tarjeta cr
-          LEFT JOIN consumos_tarjeta ct ON ct.cierre_id = cr.id
           WHERE cr.tarjeta_id = $1
-          GROUP BY cr.id, cr.tarjeta_id, cr.ciclo, cr.fecha_cierre, cr.fecha_vencimiento, cr.estado
           ORDER BY cr.ciclo DESC
           LIMIT 12
           `,
           [tarjetaConsultaId]
         )
       : { rows: [] };
+    const historialResumenes = cierresHistorial.map((cierre) => {
+      const cuotasResumen = consumosExpandidos.filter((item) => item.ciclo_asignado === cierre.ciclo);
+      return cuotasResumen.reduce(
+        (acc, item) => {
+          if (item.moneda === 'USD') acc.total_usd += Number(item.monto_resumen || item.monto_cuota || 0);
+          else acc.total_ars += Number(item.monto_resumen || item.monto_cuota || 0);
+          acc.consumos += 1;
+          return acc;
+        },
+        { ...cierre, total_ars: 0, total_usd: 0, consumos: 0 }
+      );
+    });
 
     return res.status(200).json({
       tarjetas,
@@ -2267,15 +2350,13 @@ app.post('/tarjetas-credito/consumos', async (req, res) => {
       return res.status(403).json({ error: 'No tenes permisos para operar esta tarjeta' });
     }
 
-    const cicloBase = cicloEsValido(String(ciclo_actual || '')) ? String(ciclo_actual) : cicloTarjetaPorFechaCompra(fecha_compra, tarjeta.dia_cierre_default);
-    const cierreBase = await obtenerOCrearCierreTarjeta(tarjeta, cicloBase);
-    const cicloAsignado = cicloTarjetaPorFechaCierre(fecha_compra, cicloBase, String(cierreBase.fecha_cierre).slice(0, 10)) || cicloBase;
-    const cierreAsignado = cicloAsignado === cicloBase ? cierreBase : await obtenerOCrearCierreTarjeta(tarjeta, cicloAsignado);
+    const { cicloAsignado, cierreAsignado } = await resolverResumenCompraTarjeta(tarjeta, fecha_compra);
     if (cierreAsignado?.estado === 'cerrado') {
       return res.status(409).json({ error: 'El resumen asignado esta cerrado' });
     }
     const totalFinal = esNumeroPositivo(montoTotal) ? montoTotal : Number((montoCuota * cuotas).toFixed(2));
     const cuotaFinal = esNumeroPositivo(montoCuota) ? montoCuota : Number((totalFinal / cuotas).toFixed(2));
+    await asegurarCierresCuotasAbiertos(tarjeta, cicloAsignado, cuotas);
 
     const { rows } = await pool.query(
       `
@@ -2304,6 +2385,7 @@ app.post('/tarjetas-credito/consumos', async (req, res) => {
 
     return res.status(201).json({ item: rows[0] });
   } catch (error) {
+    if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
     return res.status(500).json({ error: 'Error creando consumo de tarjeta', detalle: error.message });
   }
 });
@@ -2347,7 +2429,7 @@ app.patch('/tarjetas-credito/consumos/:id', async (req, res) => {
 
     const { rows: consumoActualRows } = await pool.query(
       `
-      SELECT ct.id, cr.estado
+      SELECT ct.id, ct.tarjeta_id, ct.ciclo_asignado, ct.cantidad_cuotas, cr.estado
       FROM consumos_tarjeta ct
       LEFT JOIN cierres_tarjeta cr ON cr.id = ct.cierre_id
       WHERE ct.id = $1
@@ -2358,16 +2440,24 @@ app.patch('/tarjetas-credito/consumos/:id', async (req, res) => {
     if (consumoActualRows[0].estado === 'cerrado') {
       return res.status(409).json({ error: 'El resumen asignado esta cerrado' });
     }
+    const consumoActual = consumoActualRows[0];
+    const tarjetaOriginal = Number(consumoActual.tarjeta_id) === Number(tarjeta.id)
+      ? tarjeta
+      : (await pool.query(
+          'SELECT id, hogar_id, dia_cierre_default, dia_vencimiento_default FROM tarjetas_credito WHERE id = $1 AND activa = true',
+          [consumoActual.tarjeta_id]
+        )).rows[0];
+    if (tarjetaOriginal) {
+      await asegurarCierresCuotasAbiertos(tarjetaOriginal, consumoActual.ciclo_asignado, consumoActual.cantidad_cuotas);
+    }
 
-    const cicloBase = cicloEsValido(String(ciclo_actual || '')) ? String(ciclo_actual) : cicloTarjetaPorFechaCompra(fecha_compra, tarjeta.dia_cierre_default);
-    const cierreBase = await obtenerOCrearCierreTarjeta(tarjeta, cicloBase);
-    const cicloAsignado = cicloTarjetaPorFechaCierre(fecha_compra, cicloBase, String(cierreBase.fecha_cierre).slice(0, 10)) || cicloBase;
-    const cierreAsignado = cicloAsignado === cicloBase ? cierreBase : await obtenerOCrearCierreTarjeta(tarjeta, cicloAsignado);
+    const { cicloAsignado, cierreAsignado } = await resolverResumenCompraTarjeta(tarjeta, fecha_compra);
     if (cierreAsignado?.estado === 'cerrado') {
       return res.status(409).json({ error: 'El resumen asignado esta cerrado' });
     }
     const totalFinal = esNumeroPositivo(montoTotal) ? montoTotal : Number((montoCuota * cuotas).toFixed(2));
     const cuotaFinal = esNumeroPositivo(montoCuota) ? montoCuota : Number((totalFinal / cuotas).toFixed(2));
+    await asegurarCierresCuotasAbiertos(tarjeta, cicloAsignado, cuotas);
 
     const { rows } = await pool.query(
       `
@@ -2407,6 +2497,7 @@ app.patch('/tarjetas-credito/consumos/:id', async (req, res) => {
     if (rows.length === 0) return res.status(404).json({ error: 'Consumo no encontrado' });
     return res.status(200).json({ item: rows[0] });
   } catch (error) {
+    if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
     return res.status(500).json({ error: 'Error actualizando consumo de tarjeta', detalle: error.message });
   }
 });
@@ -2419,7 +2510,8 @@ app.delete('/tarjetas-credito/consumos/:id', async (req, res) => {
     await asegurarTarjetasCredito();
     const { rows: permisoRows } = await pool.query(
       `
-      SELECT tc.hogar_id, cr.estado
+      SELECT tc.hogar_id, tc.id, tc.dia_cierre_default, tc.dia_vencimiento_default,
+             ct.ciclo_asignado, ct.cantidad_cuotas, cr.estado
       FROM consumos_tarjeta ct
       JOIN tarjetas_credito tc ON tc.id = ct.tarjeta_id
       LEFT JOIN cierres_tarjeta cr ON cr.id = ct.cierre_id
@@ -2430,10 +2522,12 @@ app.delete('/tarjetas-credito/consumos/:id', async (req, res) => {
     if (permisoRows.length === 0) return res.status(404).json({ error: 'Consumo no encontrado' });
     if (!puedeOperarHogar(req.usuario, Number(permisoRows[0].hogar_id))) return res.status(403).json({ error: 'No tenes permisos para operar este consumo' });
     if (permisoRows[0].estado === 'cerrado') return res.status(409).json({ error: 'El resumen asignado esta cerrado' });
+    await asegurarCierresCuotasAbiertos(permisoRows[0], permisoRows[0].ciclo_asignado, permisoRows[0].cantidad_cuotas);
 
     await pool.query('DELETE FROM consumos_tarjeta WHERE id = $1', [consumoId]);
     return res.status(200).json({ ok: true });
   } catch (error) {
+    if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
     return res.status(500).json({ error: 'Error eliminando consumo de tarjeta', detalle: error.message });
   }
 });
