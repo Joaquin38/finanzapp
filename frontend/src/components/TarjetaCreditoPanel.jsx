@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createConsumoTarjeta, deleteConsumoTarjeta, getTarjetasCredito, updateCierreTarjeta, updateConsumoTarjeta } from '../services/api.js';
-import MonthPicker from './MonthPicker.jsx';
 
 const moneyFormat = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
 
@@ -504,12 +503,6 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
               ))}
             </select>
           </label>
-          <MonthPicker
-            label="Ciclo / resumen actual"
-            value={selectedCiclo}
-            onChange={handleCicloChange}
-            className="tarjeta-cycle-picker"
-          />
           <label>
             Fecha de cierre del resumen
             <input
