@@ -545,6 +545,11 @@ async function autenticar(req, res, next) {
   }
 }
 
+function usuarioAuditoriaId(req) {
+  const usuarioId = Number(req?.usuario?.id);
+  return Number.isFinite(usuarioId) && usuarioId > 0 ? usuarioId : USUARIO_JOAQUIN_ID;
+}
+
 async function asegurarColumnasEstadoMovimientos() {
   await pool.query(`
     ALTER TABLE movimientos
@@ -575,6 +580,14 @@ async function asegurarColumnasEstadoMovimientos() {
     ADD COLUMN IF NOT EXISTS referencia_ciclo_cierre VARCHAR(7)
   `);
   await pool.query(`
+    ALTER TABLE movimientos
+    ADD COLUMN IF NOT EXISTS actualizado_por_usuario_id BIGINT REFERENCES usuarios(id)
+  `);
+  await pool.query(`
+    ALTER TABLE movimientos
+    ADD COLUMN IF NOT EXISTS eliminado_por_usuario_id BIGINT REFERENCES usuarios(id)
+  `);
+  await pool.query(`
     UPDATE movimientos
     SET clasificacion_movimiento = CASE
       WHEN clase_especial = 'ajuste_cierre' THEN 'ajuste_cierre'
@@ -583,6 +596,54 @@ async function asegurarColumnasEstadoMovimientos() {
     END
     WHERE clasificacion_movimiento IS NULL
        OR clasificacion_movimiento = ''
+  `);
+}
+
+async function asegurarAuditoriaUsuarios() {
+  const tablas = [
+    'hogares',
+    'hogares_usuarios',
+    'cuentas',
+    'categorias',
+    'etiquetas',
+    'cotizaciones_dolar',
+    'gastos_fijos',
+    'ajustes_gastos_fijos',
+    'estados_gastos_fijos_ciclo',
+    'tarjetas_credito',
+    'cierres_tarjeta',
+    'consumos_tarjeta'
+  ];
+
+  for (const tabla of tablas) {
+    await pool.query(`ALTER TABLE ${tabla} ADD COLUMN IF NOT EXISTS creado_por_usuario_id BIGINT REFERENCES usuarios(id)`);
+    await pool.query(`ALTER TABLE ${tabla} ADD COLUMN IF NOT EXISTS actualizado_por_usuario_id BIGINT REFERENCES usuarios(id)`);
+    await pool.query(
+      `UPDATE ${tabla}
+       SET creado_por_usuario_id = COALESCE(creado_por_usuario_id, $1),
+           actualizado_por_usuario_id = COALESCE(actualizado_por_usuario_id, creado_por_usuario_id, $1)
+       WHERE creado_por_usuario_id IS NULL OR actualizado_por_usuario_id IS NULL`,
+      [USUARIO_JOAQUIN_ID]
+    );
+  }
+
+  await pool.query('ALTER TABLE movimientos ADD COLUMN IF NOT EXISTS actualizado_por_usuario_id BIGINT REFERENCES usuarios(id)');
+  await pool.query('ALTER TABLE movimientos ADD COLUMN IF NOT EXISTS eliminado_por_usuario_id BIGINT REFERENCES usuarios(id)');
+  await pool.query(
+    `UPDATE movimientos
+     SET creado_por_usuario_id = COALESCE(creado_por_usuario_id, $1),
+         actualizado_por_usuario_id = COALESCE(actualizado_por_usuario_id, creado_por_usuario_id, $1)
+     WHERE creado_por_usuario_id IS NULL OR actualizado_por_usuario_id IS NULL`,
+    [USUARIO_JOAQUIN_ID]
+  );
+  await pool.query('ALTER TABLE consumos_tarjeta ADD COLUMN IF NOT EXISTS eliminado_por_usuario_id BIGINT REFERENCES usuarios(id)');
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF to_regclass('public.cierres_ciclo') IS NOT NULL THEN
+        ALTER TABLE cierres_ciclo ADD COLUMN IF NOT EXISTS actualizado_por_usuario_id BIGINT REFERENCES usuarios(id);
+      END IF;
+    END $$;
   `);
 }
 
@@ -693,6 +754,8 @@ async function asegurarTarjetasCredito() {
       dia_cierre_default SMALLINT NOT NULL CHECK (dia_cierre_default BETWEEN 1 AND 31),
       dia_vencimiento_default SMALLINT CHECK (dia_vencimiento_default BETWEEN 1 AND 31),
       activa BOOLEAN NOT NULL DEFAULT TRUE,
+      creado_por_usuario_id BIGINT REFERENCES usuarios(id),
+      actualizado_por_usuario_id BIGINT REFERENCES usuarios(id),
       creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       actualizado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE (hogar_id, nombre)
@@ -707,6 +770,8 @@ async function asegurarTarjetasCredito() {
       fecha_vencimiento DATE,
       estado VARCHAR(20) NOT NULL DEFAULT 'abierto'
         CHECK (estado IN ('abierto', 'cerrado')),
+      creado_por_usuario_id BIGINT REFERENCES usuarios(id),
+      actualizado_por_usuario_id BIGINT REFERENCES usuarios(id),
       creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       actualizado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -733,6 +798,9 @@ async function asegurarTarjetasCredito() {
       repite_mes_siguiente BOOLEAN NOT NULL DEFAULT FALSE,
       titular VARCHAR(120),
       observaciones TEXT,
+      creado_por_usuario_id BIGINT REFERENCES usuarios(id),
+      actualizado_por_usuario_id BIGINT REFERENCES usuarios(id),
+      eliminado_por_usuario_id BIGINT REFERENCES usuarios(id),
       creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       actualizado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       CHECK (cierre_id IS NOT NULL OR ciclo_asignado IS NOT NULL)
@@ -792,6 +860,7 @@ async function asegurarDatosColon260() {
     `,
     [HOGAR_COLON_260_ID, USUARIO_JOAQUIN_ID, USUARIO_SOFIA_ID]
   );
+  await asegurarAuditoriaUsuarios();
   await pool.query(`SELECT setval(pg_get_serial_sequence('hogares', 'id'), GREATEST((SELECT MAX(id) FROM hogares), 1), true)`);
   await pool.query(`SELECT setval(pg_get_serial_sequence('usuarios', 'id'), GREATEST((SELECT MAX(id) FROM usuarios), 1), true)`);
 
@@ -835,11 +904,13 @@ async function asegurarDatosColon260() {
         SET creado_por_usuario_id = CASE
               WHEN creado_por_usuario_id IN (${USUARIO_JOAQUIN_ID}, ${USUARIO_SOFIA_ID}) THEN creado_por_usuario_id
               ELSE ${USUARIO_JOAQUIN_ID}
-            END
+            END,
+            actualizado_por_usuario_id = COALESCE(actualizado_por_usuario_id, creado_por_usuario_id, ${USUARIO_JOAQUIN_ID})
         WHERE hogar_id = ${HOGAR_COLON_260_ID}
           AND (
             creado_por_usuario_id IS NULL
             OR creado_por_usuario_id NOT IN (${USUARIO_JOAQUIN_ID}, ${USUARIO_SOFIA_ID})
+            OR actualizado_por_usuario_id IS NULL
           );
       END IF;
     END $$;
@@ -857,10 +928,12 @@ async function asegurarCierresCiclo() {
       diferencia NUMERIC(14,2) NOT NULL DEFAULT 0,
       genera_saldo_inicial BOOLEAN NOT NULL DEFAULT TRUE,
       creado_por_usuario_id BIGINT NOT NULL REFERENCES usuarios(id),
+      actualizado_por_usuario_id BIGINT REFERENCES usuarios(id),
       creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE (hogar_id, ciclo)
     )
   `);
+  await asegurarAuditoriaUsuarios();
 }
 
 function siguienteCiclo(ciclo) {
@@ -903,7 +976,7 @@ function fechaPorDiaDeCiclo(ciclo, dia) {
   return `${ciclo}-${String(Math.min(Number(dia), ultimoDia)).padStart(2, '0')}`;
 }
 
-async function obtenerOCrearCierreTarjeta(tarjeta, ciclo) {
+async function obtenerOCrearCierreTarjeta(tarjeta, ciclo, usuarioId = null) {
   if (!tarjeta?.id || !cicloEsValido(ciclo)) return null;
   const fechaCierreDefault = fechaPorDiaDeCiclo(ciclo, tarjeta.dia_cierre_default);
   const fechaVencimientoDefault = tarjeta.dia_vencimiento_default
@@ -912,13 +985,13 @@ async function obtenerOCrearCierreTarjeta(tarjeta, ciclo) {
 
   const { rows: insertRows } = await pool.query(
     `
-    INSERT INTO cierres_tarjeta (tarjeta_id, ciclo, fecha_cierre, fecha_vencimiento)
-    VALUES ($1, $2, $3, $4)
+    INSERT INTO cierres_tarjeta (tarjeta_id, ciclo, fecha_cierre, fecha_vencimiento, creado_por_usuario_id, actualizado_por_usuario_id)
+    VALUES ($1, $2, $3, $4, $5, $5)
     ON CONFLICT (tarjeta_id, ciclo) DO NOTHING
     RETURNING id, tarjeta_id, ciclo, fecha_cierre, fecha_vencimiento, estado,
               creado_en, actualizado_en, created_at, updated_at
     `,
-    [tarjeta.id, ciclo, fechaCierreDefault, fechaVencimientoDefault]
+    [tarjeta.id, ciclo, fechaCierreDefault, fechaVencimientoDefault, usuarioId]
   );
   if (insertRows.length > 0) return insertRows[0];
 
@@ -935,31 +1008,31 @@ async function obtenerOCrearCierreTarjeta(tarjeta, ciclo) {
   return rows[0] || null;
 }
 
-async function resolverResumenCompraTarjeta(tarjeta, fechaCompra) {
+async function resolverResumenCompraTarjeta(tarjeta, fechaCompra, usuarioId = null) {
   const fecha = new Date(`${fechaCompra}T00:00:00`);
   const cicloCompra = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
-  const cierreCompra = await obtenerOCrearCierreTarjeta(tarjeta, cicloCompra);
+  const cierreCompra = await obtenerOCrearCierreTarjeta(tarjeta, cicloCompra, usuarioId);
   const fechaCierreCompra = String(cierreCompra?.fecha_cierre || '').slice(0, 10);
   const cicloAsignado = fechaCierreCompra && fechaCompra > fechaCierreCompra ? siguienteCiclo(cicloCompra) : cicloCompra;
   const cierreAsignado = cicloAsignado === cicloCompra
     ? cierreCompra
-    : await obtenerOCrearCierreTarjeta(tarjeta, cicloAsignado);
+    : await obtenerOCrearCierreTarjeta(tarjeta, cicloAsignado, usuarioId);
   return { cicloAsignado, cierreAsignado };
 }
 
-async function obtenerOCrearCierresCuotasTarjeta(tarjeta, cicloInicial, cantidadCuotas) {
+async function obtenerOCrearCierresCuotasTarjeta(tarjeta, cicloInicial, cantidadCuotas, usuarioId = null) {
   const cierres = [];
   const totalCuotas = Math.max(Number(cantidadCuotas || 1), 1);
   for (let index = 0; index < totalCuotas; index += 1) {
     const cicloCuota = sumarMesesCiclo(cicloInicial, index);
-    const cierre = await obtenerOCrearCierreTarjeta(tarjeta, cicloCuota);
+    const cierre = await obtenerOCrearCierreTarjeta(tarjeta, cicloCuota, usuarioId);
     if (cierre) cierres.push(cierre);
   }
   return cierres;
 }
 
-async function asegurarCierresCuotasAbiertos(tarjeta, cicloInicial, cantidadCuotas) {
-  const cierres = await obtenerOCrearCierresCuotasTarjeta(tarjeta, cicloInicial, cantidadCuotas);
+async function asegurarCierresCuotasAbiertos(tarjeta, cicloInicial, cantidadCuotas, usuarioId = null) {
+  const cierres = await obtenerOCrearCierresCuotasTarjeta(tarjeta, cicloInicial, cantidadCuotas, usuarioId);
   const cerrado = cierres.find((item) => item.estado === 'cerrado');
   if (cerrado) {
     const error = new Error(`El resumen ${cerrado.ciclo} esta cerrado`);
@@ -969,9 +1042,9 @@ async function asegurarCierresCuotasAbiertos(tarjeta, cicloInicial, cantidadCuot
   return cierres;
 }
 
-async function asegurarSuscripcionMesSiguienteAbierta(tarjeta, cicloInicial, repiteMesSiguiente) {
+async function asegurarSuscripcionMesSiguienteAbierta(tarjeta, cicloInicial, repiteMesSiguiente, usuarioId = null) {
   if (!repiteMesSiguiente) return null;
-  const cierre = await obtenerOCrearCierreTarjeta(tarjeta, sumarMesesCiclo(cicloInicial, 1));
+  const cierre = await obtenerOCrearCierreTarjeta(tarjeta, sumarMesesCiclo(cicloInicial, 1), usuarioId);
   if (cierre?.estado === 'cerrado') {
     const error = new Error(`El resumen ${cierre.ciclo} esta cerrado`);
     error.statusCode = 409;
@@ -1093,7 +1166,7 @@ async function asegurarAlcanceAjustesGastosFijos() {
   `);
 }
 
-async function asegurarCategoriasBase(hogarId) {
+async function asegurarCategoriasBase(hogarId, usuarioId = null) {
   if (!hogarId) return;
 
   const { rows: tiposRows } = await pool.query('SELECT id, codigo FROM tipos_movimiento');
@@ -1116,8 +1189,8 @@ async function asegurarCategoriasBase(hogarId) {
 
   await pool.query(
     `
-    INSERT INTO categorias (hogar_id, nombre, tipo_movimiento_id)
-    SELECT DISTINCT $1::bigint, categoria.nombre, categoria.tipo_movimiento_id
+    INSERT INTO categorias (hogar_id, nombre, tipo_movimiento_id, creado_por_usuario_id, actualizado_por_usuario_id)
+    SELECT DISTINCT $1::bigint, categoria.nombre, categoria.tipo_movimiento_id, $4::bigint, $4::bigint
     FROM UNNEST($2::text[], $3::smallint[]) AS categoria(nombre, tipo_movimiento_id)
     WHERE NOT EXISTS (
       SELECT 1
@@ -1131,7 +1204,8 @@ async function asegurarCategoriasBase(hogarId) {
     [
       hogarId,
       categoriasBaseConTipo.map((categoria) => categoria.nombre),
-      categoriasBaseConTipo.map((categoria) => categoria.tipoMovimientoId)
+      categoriasBaseConTipo.map((categoria) => categoria.tipoMovimientoId),
+      usuarioId
     ]
   );
 }
@@ -1350,14 +1424,14 @@ app.post('/admin/hogares', autenticar, exigirSuperadmin, async (req, res) => {
   try {
     const { rows } = await pool.query(
       `
-      INSERT INTO hogares (nombre)
-      VALUES ($1)
+      INSERT INTO hogares (nombre, creado_por_usuario_id, actualizado_por_usuario_id)
+      VALUES ($1, $2, $2)
       RETURNING id, nombre, creado_en
       `,
-      [String(nombre).trim()]
+      [String(nombre).trim(), usuarioAuditoriaId(req)]
     );
     const hogar = { ...rows[0], id: Number(rows[0].id) };
-    await asegurarCategoriasBase(hogar.id);
+    await asegurarCategoriasBase(hogar.id, usuarioAuditoriaId(req));
     return res.status(201).json({ ok: true, hogar });
   } catch (error) {
     return res.status(500).json({ error: 'Error creando hogar', detalle: error.message });
@@ -1380,11 +1454,12 @@ app.patch('/admin/hogares/:id', autenticar, exigirSuperadmin, async (req, res) =
     const { rows } = await pool.query(
       `
       UPDATE hogares
-      SET nombre = $1
+      SET nombre = $1,
+          actualizado_por_usuario_id = $3
       WHERE id = $2
       RETURNING id, nombre, creado_en
       `,
-      [String(nombre).trim(), hogarId]
+      [String(nombre).trim(), hogarId, usuarioAuditoriaId(req)]
     );
 
     if (rows.length === 0) {
@@ -1556,11 +1631,13 @@ app.post('/admin/usuarios', autenticar, exigirSuperadmin, async (req, res) => {
 
     await client.query(
       `
-      INSERT INTO hogares_usuarios (hogar_id, usuario_id, rol)
-      VALUES ($1, $2, $3)
-      ON CONFLICT (hogar_id, usuario_id) DO UPDATE SET rol = EXCLUDED.rol
+      INSERT INTO hogares_usuarios (hogar_id, usuario_id, rol, creado_por_usuario_id, actualizado_por_usuario_id)
+      VALUES ($1, $2, $3, $4, $4)
+      ON CONFLICT (hogar_id, usuario_id)
+      DO UPDATE SET rol = EXCLUDED.rol,
+                    actualizado_por_usuario_id = EXCLUDED.actualizado_por_usuario_id
       `,
-      [hogarId, usuario.id, rolNormalizado]
+      [hogarId, usuario.id, rolNormalizado, usuarioAuditoriaId(req)]
     );
 
     await client.query('COMMIT');
@@ -1603,12 +1680,14 @@ app.post('/admin/hogares/:id/usuarios', autenticar, exigirSuperadmin, async (req
 
     const { rows } = await pool.query(
       `
-      INSERT INTO hogares_usuarios (hogar_id, usuario_id, rol)
-      VALUES ($1, $2, $3)
-      ON CONFLICT (hogar_id, usuario_id) DO UPDATE SET rol = EXCLUDED.rol
+      INSERT INTO hogares_usuarios (hogar_id, usuario_id, rol, creado_por_usuario_id, actualizado_por_usuario_id)
+      VALUES ($1, $2, $3, $4, $4)
+      ON CONFLICT (hogar_id, usuario_id)
+      DO UPDATE SET rol = EXCLUDED.rol,
+                    actualizado_por_usuario_id = EXCLUDED.actualizado_por_usuario_id
       RETURNING hogar_id, usuario_id, rol
       `,
-      [hogarId, usuarioId, rolNormalizado]
+      [hogarId, usuarioId, rolNormalizado, usuarioAuditoriaId(req)]
     );
 
     return res.status(200).json({ ok: true, vinculo: rows[0] });
@@ -2117,12 +2196,14 @@ app.post('/hogares/:id/miembros', autenticar, async (req, res) => {
 
     const { rows } = await client.query(
       `
-      INSERT INTO hogares_usuarios (hogar_id, usuario_id, rol)
-      VALUES ($1, $2, $3)
-      ON CONFLICT (hogar_id, usuario_id) DO UPDATE SET rol = EXCLUDED.rol
+      INSERT INTO hogares_usuarios (hogar_id, usuario_id, rol, creado_por_usuario_id, actualizado_por_usuario_id)
+      VALUES ($1, $2, $3, $4, $4)
+      ON CONFLICT (hogar_id, usuario_id)
+      DO UPDATE SET rol = EXCLUDED.rol,
+                    actualizado_por_usuario_id = EXCLUDED.actualizado_por_usuario_id
       RETURNING hogar_id, usuario_id, rol
       `,
-      [hogarId, usuario.id, rolNormalizado]
+      [hogarId, usuario.id, rolNormalizado, usuarioAuditoriaId(req)]
     );
 
     await client.query('COMMIT');
@@ -2184,12 +2265,13 @@ app.patch('/hogares/:id/miembros/:usuarioId', autenticar, async (req, res) => {
     const { rows } = await pool.query(
       `
       UPDATE hogares_usuarios
-      SET rol = $3
+      SET rol = $3,
+          actualizado_por_usuario_id = $4
       WHERE hogar_id = $1
         AND usuario_id = $2
       RETURNING hogar_id, usuario_id, rol
       `,
-      [hogarId, usuarioId, rolNormalizado]
+      [hogarId, usuarioId, rolNormalizado, usuarioAuditoriaId(req)]
     );
 
     return res.status(200).json({ ok: true, miembro: rows[0] });
@@ -2272,6 +2354,7 @@ app.get('/tarjetas-credito', async (req, res) => {
   const hogarId = Number(req.query.hogar_id);
   const ciclo = String(req.query.ciclo || '');
   const tarjetaIdSeleccionada = Number(req.query.tarjeta_id || 0);
+  const auditoriaUsuarioId = usuarioAuditoriaId(req);
 
   if (!hogarId) return res.status(400).json({ error: 'hogar_id es obligatorio' });
 
@@ -2280,11 +2363,11 @@ app.get('/tarjetas-credito', async (req, res) => {
 
     await pool.query(
       `
-      INSERT INTO tarjetas_credito (hogar_id, nombre, dia_cierre_default)
-      VALUES ($1, 'Tarjeta principal', 25)
+      INSERT INTO tarjetas_credito (hogar_id, nombre, dia_cierre_default, creado_por_usuario_id, actualizado_por_usuario_id)
+      VALUES ($1, 'Tarjeta principal', 25, $2, $2)
       ON CONFLICT (hogar_id, nombre) DO NOTHING
       `,
-      [hogarId]
+      [hogarId, auditoriaUsuarioId]
     );
 
     const { rows: tarjetas } = await pool.query(
@@ -2301,7 +2384,7 @@ app.get('/tarjetas-credito', async (req, res) => {
 
     if (cicloEsValido(ciclo) && tarjetas[0]) {
       tarjetaActual = tarjetas.find((tarjeta) => Number(tarjeta.id) === tarjetaIdSeleccionada) || tarjetas[0];
-      cierreActual = await obtenerOCrearCierreTarjeta(tarjetaActual, ciclo);
+      cierreActual = await obtenerOCrearCierreTarjeta(tarjetaActual, ciclo, auditoriaUsuarioId);
     }
 
     const tarjetaConsultaId = cierreActual?.tarjeta_id || null;
@@ -2328,12 +2411,12 @@ app.get('/tarjetas-credito', async (req, res) => {
       await Promise.all(
         consumosBase
           .filter((item) => Number(item.cantidad_cuotas || 1) > 1)
-          .map((item) => obtenerOCrearCierresCuotasTarjeta(tarjetaActual, item.ciclo_asignado, item.cantidad_cuotas))
+          .map((item) => obtenerOCrearCierresCuotasTarjeta(tarjetaActual, item.ciclo_asignado, item.cantidad_cuotas, auditoriaUsuarioId))
       );
       await Promise.all(
         consumosBase
           .filter((item) => item.repite_mes_siguiente)
-          .map((item) => obtenerOCrearCierreTarjeta(tarjetaActual, sumarMesesCiclo(item.ciclo_asignado, 1)))
+          .map((item) => obtenerOCrearCierreTarjeta(tarjetaActual, sumarMesesCiclo(item.ciclo_asignado, 1), auditoriaUsuarioId))
       );
     }
     const consumosExpandidos = expandirConsumosTarjeta(consumosBase);
@@ -2407,6 +2490,7 @@ app.post('/tarjetas-credito/consumos', async (req, res) => {
   const cuotas = Number(cantidad_cuotas || 1);
   const montoTotal = Number(monto_total || 0);
   const montoCuota = Number(monto_cuota || 0);
+  const auditoriaUsuarioId = usuarioAuditoriaId(req);
 
   if (!tarjetaId || !fecha_compra || !descripcion || !moneda || !cuotas) {
     return res.status(400).json({ error: 'Faltan campos obligatorios' });
@@ -2436,23 +2520,24 @@ app.post('/tarjetas-credito/consumos', async (req, res) => {
       return res.status(403).json({ error: 'No tenes permisos para operar esta tarjeta' });
     }
 
-    const { cicloAsignado, cierreAsignado } = await resolverResumenCompraTarjeta(tarjeta, fecha_compra);
+    const { cicloAsignado, cierreAsignado } = await resolverResumenCompraTarjeta(tarjeta, fecha_compra, auditoriaUsuarioId);
     if (cierreAsignado?.estado === 'cerrado') {
       return res.status(409).json({ error: 'El resumen asignado esta cerrado' });
     }
     const totalFinal = esNumeroPositivo(montoTotal) ? montoTotal : Number((montoCuota * cuotas).toFixed(2));
     const cuotaFinal = esNumeroPositivo(montoCuota) ? montoCuota : Number((totalFinal / cuotas).toFixed(2));
     const repiteMesSiguiente = cuotas === 1 && esCategoriaSuscripcion(categoria);
-    await asegurarCierresCuotasAbiertos(tarjeta, cicloAsignado, cuotas);
-    await asegurarSuscripcionMesSiguienteAbierta(tarjeta, cicloAsignado, repiteMesSiguiente);
+    await asegurarCierresCuotasAbiertos(tarjeta, cicloAsignado, cuotas, auditoriaUsuarioId);
+    await asegurarSuscripcionMesSiguienteAbierta(tarjeta, cicloAsignado, repiteMesSiguiente, auditoriaUsuarioId);
 
     const { rows } = await pool.query(
       `
       INSERT INTO consumos_tarjeta (
         tarjeta_id, cierre_id, ciclo_asignado, fecha_compra, descripcion, categoria,
-        moneda, monto_total, cantidad_cuotas, monto_cuota, cuota_inicial, repite_mes_siguiente, titular, observaciones
+        moneda, monto_total, cantidad_cuotas, monto_cuota, cuota_inicial, repite_mes_siguiente,
+        titular, observaciones, creado_por_usuario_id, actualizado_por_usuario_id
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 1, $11, $12, $13)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 1, $11, $12, $13, $14, $14)
       RETURNING *
       `,
       [
@@ -2468,7 +2553,8 @@ app.post('/tarjetas-credito/consumos', async (req, res) => {
         cuotaFinal,
         repiteMesSiguiente,
         titular ? String(titular).trim() : null,
-        observaciones ? String(observaciones).trim() : null
+        observaciones ? String(observaciones).trim() : null,
+        auditoriaUsuarioId
       ]
     );
 
@@ -2498,6 +2584,7 @@ app.patch('/tarjetas-credito/consumos/:id', async (req, res) => {
   const cuotas = Number(cantidad_cuotas || 1);
   const montoTotal = Number(monto_total || 0);
   const montoCuota = Number(monto_cuota || 0);
+  const auditoriaUsuarioId = usuarioAuditoriaId(req);
 
   if (!consumoId) return res.status(400).json({ error: 'id invalido' });
   if (!tarjetaId || !fecha_compra || !descripcion || !moneda || !cuotas) return res.status(400).json({ error: 'Faltan campos obligatorios' });
@@ -2537,18 +2624,18 @@ app.patch('/tarjetas-credito/consumos/:id', async (req, res) => {
           [consumoActual.tarjeta_id]
         )).rows[0];
     if (tarjetaOriginal) {
-      await asegurarCierresCuotasAbiertos(tarjetaOriginal, consumoActual.ciclo_asignado, consumoActual.cantidad_cuotas);
+      await asegurarCierresCuotasAbiertos(tarjetaOriginal, consumoActual.ciclo_asignado, consumoActual.cantidad_cuotas, auditoriaUsuarioId);
     }
 
-    const { cicloAsignado, cierreAsignado } = await resolverResumenCompraTarjeta(tarjeta, fecha_compra);
+    const { cicloAsignado, cierreAsignado } = await resolverResumenCompraTarjeta(tarjeta, fecha_compra, auditoriaUsuarioId);
     if (cierreAsignado?.estado === 'cerrado') {
       return res.status(409).json({ error: 'El resumen asignado esta cerrado' });
     }
     const totalFinal = esNumeroPositivo(montoTotal) ? montoTotal : Number((montoCuota * cuotas).toFixed(2));
     const cuotaFinal = esNumeroPositivo(montoCuota) ? montoCuota : Number((totalFinal / cuotas).toFixed(2));
     const repiteMesSiguiente = cuotas === 1 && esCategoriaSuscripcion(categoria);
-    await asegurarCierresCuotasAbiertos(tarjeta, cicloAsignado, cuotas);
-    await asegurarSuscripcionMesSiguienteAbierta(tarjeta, cicloAsignado, repiteMesSiguiente);
+    await asegurarCierresCuotasAbiertos(tarjeta, cicloAsignado, cuotas, auditoriaUsuarioId);
+    await asegurarSuscripcionMesSiguienteAbierta(tarjeta, cicloAsignado, repiteMesSiguiente, auditoriaUsuarioId);
 
     const { rows } = await pool.query(
       `
@@ -2566,8 +2653,9 @@ app.patch('/tarjetas-credito/consumos/:id', async (req, res) => {
           repite_mes_siguiente = $11,
           titular = $12,
           observaciones = $13,
+          actualizado_por_usuario_id = $14,
           actualizado_en = NOW()
-      WHERE id = $14
+      WHERE id = $15
       RETURNING *
       `,
       [
@@ -2584,6 +2672,7 @@ app.patch('/tarjetas-credito/consumos/:id', async (req, res) => {
         repiteMesSiguiente,
         titular ? String(titular).trim() : null,
         observaciones ? String(observaciones).trim() : null,
+        auditoriaUsuarioId,
         consumoId
       ]
     );
@@ -2638,6 +2727,7 @@ app.delete('/tarjetas-credito/consumos/:id', async (req, res) => {
 app.patch('/tarjetas-credito/cierres/:id', async (req, res) => {
   const cierreId = Number(req.params.id);
   const { estado, fecha_cierre, fecha_vencimiento } = req.body || {};
+  const auditoriaUsuarioId = usuarioAuditoriaId(req);
 
   if (!cierreId) return res.status(400).json({ error: 'id invalido' });
   if (estado !== undefined && !['abierto', 'cerrado'].includes(estado)) return res.status(400).json({ error: 'estado invalido' });
@@ -2664,9 +2754,10 @@ app.patch('/tarjetas-credito/cierres/:id', async (req, res) => {
       SET estado = COALESCE($1, estado),
           fecha_cierre = COALESCE($2, fecha_cierre),
           fecha_vencimiento = CASE WHEN $3 THEN $4 ELSE fecha_vencimiento END,
+          actualizado_por_usuario_id = $5,
           actualizado_en = NOW(),
           updated_at = NOW()
-      WHERE id = $5
+      WHERE id = $6
       RETURNING id, tarjeta_id, ciclo, fecha_cierre, fecha_vencimiento, estado,
                 creado_en, actualizado_en, created_at, updated_at
       `,
@@ -2675,6 +2766,7 @@ app.patch('/tarjetas-credito/cierres/:id', async (req, res) => {
         fecha_cierre === undefined ? null : fecha_cierre,
         fecha_vencimiento !== undefined,
         fecha_vencimiento || null,
+        auditoriaUsuarioId,
         cierreId
       ]
     );
@@ -2813,7 +2905,7 @@ app.post('/movimientos', async (req, res) => {
     clasificacion_movimiento,
     creado_por_usuario_id
   } = req.body;
-  const creadorId = Number(req.usuario?.id || creado_por_usuario_id);
+  const creadorId = usuarioAuditoriaId(req);
 
   if (!hogar_id || !tipo_movimiento_id || !fecha || !moneda_original || !monto_original || !monto_ars || !creadorId) {
     return res.status(400).json({
@@ -3046,8 +3138,9 @@ app.patch('/movimientos/:id', async (req, res) => {
             monto_ars = CASE WHEN $13 THEN $14 ELSE monto_ars END,
             usa_ahorro = CASE WHEN $15 THEN $16 ELSE usa_ahorro END,
             estado_egreso = CASE WHEN $17 THEN $18 ELSE estado_egreso END,
-            estado_ingreso = CASE WHEN $19 THEN $20 ELSE estado_ingreso END
-        WHERE id = $21 AND activo = true
+            estado_ingreso = CASE WHEN $19 THEN $20 ELSE estado_ingreso END,
+            actualizado_por_usuario_id = $21
+        WHERE id = $22 AND activo = true
         RETURNING id, fecha, descripcion, categoria_id, cuenta_id, tipo_movimiento_id, monto_original, monto_ars, usa_ahorro, estado_egreso, estado_ingreso, activo
         `,
         [
@@ -3071,6 +3164,7 @@ app.patch('/movimientos/:id', async (req, res) => {
           estadoEgresoFinal,
           hasField('estado_ingreso') || hasField('tipo_movimiento_id'),
           estadoIngresoFinal,
+          usuarioAuditoriaId(req),
           movimientoId
         ]
       );
@@ -3146,10 +3240,12 @@ app.delete('/movimientos/:id', async (req, res) => {
       `
       UPDATE movimientos
       SET activo = false,
-          eliminado_en = NOW()
+          eliminado_en = NOW(),
+          actualizado_por_usuario_id = $2,
+          eliminado_por_usuario_id = $2
       WHERE id = $1 AND activo = true
       `,
-      [movimientoId]
+      [movimientoId, usuarioAuditoriaId(req)]
     );
 
     if (rowCount === 0) {
@@ -3170,7 +3266,7 @@ app.get('/categorias', async (req, res) => {
   }
 
   try {
-    await asegurarCategoriasBase(hogarId);
+    await asegurarCategoriasBase(hogarId, usuarioAuditoriaId(req));
 
     const { rows } = await pool.query(
       `
@@ -3199,13 +3295,14 @@ app.post('/categorias', exigirGestionHogar, async (req, res) => {
   try {
     const { rows } = await pool.query(
       `
-      INSERT INTO categorias (hogar_id, nombre, tipo_movimiento_id)
-      VALUES ($1, $2, $3)
+      INSERT INTO categorias (hogar_id, nombre, tipo_movimiento_id, creado_por_usuario_id, actualizado_por_usuario_id)
+      VALUES ($1, $2, $3, $4, $4)
       ON CONFLICT (hogar_id, nombre, tipo_movimiento_id)
-      DO UPDATE SET activo = true
+      DO UPDATE SET activo = true,
+                    actualizado_por_usuario_id = EXCLUDED.actualizado_por_usuario_id
       RETURNING id, hogar_id, nombre, tipo_movimiento_id
       `,
-      [hogar_id, nombre.trim(), tipo_movimiento_id]
+      [hogar_id, nombre.trim(), tipo_movimiento_id, usuarioAuditoriaId(req)]
     );
 
     return res.status(201).json({ ok: true, categoria: rows[0] });
@@ -3258,11 +3355,12 @@ app.patch('/categorias/:id', async (req, res) => {
       UPDATE categorias
       SET nombre = $1,
           tipo_movimiento_id = $2,
-          activo = true
+          activo = true,
+          actualizado_por_usuario_id = $4
       WHERE id = $3
       RETURNING id, hogar_id, nombre, tipo_movimiento_id
       `,
-      [nombre.trim(), tipo_movimiento_id, categoriaId]
+      [nombre.trim(), tipo_movimiento_id, categoriaId, usuarioAuditoriaId(req)]
     );
 
     return res.status(200).json({ ok: true, categoria: rows[0] });
@@ -3289,7 +3387,10 @@ app.delete('/categorias/:id', async (req, res) => {
       return res.status(403).json({ error: 'No tenes permisos para gestionar este hogar' });
     }
 
-    await pool.query('UPDATE categorias SET activo = false WHERE id = $1', [categoriaId]);
+    await pool.query(
+      'UPDATE categorias SET activo = false, actualizado_por_usuario_id = $2 WHERE id = $1',
+      [categoriaId, usuarioAuditoriaId(req)]
+    );
     return res.status(200).json({ ok: true, eliminado_id: categoriaId });
   } catch (error) {
     return res.status(500).json({ error: 'Error eliminando categoría', detalle: error.message });
@@ -3321,12 +3422,14 @@ app.post('/etiquetas', exigirGestionHogar, async (req, res) => {
   try {
     const { rows } = await pool.query(
       `
-      INSERT INTO etiquetas (hogar_id, nombre)
-      VALUES ($1, $2)
-      ON CONFLICT (hogar_id, nombre) DO UPDATE SET nombre = EXCLUDED.nombre
+      INSERT INTO etiquetas (hogar_id, nombre, creado_por_usuario_id, actualizado_por_usuario_id)
+      VALUES ($1, $2, $3, $3)
+      ON CONFLICT (hogar_id, nombre)
+      DO UPDATE SET nombre = EXCLUDED.nombre,
+                    actualizado_por_usuario_id = EXCLUDED.actualizado_por_usuario_id
       RETURNING id, hogar_id, nombre
       `,
-      [hogar_id, nombre.trim()]
+      [hogar_id, nombre.trim(), usuarioAuditoriaId(req)]
     );
 
     return res.status(201).json({ ok: true, etiqueta: rows[0] });
@@ -3469,13 +3572,15 @@ app.post('/cotizaciones', exigirSuperadmin, async (req, res) => {
   try {
     const { rows } = await pool.query(
       `
-      INSERT INTO cotizaciones_dolar (fecha, fuente, compra, venta)
-      VALUES ($1, $2, $3, $4)
+      INSERT INTO cotizaciones_dolar (fecha, fuente, compra, venta, creado_por_usuario_id, actualizado_por_usuario_id)
+      VALUES ($1, $2, $3, $4, $5, $5)
       ON CONFLICT (fecha, fuente)
-      DO UPDATE SET compra = EXCLUDED.compra, venta = EXCLUDED.venta
+      DO UPDATE SET compra = EXCLUDED.compra,
+                    venta = EXCLUDED.venta,
+                    actualizado_por_usuario_id = EXCLUDED.actualizado_por_usuario_id
       RETURNING id, fecha, fuente, compra, venta
       `,
-      [fecha, fuente, compra || null, venta]
+      [fecha, fuente, compra || null, venta, usuarioAuditoriaId(req)]
     );
 
     return res.status(201).json({ ok: true, cotizacion: rows[0] });
@@ -3653,11 +3758,14 @@ app.post('/gastos-fijos', exigirOperacionHogar, async (req, res) => {
 
     const { rows } = await pool.query(
       `
-      INSERT INTO gastos_fijos (hogar_id, categoria_id, descripcion, moneda, monto_base, dia_vencimiento, activo_desde_ciclo, activo_hasta_ciclo)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      INSERT INTO gastos_fijos (
+        hogar_id, categoria_id, descripcion, moneda, monto_base, dia_vencimiento,
+        activo_desde_ciclo, activo_hasta_ciclo, creado_por_usuario_id, actualizado_por_usuario_id
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
       RETURNING id, hogar_id, categoria_id, descripcion, moneda, monto_base, dia_vencimiento, activo_desde_ciclo, activo_hasta_ciclo
       `,
-      [hogar_id, categoria_id, descripcion, moneda, monto_base, dia_vencimiento || null, ciclo_desde || resolveCiclo(), ciclo_hasta || null]
+      [hogar_id, categoria_id, descripcion, moneda, monto_base, dia_vencimiento || null, ciclo_desde || resolveCiclo(), ciclo_hasta || null, usuarioAuditoriaId(req)]
     );
 
     return res.status(201).json({ ok: true, gasto_fijo: rows[0] });
@@ -3733,8 +3841,9 @@ app.patch('/gastos-fijos/:id', async (req, res) => {
           dia_vencimiento = CASE WHEN $9 THEN $10 ELSE dia_vencimiento END,
           activo_desde_ciclo = CASE WHEN $11 THEN $12 ELSE activo_desde_ciclo END,
           activo_hasta_ciclo = CASE WHEN $13 THEN $14 ELSE activo_hasta_ciclo END,
+          actualizado_por_usuario_id = $15,
           actualizado_en = NOW()
-      WHERE id = $15 AND activo = true
+      WHERE id = $16 AND activo = true
       RETURNING id, descripcion, categoria_id, moneda, monto_base, dia_vencimiento, activo_desde_ciclo, activo_hasta_ciclo
       `,
       [
@@ -3752,6 +3861,7 @@ app.patch('/gastos-fijos/:id', async (req, res) => {
         activo_desde_ciclo || null,
         hasField('activo_hasta_ciclo'),
         activo_hasta_ciclo || null,
+        usuarioAuditoriaId(req),
         gastoFijoId
       ]
     );
@@ -3796,11 +3906,12 @@ app.delete('/gastos-fijos/:id', async (req, res) => {
       `
       UPDATE gastos_fijos
       SET activo_hasta_ciclo = $1,
+          actualizado_por_usuario_id = $3,
           actualizado_en = NOW()
       WHERE id = $2 AND activo = true
       RETURNING id, activo_desde_ciclo, activo_hasta_ciclo
       `,
-      [ultimoCicloActivo, gastoFijoId]
+      [ultimoCicloActivo, gastoFijoId, usuarioAuditoriaId(req)]
     );
 
     if (rows.length === 0) {
@@ -3844,7 +3955,7 @@ app.get('/cierres-ciclo/estado', async (req, res) => {
 
 app.post('/cierres-ciclo', exigirGestionHogar, async (req, res) => {
   const { hogar_id, ciclo, balance_calculado, saldo_real_final, genera_saldo_inicial = true, creado_por_usuario_id } = req.body;
-  const creadorId = Number(req.usuario?.id || creado_por_usuario_id);
+  const creadorId = usuarioAuditoriaId(req);
   const balanceCalculadoFinal = Number(balance_calculado);
   const saldoRealFinal =
     saldo_real_final === undefined || saldo_real_final === null || String(saldo_real_final).trim() === ''
@@ -3858,7 +3969,7 @@ app.post('/cierres-ciclo', exigirGestionHogar, async (req, res) => {
   const client = await pool.connect();
   try {
     await asegurarColumnasEstadoMovimientos();
-    await asegurarCategoriasBase(Number(hogar_id));
+    await asegurarCategoriasBase(Number(hogar_id), usuarioAuditoriaId(req));
     await asegurarCierresCiclo();
     await client.query('BEGIN');
 
@@ -3927,8 +4038,8 @@ app.post('/cierres-ciclo', exigirGestionHogar, async (req, res) => {
     }
 
     const cierre = await client.query(
-      `INSERT INTO cierres_ciclo (hogar_id, ciclo, balance_calculado, saldo_real_final, diferencia, genera_saldo_inicial, creado_por_usuario_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)
+      `INSERT INTO cierres_ciclo (hogar_id, ciclo, balance_calculado, saldo_real_final, diferencia, genera_saldo_inicial, creado_por_usuario_id, actualizado_por_usuario_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$7)
        RETURNING id, hogar_id, ciclo, balance_calculado, saldo_real_final, diferencia, genera_saldo_inicial, creado_en`,
       [hogar_id, ciclo, balanceCalculadoFinal, saldoRealFinal, diferencia, Boolean(genera_saldo_inicial), creadorId]
     );
@@ -3964,12 +4075,15 @@ app.delete('/cierres-ciclo', exigirGestionHogar, async (req, res) => {
 
     await client.query(
       `UPDATE movimientos
-       SET activo = false, eliminado_en = NOW()
+       SET activo = false,
+           eliminado_en = NOW(),
+           actualizado_por_usuario_id = $3,
+           eliminado_por_usuario_id = $3
        WHERE hogar_id = $1
          AND referencia_ciclo_cierre = $2
          AND clasificacion_movimiento IN ('ajuste_cierre', 'saldo_inicial')
          AND activo = true`,
-      [hogarId, ciclo]
+      [hogarId, ciclo, usuarioAuditoriaId(req)]
     );
     await client.query('DELETE FROM cierres_ciclo WHERE hogar_id = $1 AND ciclo = $2', [hogarId, ciclo]);
     await client.query('COMMIT');
@@ -4078,11 +4192,14 @@ app.post('/gastos-fijos/:id/ajustes', async (req, res) => {
 
     const { rows } = await pool.query(
       `
-      INSERT INTO ajustes_gastos_fijos (gasto_fijo_id, fecha_aplicacion, ciclo_hasta_aplicacion, tipo_ajuste, valor, nota)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      INSERT INTO ajustes_gastos_fijos (
+        gasto_fijo_id, fecha_aplicacion, ciclo_hasta_aplicacion, tipo_ajuste,
+        valor, nota, creado_por_usuario_id, actualizado_por_usuario_id
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
       RETURNING id, gasto_fijo_id, fecha_aplicacion, ciclo_hasta_aplicacion, tipo_ajuste, valor, nota
       `,
-      [gastoFijoId, fechaAplicacionFinal, cicloHastaAplicacion, tipo_ajuste, Number(valor), nota || null]
+      [gastoFijoId, fechaAplicacionFinal, cicloHastaAplicacion, tipo_ajuste, Number(valor), nota || null, usuarioAuditoriaId(req)]
     );
 
     return res.status(201).json({ ok: true, ajuste: rows[0] });
@@ -4128,16 +4245,20 @@ app.patch('/gastos-fijos/:id/estado-ciclo', async (req, res) => {
 
     const { rows } = await pool.query(
       `
-      INSERT INTO estados_gastos_fijos_ciclo (gasto_fijo_id, ciclo, estado_egreso, estado_ingreso)
-      VALUES ($1, $2, $3, $4)
+      INSERT INTO estados_gastos_fijos_ciclo (
+        gasto_fijo_id, ciclo, estado_egreso, estado_ingreso,
+        creado_por_usuario_id, actualizado_por_usuario_id
+      )
+      VALUES ($1, $2, $3, $4, $5, $5)
       ON CONFLICT (gasto_fijo_id, ciclo)
       DO UPDATE SET
         estado_egreso = COALESCE(EXCLUDED.estado_egreso, estados_gastos_fijos_ciclo.estado_egreso),
         estado_ingreso = COALESCE(EXCLUDED.estado_ingreso, estados_gastos_fijos_ciclo.estado_ingreso),
+        actualizado_por_usuario_id = EXCLUDED.actualizado_por_usuario_id,
         actualizado_en = NOW()
       RETURNING id, gasto_fijo_id, ciclo, estado_egreso, estado_ingreso
       `,
-      [gastoFijoId, ciclo, estado_egreso ?? null, estado_ingreso ?? null]
+      [gastoFijoId, ciclo, estado_egreso ?? null, estado_ingreso ?? null, usuarioAuditoriaId(req)]
     );
 
     return res.status(200).json({ ok: true, estado_ciclo: rows[0] });

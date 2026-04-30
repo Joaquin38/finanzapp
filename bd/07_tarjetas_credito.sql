@@ -7,6 +7,8 @@ CREATE TABLE IF NOT EXISTS tarjetas_credito (
   dia_cierre_default SMALLINT NOT NULL CHECK (dia_cierre_default BETWEEN 1 AND 31),
   dia_vencimiento_default SMALLINT CHECK (dia_vencimiento_default BETWEEN 1 AND 31),
   activa BOOLEAN NOT NULL DEFAULT TRUE,
+  creado_por_usuario_id BIGINT REFERENCES usuarios(id),
+  actualizado_por_usuario_id BIGINT REFERENCES usuarios(id),
   creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   actualizado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (hogar_id, nombre)
@@ -20,6 +22,8 @@ CREATE TABLE IF NOT EXISTS cierres_tarjeta (
   fecha_vencimiento DATE,
   estado VARCHAR(20) NOT NULL DEFAULT 'abierto'
     CHECK (estado IN ('abierto', 'cerrado')),
+  creado_por_usuario_id BIGINT REFERENCES usuarios(id),
+  actualizado_por_usuario_id BIGINT REFERENCES usuarios(id),
   creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   actualizado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -49,6 +53,9 @@ CREATE TABLE IF NOT EXISTS consumos_tarjeta (
   repite_mes_siguiente BOOLEAN NOT NULL DEFAULT FALSE,
   titular VARCHAR(120),
   observaciones TEXT,
+  creado_por_usuario_id BIGINT REFERENCES usuarios(id),
+  actualizado_por_usuario_id BIGINT REFERENCES usuarios(id),
+  eliminado_por_usuario_id BIGINT REFERENCES usuarios(id),
   creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   actualizado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CHECK (cierre_id IS NOT NULL OR ciclo_asignado IS NOT NULL)

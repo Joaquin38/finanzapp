@@ -1,11 +1,5 @@
 BEGIN;
 
-CREATE TABLE IF NOT EXISTS hogares (
-  id BIGSERIAL PRIMARY KEY,
-  nombre VARCHAR(120) NOT NULL,
-  creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
 CREATE TABLE IF NOT EXISTS usuarios (
   id BIGSERIAL PRIMARY KEY,
   correo VARCHAR(160) NOT NULL UNIQUE,
@@ -23,6 +17,8 @@ CREATE TABLE IF NOT EXISTS hogares_usuarios (
   usuario_id BIGINT NOT NULL REFERENCES usuarios(id),
   rol VARCHAR(30) NOT NULL DEFAULT 'hogar_member'
     CHECK (rol IN ('superadmin', 'hogar_admin', 'hogar_member')),
+  creado_por_usuario_id BIGINT REFERENCES usuarios(id),
+  actualizado_por_usuario_id BIGINT REFERENCES usuarios(id),
   creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (hogar_id, usuario_id)
 );
@@ -34,6 +30,8 @@ CREATE TABLE IF NOT EXISTS cuentas (
   tipo VARCHAR(40) NOT NULL,
   moneda_base VARCHAR(3) NOT NULL CHECK (moneda_base IN ('ARS', 'USD')),
   activo BOOLEAN NOT NULL DEFAULT TRUE,
+  creado_por_usuario_id BIGINT REFERENCES usuarios(id),
+  actualizado_por_usuario_id BIGINT REFERENCES usuarios(id),
   creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -56,6 +54,8 @@ CREATE TABLE IF NOT EXISTS categorias (
   nombre VARCHAR(80) NOT NULL,
   tipo_movimiento_id SMALLINT NOT NULL REFERENCES tipos_movimiento(id),
   activo BOOLEAN NOT NULL DEFAULT TRUE,
+  creado_por_usuario_id BIGINT REFERENCES usuarios(id),
+  actualizado_por_usuario_id BIGINT REFERENCES usuarios(id),
   creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (hogar_id, nombre, tipo_movimiento_id)
 );
@@ -64,6 +64,8 @@ CREATE TABLE IF NOT EXISTS etiquetas (
   id BIGSERIAL PRIMARY KEY,
   hogar_id BIGINT NOT NULL REFERENCES hogares(id),
   nombre VARCHAR(60) NOT NULL,
+  creado_por_usuario_id BIGINT REFERENCES usuarios(id),
+  actualizado_por_usuario_id BIGINT REFERENCES usuarios(id),
   creada_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (hogar_id, nombre)
 );
@@ -76,6 +78,8 @@ CREATE TABLE IF NOT EXISTS cotizaciones_dolar (
   venta NUMERIC(14,4) NOT NULL,
   moneda_origen VARCHAR(3) NOT NULL DEFAULT 'USD',
   moneda_destino VARCHAR(3) NOT NULL DEFAULT 'ARS',
+  creado_por_usuario_id BIGINT REFERENCES usuarios(id),
+  actualizado_por_usuario_id BIGINT REFERENCES usuarios(id),
   creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (fecha, fuente)
 );
@@ -100,6 +104,8 @@ CREATE TABLE IF NOT EXISTS movimientos (
   activo BOOLEAN NOT NULL DEFAULT TRUE,
   eliminado_en TIMESTAMPTZ,
   creado_por_usuario_id BIGINT NOT NULL REFERENCES usuarios(id),
+  actualizado_por_usuario_id BIGINT REFERENCES usuarios(id),
+  eliminado_por_usuario_id BIGINT REFERENCES usuarios(id),
   creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -120,6 +126,8 @@ CREATE TABLE IF NOT EXISTS gastos_fijos (
   activo_desde_ciclo VARCHAR(7) NOT NULL DEFAULT TO_CHAR(CURRENT_DATE, 'YYYY-MM'),
   activo_hasta_ciclo VARCHAR(7),
   activo BOOLEAN NOT NULL DEFAULT TRUE,
+  creado_por_usuario_id BIGINT REFERENCES usuarios(id),
+  actualizado_por_usuario_id BIGINT REFERENCES usuarios(id),
   creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   actualizado_en TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -132,6 +140,16 @@ CREATE TABLE IF NOT EXISTS ajustes_gastos_fijos (
   tipo_ajuste VARCHAR(20) NOT NULL CHECK (tipo_ajuste IN ('porcentaje', 'monto_fijo')),
   valor NUMERIC(14,4) NOT NULL,
   nota VARCHAR(255),
+  creado_por_usuario_id BIGINT REFERENCES usuarios(id),
+  actualizado_por_usuario_id BIGINT REFERENCES usuarios(id),
+  creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS hogares (
+  id BIGSERIAL PRIMARY KEY,
+  nombre VARCHAR(120) NOT NULL,
+  creado_por_usuario_id BIGINT REFERENCES usuarios(id),
+  actualizado_por_usuario_id BIGINT REFERENCES usuarios(id),
   creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -141,6 +159,8 @@ CREATE TABLE IF NOT EXISTS estados_gastos_fijos_ciclo (
   ciclo VARCHAR(7) NOT NULL,
   estado_egreso VARCHAR(20) CHECK (estado_egreso IN ('pendiente', 'pagado')),
   estado_ingreso VARCHAR(20) CHECK (estado_ingreso IN ('proyectado', 'registrado')),
+  creado_por_usuario_id BIGINT REFERENCES usuarios(id),
+  actualizado_por_usuario_id BIGINT REFERENCES usuarios(id),
   creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   actualizado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (gasto_fijo_id, ciclo)
