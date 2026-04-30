@@ -122,6 +122,18 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
     () => Array.from(new Set([selectedCiclo, ...consumos.map((item) => item.ciclo_asignado)].filter(Boolean))).sort().reverse(),
     [consumos, selectedCiclo]
   );
+  const ciclosNavegacionResumen = useMemo(() => {
+    const base = [
+      addMonthsToCycle(selectedCiclo, -2),
+      addMonthsToCycle(selectedCiclo, -1),
+      selectedCiclo,
+      addMonthsToCycle(selectedCiclo, 1),
+      addMonthsToCycle(selectedCiclo, 2),
+      ...historialResumenes.map((item) => item.ciclo),
+      ...consumos.map((item) => item.ciclo_asignado)
+    ];
+    return Array.from(new Set(base.filter(Boolean))).sort().reverse();
+  }, [consumos, historialResumenes, selectedCiclo]);
   const consumosFiltrados = useMemo(
     () => consumos.filter((item) => {
       const texto = filters.texto.trim().toLowerCase();
@@ -231,6 +243,10 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
   const handleCicloChange = (value) => {
     setSelectedCiclo(value);
     setFilters((prev) => ({ ...prev, ciclo: value }));
+  };
+
+  const navegarResumen = (offset) => {
+    handleCicloChange(addMonthsToCycle(selectedCiclo, offset));
   };
 
   const handleCierreFieldChange = async (field, value) => {
@@ -467,6 +483,22 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
         <p className={`tarjeta-summary-state ${resumenSeleccionadoCerrado ? 'cerrado' : 'abierto'}`}>
           Resumen {formatCycleLabel(selectedCiclo)} {resumenSeleccionadoCerrado ? 'cerrado' : 'abierto'}
         </p>
+        <div className="tarjeta-summary-navigator" aria-label="Navegar resumenes de tarjeta">
+          <button type="button" className="btn-inline secondary" onClick={() => navegarResumen(-1)}>
+            Anterior
+          </button>
+          <label>
+            Ver resumen
+            <select value={selectedCiclo} onChange={(e) => handleCicloChange(e.target.value)}>
+              {ciclosNavegacionResumen.map((item) => (
+                <option key={item} value={item}>{formatCycleLabel(item)}</option>
+              ))}
+            </select>
+          </label>
+          <button type="button" className="btn-inline secondary" onClick={() => navegarResumen(1)}>
+            Siguiente
+          </button>
+        </div>
         <div className="tarjeta-current-grid">
           <label>
             Tarjeta seleccionada
@@ -736,7 +768,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
                 <th>Monto total</th>
                 <th>Cuotas</th>
                 <th>Monto cuota</th>
-                <th>Resumen asignado</th>
+                <th>Paga en</th>
                 <th>Acciones</th>
               </tr>
             </thead>
@@ -762,7 +794,11 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
                   <td>{consumo.moneda === 'USD' ? `US$ ${Number(consumo.monto_resumen || consumo.monto_cuota).toLocaleString('es-AR', moneyFormat)}` : formatMoney(consumo.monto_resumen || consumo.monto_cuota)}</td>
                   <td>
                     <span className="pill">{formatCycleLabel(consumo.ciclo_asignado)}</span>
-                    <small>{consumo.ciclo_asignado === selectedCiclo ? 'Actual' : 'Futuro'}</small>
+                    <small>
+                      {consumo.ciclo_compra && consumo.ciclo_compra !== consumo.ciclo_asignado
+                        ? `Compra ${formatCycleLabel(consumo.ciclo_compra)}`
+                        : 'Mismo resumen de compra'}
+                    </small>
                   </td>
                   <td>
                     <div className="acciones-inline">

@@ -3600,6 +3600,30 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
 .tarjeta-summary-state.abierto {
   color: #16a34a;
 }
+.tarjeta-summary-navigator {
+  display: grid;
+  grid-template-columns: auto minmax(220px, 320px) auto;
+  align-items: end;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+.tarjeta-summary-navigator label {
+  display: grid;
+  gap: 5px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 800;
+}
+.tarjeta-summary-navigator select {
+  min-height: 36px;
+}
+.tarjeta-summary-navigator .btn-inline {
+  min-height: 36px;
+  padding: 8px 12px;
+}
 .tarjeta-closed-helper {
   margin: -2px 0 0;
   color: var(--text-muted);
@@ -4582,6 +4606,7 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
 :root[data-theme='dark'] .decision-executive-summary,
 :root[data-theme='dark'] .decision-section,
 :root[data-theme='dark'] .tarjeta-view-switch,
+:root[data-theme='dark'] .tarjeta-summary-navigator,
 :root[data-theme='dark'] .decision-comparison-row,
 :root[data-theme='dark'] .decision-weekly-track,
 :root[data-theme='dark'] .decision-composition-grid span,
@@ -5183,6 +5208,7 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   .tarjeta-table-filters,
   .tarjeta-analysis-grid,
   .tarjeta-detail-grid { grid-template-columns: 1fr; }
+  .tarjeta-summary-navigator { grid-template-columns: 1fr; }
   .tarjeta-consumo-form { grid-template-columns: 1fr; }
   .tarjeta-form-group-purchase,
   .tarjeta-form-group-amounts,
