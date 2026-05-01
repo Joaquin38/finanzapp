@@ -59,6 +59,11 @@ function formatUsd(value) {
   return `USD ${Number(value || 0).toLocaleString('es-AR', moneyFormat)}`;
 }
 
+function formatSignedMoney(value, formatter) {
+  const numeric = Number(value || 0);
+  return `${numeric >= 0 ? '+' : '-'}${formatter(Math.abs(numeric))}`;
+}
+
 function parseAmount(value) {
   const raw = String(value ?? '').trim();
   const normalized = raw.includes(',') ? raw.replace(/\./g, '').replace(',', '.') : raw;
@@ -926,29 +931,54 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
             <small>Promedio previo {formatMoney(analisisTarjeta?.promedio_ars || 0)}</small>
           </article>
           <article>
-            <span>Variacion consumo</span>
-            <strong>{formatPercent(analisisTarjeta?.variacion_total_ars)}</strong>
-            <small>Contra ciclos anteriores</small>
-          </article>
-          <article>
-            <span>Suscripciones</span>
-            <strong>{formatMoney(analisisActual.suscripciones_ars || 0)}</strong>
-            <small>{Math.round(analisisTarjeta?.participacion_suscripciones || 0)}% del resumen</small>
-          </article>
-          <article>
-            <span>Cuotas</span>
-            <strong>{formatMoney(analisisActual.cuotas_ars || 0)}</strong>
-            <small>{Math.round(analisisTarjeta?.participacion_cuotas || 0)}% del resumen</small>
-          </article>
-          <article>
             <span>Total USD punta</span>
             <strong>{formatUsd(analisisActual.total_usd || 0)}</strong>
             <small>Promedio previo {formatUsd(analisisTarjeta?.promedio_usd || 0)}</small>
           </article>
           <article>
+            <span>Variacion consumo ARS</span>
+            <strong>{formatPercent(analisisTarjeta?.variacion_total_ars)}</strong>
+            <small>Contra ciclos anteriores en ARS</small>
+          </article>
+          <article>
+            <span>Variacion consumo USD</span>
+            <strong>{formatPercent(analisisTarjeta?.variacion_total_usd)}</strong>
+            <small>Contra ciclos anteriores en USD</small>
+          </article>
+          <article>
+            <span>Suscripciones ARS</span>
+            <strong>{formatMoney(analisisActual.suscripciones_ars || 0)}</strong>
+            <small>
+              Prom. {formatMoney(analisisTarjeta?.promedio_suscripciones_ars || 0)} - {formatPercent(analisisTarjeta?.variacion_suscripciones_ars)}
+            </small>
+          </article>
+          <article>
+            <span>Suscripciones USD</span>
+            <strong>{formatUsd(analisisActual.suscripciones_usd || 0)}</strong>
+            <small>
+              Prom. {formatUsd(analisisTarjeta?.promedio_suscripciones_usd || 0)} - {formatPercent(analisisTarjeta?.variacion_suscripciones_usd)}
+            </small>
+          </article>
+          <article>
+            <span>Cuotas ARS</span>
+            <strong>{formatMoney(analisisActual.cuotas_ars || 0)}</strong>
+            <small>
+              Prom. {formatMoney(analisisTarjeta?.promedio_cuotas_ars || 0)} - {formatPercent(analisisTarjeta?.variacion_cuotas_ars)}
+            </small>
+          </article>
+          <article>
+            <span>Cuotas USD</span>
+            <strong>{formatUsd(analisisActual.cuotas_usd || 0)}</strong>
+            <small>
+              Prom. {formatUsd(analisisTarjeta?.promedio_cuotas_usd || 0)} - {formatPercent(analisisTarjeta?.variacion_cuotas_usd)}
+            </small>
+          </article>
+          <article>
             <span>Categoria dominante</span>
             <strong>{categoriaPrincipalAnalisis?.categoria || 'Sin datos'}</strong>
-            <small>{Math.round(analisisTarjeta?.participacion_categoria_principal || 0)}% del ARS</small>
+            <small>
+              {Math.round(analisisTarjeta?.participacion_categoria_principal_ars || 0)}% ARS / {Math.round(analisisTarjeta?.participacion_categoria_principal_usd || 0)}% USD
+            </small>
           </article>
         </div>
         <div className="tarjeta-analysis-layout">
@@ -962,7 +992,10 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
                   <div className="tarjeta-trend-row" key={item.ciclo}>
                     <span>{formatCycleLabel(item.ciclo)}</span>
                     <div><i style={{ width: `${width}%` }} /></div>
-                    <strong>{formatMoney(item.total_ars || 0)}</strong>
+                    <strong className="tarjeta-trend-amounts">
+                      {formatMoney(item.total_ars || 0)}
+                      <small>{formatUsd(item.total_usd || 0)}</small>
+                    </strong>
                   </div>
                 );
               })}
@@ -975,11 +1008,17 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
                 <div className="tarjeta-category-row" key={item.categoria}>
                   <div>
                     <strong>{item.categoria}</strong>
-                    <small>Promedio {formatMoney(item.promedio_ars || 0)} - {formatPercent(item.variacion_ars)}</small>
+                    <small>ARS prom. {formatMoney(item.promedio_ars || 0)} - {formatPercent(item.variacion_ars)}</small>
+                    <small>USD prom. {formatUsd(item.promedio_usd || 0)} - {formatPercent(item.variacion_usd)}</small>
                   </div>
-                  <span className={item.diferencia_ars > 0 ? 'warning' : item.diferencia_ars < 0 ? 'positive' : 'muted'}>
-                    {item.diferencia_ars >= 0 ? '+' : '-'}{formatMoney(Math.abs(item.diferencia_ars || 0))}
-                  </span>
+                  <div className="tarjeta-category-deltas">
+                    <span className={item.diferencia_ars > 0 ? 'warning' : item.diferencia_ars < 0 ? 'positive' : 'muted'}>
+                      ARS {formatSignedMoney(item.diferencia_ars, formatMoney)}
+                    </span>
+                    <span className={item.diferencia_usd > 0 ? 'warning' : item.diferencia_usd < 0 ? 'positive' : 'muted'}>
+                      {formatSignedMoney(item.diferencia_usd, formatUsd)}
+                    </span>
+                  </div>
                 </div>
               ))}
               {(analisisTarjeta?.categorias_comparadas || []).length === 0 && (

@@ -1214,16 +1214,26 @@ function construirAnalisisTarjeta(consumosExpandidos, historialResumenes, cicloS
   const promedioArs = promediarValores(anteriores, (item) => item.total_ars);
   const promedioUsd = promediarValores(anteriores, (item) => item.total_usd);
   const promedioSuscripcionesArs = promediarValores(anteriores, (item) => item.suscripciones_ars);
+  const promedioSuscripcionesUsd = promediarValores(anteriores, (item) => item.suscripciones_usd);
   const promedioCuotasArs = promediarValores(anteriores, (item) => item.cuotas_ars);
+  const promedioCuotasUsd = promediarValores(anteriores, (item) => item.cuotas_usd);
   const variacionTotalArs = calcularVariacionPorcentual(actual.total_ars, promedioArs);
+  const variacionTotalUsd = calcularVariacionPorcentual(actual.total_usd, promedioUsd);
   const variacionSuscripcionesArs = calcularVariacionPorcentual(actual.suscripciones_ars, promedioSuscripcionesArs);
+  const variacionSuscripcionesUsd = calcularVariacionPorcentual(actual.suscripciones_usd, promedioSuscripcionesUsd);
   const variacionCuotasArs = calcularVariacionPorcentual(actual.cuotas_ars, promedioCuotasArs);
+  const variacionCuotasUsd = calcularVariacionPorcentual(actual.cuotas_usd, promedioCuotasUsd);
   const categoriaPrincipal = actual.categorias[0] || null;
   const participacionCategoriaPrincipal = actual.total_ars > 0 && categoriaPrincipal
     ? (categoriaPrincipal.total_ars / actual.total_ars) * 100
     : 0;
+  const participacionCategoriaPrincipalUsd = actual.total_usd > 0 && categoriaPrincipal
+    ? (categoriaPrincipal.total_usd / actual.total_usd) * 100
+    : 0;
   const participacionSuscripciones = actual.total_ars > 0 ? (actual.suscripciones_ars / actual.total_ars) * 100 : 0;
+  const participacionSuscripcionesUsd = actual.total_usd > 0 ? (actual.suscripciones_usd / actual.total_usd) * 100 : 0;
   const participacionCuotas = actual.total_ars > 0 ? (actual.cuotas_ars / actual.total_ars) * 100 : 0;
+  const participacionCuotasUsd = actual.total_usd > 0 ? (actual.cuotas_usd / actual.total_usd) * 100 : 0;
 
   const categoriasPrevias = new Map();
   anteriores.forEach((item) => {
@@ -1255,42 +1265,51 @@ function construirAnalisisTarjeta(consumosExpandidos, historialResumenes, cicloS
       actual_usd: actualCategoria.total_usd,
       promedio_usd: promedioCategoriaUsd,
       diferencia_usd: actualCategoria.total_usd - promedioCategoriaUsd,
+      variacion_usd: calcularVariacionPorcentual(actualCategoria.total_usd, promedioCategoriaUsd),
       consumos: actualCategoria.consumos || 0
     };
   }).filter((item) => item.actual_ars > 0 || item.promedio_ars > 0 || item.actual_usd > 0 || item.promedio_usd > 0)
-    .sort((a, b) => Math.abs(b.diferencia_ars) - Math.abs(a.diferencia_ars))
+    .sort((a, b) => (Math.abs(b.diferencia_ars) + Math.abs(b.diferencia_usd)) - (Math.abs(a.diferencia_ars) + Math.abs(a.diferencia_usd)))
     .slice(0, 5);
 
-  const nivel = promedioArs <= 0
+  const promedioNivel = promedioArs > 0 ? promedioArs : promedioUsd;
+  const actualNivel = promedioArs > 0 ? actual.total_ars : actual.total_usd;
+  const nivel = promedioNivel <= 0
     ? 'Sin historial'
-    : actual.total_ars > promedioArs * 1.2
+    : actualNivel > promedioNivel * 1.2
       ? 'Consumo alto'
-      : actual.total_ars < promedioArs * 0.85
+      : actualNivel < promedioNivel * 0.85
         ? 'Consumo bajo'
         : 'Consumo normal';
   const tonoNivel = nivel === 'Consumo alto' ? 'warning' : nivel === 'Consumo bajo' ? 'positive' : 'muted';
   const insights = [];
 
-  if (promedioArs <= 0) {
+  if (promedioNivel <= 0) {
     insights.push('Todavia falta historial comparable para separar patron de ruido.');
-  } else if (actual.total_ars > promedioArs * 1.2) {
+  } else if (actualNivel > promedioNivel * 1.2) {
     insights.push('El consumo viene por encima del patron reciente; conviene revisar altas nuevas antes de seguir sumando gastos variables.');
-  } else if (actual.total_ars < promedioArs * 0.85) {
+  } else if (actualNivel < promedioNivel * 0.85) {
     insights.push('El nivel actual esta por debajo del promedio reciente; buen momento para sostener el freno y no reemplazarlo con cuotas.');
   } else {
     insights.push('El nivel general esta cerca del patron reciente; la decision pasa mas por composicion que por monto total.');
   }
 
-  if (actual.suscripciones_ars > 0 && (participacionSuscripciones >= 30 || actual.suscripciones_ars > promedioSuscripcionesArs * 1.15)) {
+  if (
+    (actual.suscripciones_ars > 0 && (participacionSuscripciones >= 30 || actual.suscripciones_ars > promedioSuscripcionesArs * 1.15)) ||
+    (actual.suscripciones_usd > 0 && (participacionSuscripcionesUsd >= 30 || actual.suscripciones_usd > promedioSuscripcionesUsd * 1.15))
+  ) {
     insights.push('Las suscripciones pesan en la base del resumen; revisar altas recurrentes tiene mas impacto que recortar compras aisladas.');
   }
-  if (participacionCategoriaPrincipal >= 45 && categoriaPrincipal) {
+  if ((participacionCategoriaPrincipal >= 45 || participacionCategoriaPrincipalUsd >= 45) && categoriaPrincipal) {
     insights.push(`${categoriaPrincipal.categoria} concentra demasiado el resumen; si no fue planificado, es la primera categoria a auditar.`);
   }
-  if (actual.cuotas_ars > 0 && participacionCuotas >= 35) {
+  if ((actual.cuotas_ars > 0 && participacionCuotas >= 35) || (actual.cuotas_usd > 0 && participacionCuotasUsd >= 35)) {
     insights.push('La carga en cuotas es relevante; antes de financiar nuevas compras, mira el arrastre de los proximos resumenes.');
   }
-  const categoriaConMayorSalto = categoriasComparadas.find((item) => item.diferencia_ars > Math.max(promedioArs * 0.12, 0));
+  const categoriaConMayorSalto = categoriasComparadas.find((item) => (
+    item.diferencia_ars > Math.max(promedioArs * 0.12, 0) ||
+    item.diferencia_usd > Math.max(promedioUsd * 0.12, 0)
+  ));
   if (categoriaConMayorSalto) {
     insights.push(`${categoriaConMayorSalto.categoria} explica el mayor salto contra el promedio; ahi esta la palanca principal de decision.`);
   }
@@ -1304,13 +1323,24 @@ function construirAnalisisTarjeta(consumosExpandidos, historialResumenes, cicloS
     promedio_ars: promedioArs,
     promedio_usd: promedioUsd,
     promedio_suscripciones_ars: promedioSuscripcionesArs,
+    promedio_suscripciones_usd: promedioSuscripcionesUsd,
     promedio_cuotas_ars: promedioCuotasArs,
+    promedio_cuotas_usd: promedioCuotasUsd,
     variacion_total_ars: variacionTotalArs,
+    variacion_total_usd: variacionTotalUsd,
     variacion_suscripciones_ars: variacionSuscripcionesArs,
+    variacion_suscripciones_usd: variacionSuscripcionesUsd,
     variacion_cuotas_ars: variacionCuotasArs,
+    variacion_cuotas_usd: variacionCuotasUsd,
     participacion_suscripciones: participacionSuscripciones,
+    participacion_suscripciones_ars: participacionSuscripciones,
+    participacion_suscripciones_usd: participacionSuscripcionesUsd,
     participacion_cuotas: participacionCuotas,
+    participacion_cuotas_ars: participacionCuotas,
+    participacion_cuotas_usd: participacionCuotasUsd,
     participacion_categoria_principal: participacionCategoriaPrincipal,
+    participacion_categoria_principal_ars: participacionCategoriaPrincipal,
+    participacion_categoria_principal_usd: participacionCategoriaPrincipalUsd,
     categorias_comparadas: categoriasComparadas,
     serie,
     insights: insights.slice(0, 5)
