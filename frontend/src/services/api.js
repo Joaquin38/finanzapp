@@ -614,6 +614,21 @@ export async function getGastosFijos(hogarId = 1, ciclo) {
   }
 }
 
+export async function getGastosFijosRango(hogarId = 1, cicloDesde, cicloHasta) {
+  try {
+    const searchParams = new URLSearchParams({ hogar_id: String(hogarId) });
+    if (cicloDesde) searchParams.set('ciclo_desde', cicloDesde);
+    if (cicloHasta) searchParams.set('ciclo_hasta', cicloHasta);
+    const response = await fetch(`${API_URL}/gastos-fijos/rango?${searchParams.toString()}`, {
+      headers: getAuthHeaders()
+    });
+    if (!response.ok) throw new Error('No se pudieron obtener valores fijos por rango');
+    return response.json();
+  } catch (error) {
+    throw new Error(normalizeFetchError(error));
+  }
+}
+
 export async function getTarjetasCredito(hogarId = 1, ciclo, tarjetaId) {
   try {
     const searchParams = new URLSearchParams({ hogar_id: String(hogarId) });

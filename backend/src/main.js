@@ -613,6 +613,16 @@ async function asegurarColumnasEstadoMovimientos() {
     WHERE clasificacion_movimiento IS NULL
        OR clasificacion_movimiento = ''
   `);
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_movimientos_hogar_activo_fecha ON movimientos (hogar_id, activo, fecha DESC, id DESC)');
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_movimientos_hogar_fecha ON movimientos (hogar_id, fecha DESC, id DESC)');
+}
+
+let columnasEstadoMovimientosAseguradas = false;
+
+async function asegurarColumnasEstadoMovimientosLectura() {
+  if (columnasEstadoMovimientosAseguradas) return;
+  await asegurarColumnasEstadoMovimientos();
+  columnasEstadoMovimientosAseguradas = true;
 }
 
 async function asegurarAuditoriaUsuarios() {
@@ -1347,6 +1357,19 @@ async function asegurarAlcanceAjustesGastosFijos() {
     ALTER TABLE ajustes_gastos_fijos
     ADD COLUMN IF NOT EXISTS ciclo_hasta_aplicacion VARCHAR(7)
   `);
+}
+
+let gastosFijosLecturaAsegurados = false;
+
+async function asegurarGastosFijosLectura() {
+  if (gastosFijosLecturaAsegurados) return;
+  await asegurarEstadosGastosFijosPorCiclo();
+  await asegurarVigenciaGastosFijos();
+  await asegurarAlcanceAjustesGastosFijos();
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_gastos_fijos_hogar_activo_ciclo ON gastos_fijos (hogar_id, activo, activo_desde_ciclo, activo_hasta_ciclo)');
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_ajustes_gastos_fijos_gasto_fecha ON ajustes_gastos_fijos (gasto_fijo_id, fecha_aplicacion)');
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_estados_gastos_fijos_gasto_ciclo ON estados_gastos_fijos_ciclo (gasto_fijo_id, ciclo)');
+  gastosFijosLecturaAsegurados = true;
 }
 
 async function asegurarCategoriasBase(hogarId, usuarioId = null) {
@@ -3129,7 +3152,7 @@ app.get('/movimientos', async (req, res) => {
   }
 
   try {
-    await asegurarColumnasEstadoMovimientos();
+    await asegurarColumnasEstadoMovimientosLectura();
 
     const params = [hogarId];
     const filtros = ['m.hogar_id = $1'];
@@ -3796,7 +3819,7 @@ app.get('/dashboard/resumen', async (req, res) => {
   const hasta = `${cicloConsulta}-${String(new Date(Number(anioTexto), Number(mesTexto), 0).getDate()).padStart(2, '0')}`;
 
   try {
-    await asegurarColumnasEstadoMovimientos();
+    await asegurarColumnasEstadoMovimientosLectura();
 
     let rows = [];
     try {
@@ -3929,6 +3952,110 @@ app.post('/cotizaciones', exigirSuperadmin, async (req, res) => {
   }
 });
 
+async function obtenerGastosFijosCiclo(hogarId, cicloConsulta) {
+  let gastos = [];
+  try {
+    const { rows } = await pool.query(
+      `
+      SELECT
+        gf.id, gf.descripcion, gf.moneda, gf.monto_base, gf.dia_vencimiento,
+        gf.categoria_id, gf.activo_desde_ciclo, gf.activo_hasta_ciclo,
+        c.nombre AS categoria, tm.codigo AS tipo_movimiento
+      FROM gastos_fijos gf
+      JOIN categorias c ON c.id = gf.categoria_id
+      JOIN tipos_movimiento tm ON tm.id = c.tipo_movimiento_id
+      WHERE gf.hogar_id = $1
+        AND gf.activo = true
+        AND (gf.activo_desde_ciclo IS NULL OR gf.activo_desde_ciclo <= $2)
+        AND (gf.activo_hasta_ciclo IS NULL OR gf.activo_hasta_ciclo >= $2)
+      ORDER BY gf.id DESC
+      `,
+      [hogarId, cicloConsulta]
+    );
+    gastos = rows;
+  } catch (queryError) {
+    if (queryError.code !== '42703') throw queryError;
+    const { rows } = await pool.query(
+      `
+      SELECT
+        gf.id, gf.descripcion, gf.moneda, gf.monto_base, gf.dia_vencimiento,
+        gf.categoria_id, NULL::VARCHAR(7) AS activo_desde_ciclo, NULL::VARCHAR(7) AS activo_hasta_ciclo,
+        c.nombre AS categoria, tm.codigo AS tipo_movimiento
+      FROM gastos_fijos gf
+      JOIN categorias c ON c.id = gf.categoria_id
+      JOIN tipos_movimiento tm ON tm.id = c.tipo_movimiento_id
+      WHERE gf.hogar_id = $1
+        AND gf.activo = true
+      ORDER BY gf.id DESC
+      `,
+      [hogarId]
+    );
+    gastos = rows;
+  }
+
+  if (gastos.length === 0) return [];
+
+  const ids = gastos.map((gasto) => Number(gasto.id));
+  const fechaInicioCiclo = `${cicloConsulta}-01`;
+  const fechaCorte = finDeCiclo(cicloConsulta).toISOString().slice(0, 10);
+  const [ajustesData, estadosData, ajustesCicloData] = await Promise.all([
+    pool.query(
+      `
+      SELECT gasto_fijo_id, tipo_ajuste, valor
+      FROM ajustes_gastos_fijos
+      WHERE gasto_fijo_id = ANY($1::bigint[])
+        AND fecha_aplicacion <= $2
+        AND (ciclo_hasta_aplicacion IS NULL OR ciclo_hasta_aplicacion >= $3)
+      ORDER BY gasto_fijo_id, fecha_aplicacion ASC, id ASC
+      `,
+      [ids, fechaCorte, cicloConsulta]
+    ),
+    pool.query(
+      `
+      SELECT gasto_fijo_id, estado_egreso, estado_ingreso
+      FROM estados_gastos_fijos_ciclo
+      WHERE gasto_fijo_id = ANY($1::bigint[])
+        AND ciclo = $2
+      `,
+      [ids, cicloConsulta]
+    ),
+    pool.query(
+      `
+      SELECT DISTINCT gasto_fijo_id
+      FROM ajustes_gastos_fijos
+      WHERE gasto_fijo_id = ANY($1::bigint[])
+        AND fecha_aplicacion >= $2
+        AND fecha_aplicacion <= $3
+        AND (ciclo_hasta_aplicacion IS NULL OR ciclo_hasta_aplicacion >= $4)
+      `,
+      [ids, fechaInicioCiclo, fechaCorte, cicloConsulta]
+    )
+  ]);
+
+  const ajustesPorGasto = new Map();
+  for (const ajuste of ajustesData.rows) {
+    const key = Number(ajuste.gasto_fijo_id);
+    if (!ajustesPorGasto.has(key)) ajustesPorGasto.set(key, []);
+    ajustesPorGasto.get(key).push(ajuste);
+  }
+  const estadosPorGasto = new Map(estadosData.rows.map((estado) => [Number(estado.gasto_fijo_id), estado]));
+  const gastosConAjusteCiclo = new Set(ajustesCicloData.rows.map((ajuste) => Number(ajuste.gasto_fijo_id)));
+
+  return gastos.map((gasto) => {
+    const id = Number(gasto.id);
+    const montoVigente = aplicarAjustes(gasto.monto_base, ajustesPorGasto.get(id) || []);
+    const estadoCiclo = estadosPorGasto.get(id) || {};
+    return {
+      ...gasto,
+      ciclo: cicloConsulta,
+      ajuste_en_ciclo: gastosConAjusteCiclo.has(id),
+      estado_egreso: estadoCiclo.estado_egreso || null,
+      estado_ingreso: estadoCiclo.estado_ingreso || null,
+      monto_vigente: Number(montoVigente.toFixed(2))
+    };
+  });
+}
+
 app.get('/gastos-fijos', async (req, res) => {
   const hogarId = Number(req.query.hogar_id);
   const ciclo = req.query.ciclo;
@@ -3944,121 +4071,45 @@ app.get('/gastos-fijos', async (req, res) => {
   const cicloConsulta = resolveCiclo(ciclo);
 
   try {
-    await asegurarEstadosGastosFijosPorCiclo();
-    await asegurarVigenciaGastosFijos();
-    await asegurarAlcanceAjustesGastosFijos();
-
-    let gastos = [];
-    try {
-      const { rows } = await pool.query(
-        `
-        SELECT
-          gf.id,
-          gf.descripcion,
-          gf.moneda,
-          gf.monto_base,
-          gf.dia_vencimiento,
-          gf.categoria_id,
-          gf.activo_desde_ciclo,
-          gf.activo_hasta_ciclo,
-          c.nombre AS categoria,
-          tm.codigo AS tipo_movimiento
-        FROM gastos_fijos gf
-        JOIN categorias c ON c.id = gf.categoria_id
-        JOIN tipos_movimiento tm ON tm.id = c.tipo_movimiento_id
-        WHERE gf.hogar_id = $1
-          AND gf.activo = true
-          AND (gf.activo_desde_ciclo IS NULL OR gf.activo_desde_ciclo <= $2)
-          AND (gf.activo_hasta_ciclo IS NULL OR gf.activo_hasta_ciclo >= $2)
-        ORDER BY gf.id DESC
-        `,
-        [hogarId, cicloConsulta]
-      );
-      gastos = rows;
-    } catch (queryError) {
-      if (queryError.code !== '42703') throw queryError;
-
-      const { rows } = await pool.query(
-        `
-        SELECT
-          gf.id,
-          gf.descripcion,
-          gf.moneda,
-          gf.monto_base,
-          gf.dia_vencimiento,
-          gf.categoria_id,
-          NULL::VARCHAR(7) AS activo_desde_ciclo,
-          NULL::VARCHAR(7) AS activo_hasta_ciclo,
-          c.nombre AS categoria,
-          tm.codigo AS tipo_movimiento
-        FROM gastos_fijos gf
-        JOIN categorias c ON c.id = gf.categoria_id
-        JOIN tipos_movimiento tm ON tm.id = c.tipo_movimiento_id
-        WHERE gf.hogar_id = $1
-          AND gf.activo = true
-        ORDER BY gf.id DESC
-        `,
-        [hogarId]
-      );
-      gastos = rows;
-    }
-
-    const fechaInicioCiclo = `${cicloConsulta}-01`;
-    const fechaCorte = finDeCiclo(cicloConsulta).toISOString().slice(0, 10);
-    const items = [];
-
-    for (const gasto of gastos) {
-      const { rows: ajustes } = await pool.query(
-        `
-        SELECT tipo_ajuste, valor
-        FROM ajustes_gastos_fijos
-        WHERE gasto_fijo_id = $1
-          AND fecha_aplicacion <= $2
-          AND (ciclo_hasta_aplicacion IS NULL OR ciclo_hasta_aplicacion >= $3)
-        ORDER BY fecha_aplicacion ASC, id ASC
-        `,
-        [gasto.id, fechaCorte, cicloConsulta]
-      );
-
-      const { rows: estadoRows } = await pool.query(
-        `
-        SELECT estado_egreso, estado_ingreso
-        FROM estados_gastos_fijos_ciclo
-        WHERE gasto_fijo_id = $1
-          AND ciclo = $2
-        LIMIT 1
-        `,
-        [gasto.id, cicloConsulta]
-      );
-
-      const { rows: ajusteCicloRows } = await pool.query(
-        `
-        SELECT 1
-        FROM ajustes_gastos_fijos
-        WHERE gasto_fijo_id = $1
-          AND fecha_aplicacion >= $2
-          AND fecha_aplicacion <= $3
-          AND (ciclo_hasta_aplicacion IS NULL OR ciclo_hasta_aplicacion >= $4)
-        LIMIT 1
-        `,
-        [gasto.id, fechaInicioCiclo, fechaCorte, cicloConsulta]
-      );
-
-      const montoVigente = aplicarAjustes(gasto.monto_base, ajustes);
-      const estadoCiclo = estadoRows[0] || {};
-      items.push({
-        ...gasto,
-        ciclo: cicloConsulta,
-        ajuste_en_ciclo: ajusteCicloRows.length > 0,
-        estado_egreso: estadoCiclo.estado_egreso || null,
-        estado_ingreso: estadoCiclo.estado_ingreso || null,
-        monto_vigente: Number(montoVigente.toFixed(2))
-      });
-    }
-
+    await asegurarGastosFijosLectura();
+    const items = await obtenerGastosFijosCiclo(hogarId, cicloConsulta);
     return res.status(200).json({ total: items.length, items });
   } catch (error) {
     return res.status(500).json({ error: 'Error consultando gastos fijos', detalle: error.message });
+  }
+});
+
+app.get('/gastos-fijos/rango', async (req, res) => {
+  const hogarId = Number(req.query.hogar_id);
+  const cicloDesde = req.query.ciclo_desde;
+  const cicloHasta = req.query.ciclo_hasta;
+
+  if (!hogarId) return res.status(400).json({ error: 'hogar_id es obligatorio' });
+  if (!cicloEsValido(cicloDesde) || !cicloEsValido(cicloHasta)) {
+    return res.status(400).json({ error: 'ciclo_desde y ciclo_hasta deben tener formato YYYY-MM' });
+  }
+  if (cicloHasta < cicloDesde) return res.status(400).json({ error: 'ciclo_hasta no puede ser anterior a ciclo_desde' });
+
+  try {
+    await asegurarGastosFijosLectura();
+    const ciclos = [];
+    const [anioDesde, mesDesde] = cicloDesde.split('-').map(Number);
+    const [anioHasta, mesHasta] = cicloHasta.split('-').map(Number);
+    const cursor = new Date(anioDesde, mesDesde - 1, 1);
+    const fin = new Date(anioHasta, mesHasta - 1, 1);
+    while (cursor <= fin) {
+      ciclos.push(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`);
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
+
+    const entradas = await Promise.all(
+      ciclos.map(async (ciclo) => [ciclo, await obtenerGastosFijosCiclo(hogarId, ciclo)])
+    );
+    const porCiclo = Object.fromEntries(entradas);
+    const total = entradas.reduce((acc, [, items]) => acc + items.length, 0);
+    return res.status(200).json({ total, por_ciclo: porCiclo });
+  } catch (error) {
+    return res.status(500).json({ error: 'Error consultando gastos fijos por rango', detalle: error.message });
   }
 });
 

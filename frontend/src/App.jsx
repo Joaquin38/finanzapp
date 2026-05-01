@@ -14,6 +14,7 @@ import {
   getEstadoCierreCiclo,
   getCotizaciones,
   getGastosFijos,
+  getGastosFijosRango,
   getHogares,
   forgotPassword,
   getMovimientos,
@@ -133,11 +134,13 @@ export default function App() {
   const [gastosFijos, setGastosFijos] = useState([]);
   const [gastosFijosHistoricosPorCiclo, setGastosFijosHistoricosPorCiclo] = useState({});
   const [movimientosHistoricos, setMovimientosHistoricos] = useState([]);
+  const [dataLoading, setDataLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [cycleActionLoading, setCycleActionLoading] = useState(false);
   const [error, setError] = useState('');
   const [toasts, setToasts] = useState([]);
   const toastIdRef = useRef(0);
+  const dataLoadIdRef = useRef(0);
   const actionLockRef = useRef(false);
   const [openModal, setOpenModal] = useState(false);
   const [gastoRapidoAbierto, setGastoRapidoAbierto] = useState(false);
@@ -355,6 +358,9 @@ export default function App() {
   };
 
   const cargarDatos = async () => {
+    const loadId = dataLoadIdRef.current + 1;
+    dataLoadIdRef.current = loadId;
+    setDataLoading(true);
     try {
       setError('');
       const [anioTexto, mesTexto] = cicloSeleccionado.split('-');
@@ -364,6 +370,8 @@ export default function App() {
       const finRango = new Date(anio, mes + 1, 0);
       const desdeHistorico = `${inicioRango.getFullYear()}-${String(inicioRango.getMonth() + 1).padStart(2, '0')}-01`;
       const hastaHistorico = `${finRango.getFullYear()}-${String(finRango.getMonth() + 1).padStart(2, '0')}-${String(finRango.getDate()).padStart(2, '0')}`;
+      const cicloDesdeHistorico = ciclosTendencia[0];
+      const cicloHastaHistorico = ciclosTendencia[ciclosTendencia.length - 1];
 
       const [movData, catData, cotiData, gastosData, historicoData, cierreData, gastosHistoricosData] = await Promise.allSettled([
         getMovimientos(hogarId, mostrarEliminados, cicloSeleccionado),
@@ -372,12 +380,7 @@ export default function App() {
         getGastosFijos(hogarId, cicloSeleccionado),
         getMovimientosRango(hogarId, desdeHistorico, hastaHistorico, mostrarEliminados),
         getEstadoCierreCiclo(hogarId, cicloSeleccionado),
-        Promise.all(
-          ciclosTendencia.map(async (ciclo) => {
-            const data = await getGastosFijos(hogarId, ciclo);
-            return [ciclo, data.items || []];
-          })
-        )
+        getGastosFijosRango(hogarId, cicloDesdeHistorico, cicloHastaHistorico)
       ]);
 
       if (movData.status === 'fulfilled') setMovimientos(movData.value.items || []);
@@ -387,7 +390,8 @@ export default function App() {
       if (historicoData.status === 'fulfilled') setMovimientosHistoricos(historicoData.value.items || []);
       if (cierreData.status === 'fulfilled') setEstadoCierreCiclo(cierreData.value || { cerrado: false, cierre: null });
       if (gastosHistoricosData.status === 'fulfilled') {
-        setGastosFijosHistoricosPorCiclo(Object.fromEntries(gastosHistoricosData.value));
+        const porCiclo = gastosHistoricosData.value.por_ciclo || {};
+        setGastosFijosHistoricosPorCiclo(Object.fromEntries(ciclosTendencia.map((ciclo) => [ciclo, porCiclo[ciclo] || []])));
       }
 
       const errores = [movData, catData, cotiData, gastosData, historicoData, cierreData, gastosHistoricosData].filter(
@@ -398,7 +402,15 @@ export default function App() {
       }
     } catch (err) {
       setError(err.message);
+    } finally {
+      if (dataLoadIdRef.current === loadId) setDataLoading(false);
     }
+  };
+
+  const handleCicloSeleccionado = (ciclo) => {
+    if (!ciclo || ciclo === cicloSeleccionado) return;
+    setDataLoading(true);
+    setCicloSeleccionado(ciclo);
   };
 
   useEffect(() => {
@@ -1200,10 +1212,16 @@ export default function App() {
         <div className="cycle-control-row">
           <MonthPicker
             value={cicloSeleccionado}
-            onChange={setCicloSeleccionado}
+            onChange={handleCicloSeleccionado}
             emptyLabel="Seleccionar ciclo"
             className="cycle-control-picker"
           />
+          {dataLoading && (
+            <span className="cycle-loading-indicator" role="status" aria-live="polite">
+              <span className="btn-spinner" aria-hidden="true" />
+              Actualizando...
+            </span>
+          )}
           {canManageHome && (
             <div className="cycle-control-actions">
               {estadoCierreCiclo.cerrado ? (
@@ -1330,6 +1348,13 @@ export default function App() {
 
         {(seccionActiva === 'dashboard' || seccionActiva === 'movimientos') && cycleControlPanel}
 
+        {dataLoading && (seccionActiva === 'dashboard' || seccionActiva === 'movimientos') && (
+          <div className="data-loading-banner" role="status" aria-live="polite">
+            <span className="btn-spinner" aria-hidden="true" />
+            Cargando datos del ciclo...
+          </div>
+        )}
+
         {seccionActiva === 'dashboard' && (
           <ResumenCards
             resumen={resumenCalculado}
@@ -1382,7 +1407,8 @@ export default function App() {
                 onOrdenChange={setOrdenGrilla}
                 getEstadoMovimiento={getEstadoMovimiento}
                 onToggleEstadoPago={toggleEstadoMovimiento}
-                actionLoading={loading}
+                actionLoading={loading || dataLoading}
+                loading={dataLoading}
               />
             </>
           )}
@@ -1396,7 +1422,7 @@ export default function App() {
               gastos={gastosFijos}
               categorias={categorias}
               ciclo={cicloSeleccionado}
-              onCicloChange={setCicloSeleccionado}
+              onCicloChange={handleCicloSeleccionado}
               readOnly={!canAccessFixedValues}
               loading={loading}
               onCrear={handleCrearGastoFijo}

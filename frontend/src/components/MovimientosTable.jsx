@@ -52,7 +52,8 @@ export default function MovimientosTable({
   canDelete = true,
   canManageFixedValues = true,
   canToggleEstado = true,
-  actionLoading = false
+  actionLoading = false,
+  loading = false
 }) {
   const resolverEstado = getEstadoMovimiento || ((mov) => (mov.esProyectado ? 'proyectado' : mov.activo ? 'pagado' : 'pendiente'));
   const etiquetaEstado = (mov) => {
@@ -98,11 +99,17 @@ export default function MovimientosTable({
   };
 
   return (
-    <section className="panel panel-table">
+    <section className={`panel panel-table ${loading ? 'is-loading' : ''}`}>
+      {loading && (
+        <div className="grid-loading-overlay" role="status" aria-live="polite">
+          <span className="btn-spinner" aria-hidden="true" />
+          <strong>Actualizando movimientos...</strong>
+        </div>
+      )}
       <div className="panel-header table-header">
         <div>
           <h2>Movimientos del ciclo</h2>
-          <span className="pill muted">{movimientos.length} registros</span>
+          <span className="pill muted">{loading ? 'Cargando...' : `${movimientos.length} registros`}</span>
         </div>
         <div className="table-actions">
           {canCreate && (
