@@ -83,11 +83,27 @@ function formatSignedMoney(value, formatMoney) {
   return `${numeric >= 0 ? '+' : '-'}${formatMoney(Math.abs(numeric))}`;
 }
 
-const categoryCurvePalette = ['#2563eb', '#059669', '#d97706', '#7c3aed', '#dc2626', '#0891b2', '#be123c', '#4f46e5', '#0f766e', '#9333ea'];
-
-function getCategoryCurveColor(category) {
+function getCategoryColorSeed(category) {
   const hash = String(category || '').split('').reduce((acc, char) => ((acc * 31) + char.charCodeAt(0)) % 9973, 0);
-  return categoryCurvePalette[hash % categoryCurvePalette.length];
+  return hash;
+}
+
+function buildCategoryColorMap(categories = []) {
+  const used = new Set();
+  return categories
+    .slice()
+    .sort((a, b) => String(a).localeCompare(String(b)))
+    .reduce((acc, category, index) => {
+      let hue = (getCategoryColorSeed(category) + index * 37) % 360;
+      let color = `hsl(${hue} 72% 44%)`;
+      while (used.has(color)) {
+        hue = (hue + 29) % 360;
+        color = `hsl(${hue} 72% 44%)`;
+      }
+      used.add(color);
+      acc[category] = color;
+      return acc;
+    }, {});
 }
 
 function formatAxisMoney(value, currency) {
@@ -459,6 +475,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
       .map(([categoria]) => categoria);
   }, [analisisCategorias.serieExtendida]);
   const selectedAnalysisCategories = analysisCategorySelection.filter((category) => analysisCategoryOptions.includes(category));
+  const analysisCategoryColorMap = useMemo(() => buildCategoryColorMap(analysisCategoryOptions), [analysisCategoryOptions]);
   const categoryCurveData = useMemo(
     () => buildCategoryCurveData(analisisCategorias.serieExtendida, selectedAnalysisCategories, analysisPeriodCount),
     [analisisCategorias.serieExtendida, analysisPeriodCount, selectedAnalysisCategories]
@@ -1832,7 +1849,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
             {analysisCategoryOptions.map((category) => {
               const active = selectedAnalysisCategories.includes(category);
               const disabled = !active && selectedAnalysisCategories.length >= 6;
-              const color = getCategoryCurveColor(category);
+              const color = analysisCategoryColorMap[category];
               return (
                 <button
                   key={category}
@@ -1872,7 +1889,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
                 );
               })}
               {selectedAnalysisCategories.map((category) => {
-                const color = getCategoryCurveColor(category);
+                const color = analysisCategoryColorMap[category];
                 const maxValue = analysisCurveCurrency === 'USD' ? categoryCurveData.maxUsd : categoryCurveData.maxArs;
                 const points = categoryCurveData.visibleSerie.map((cycle, index) => {
                   const found = (cycle.categorias || []).find((entry) => entry.categoria === category) || {};
@@ -1896,7 +1913,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
           </div>
           <div className="tarjeta-category-curve-legend">
             {selectedAnalysisCategories.map((category) => (
-              <span key={category} style={{ '--curve-color': getCategoryCurveColor(category) }}>
+              <span key={category} style={{ '--curve-color': analysisCategoryColorMap[category] }}>
                 {category}
               </span>
             ))}
