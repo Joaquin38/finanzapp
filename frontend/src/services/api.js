@@ -648,6 +648,25 @@ export async function createConsumoTarjeta(payload) {
   }
 }
 
+export async function importConsumosTarjeta(payload) {
+  try {
+    const response = await fetch(`${API_URL}/tarjetas-credito/consumos/importar`, {
+      method: 'POST',
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.error || 'No se pudo importar el CSV');
+    }
+
+    return response.json();
+  } catch (error) {
+    throw new Error(normalizeFetchError(error));
+  }
+}
+
 export async function updateConsumoTarjeta(consumoId, payload) {
   try {
     const response = await fetch(`${API_URL}/tarjetas-credito/consumos/${consumoId}`, {
