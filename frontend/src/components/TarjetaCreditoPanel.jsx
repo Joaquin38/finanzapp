@@ -286,6 +286,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
   const [csvImportRows, setCsvImportRows] = useState([]);
   const [csvImportError, setCsvImportError] = useState('');
   const [csvImportFileName, setCsvImportFileName] = useState('');
+  const [csvImportProgress, setCsvImportProgress] = useState({ processed: 0, total: 0 });
   const [loading, setLoading] = useState(false);
   const [loadingAction, setLoadingAction] = useState('');
   const actionLockRef = useRef(false);
@@ -382,6 +383,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
     setCsvImportRows([]);
     setCsvImportError('');
     setCsvImportFileName('');
+    setCsvImportProgress({ processed: 0, total: 0 });
     setCsvImportOpen(true);
   };
   const closeCsvImportModal = () => {
@@ -445,6 +447,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
     actionLockRef.current = true;
     setLoading(true);
     setLoadingAction('csv-import');
+    setCsvImportProgress({ processed: 0, total: csvImportableRows.length });
     try {
       const data = await importConsumosTarjeta({
         consumos: csvImportableRows.map((row) => ({
@@ -460,7 +463,10 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
           titular: row.titular || null,
           observaciones: row.observaciones || null
         }))
-      });
+      }, (progress) => setCsvImportProgress({
+        processed: Number(progress.processed || 0),
+        total: Number(progress.total || csvImportableRows.length)
+      }));
       setCsvImportOpen(false);
       setCsvImportRows([]);
       await cargarTarjetas(form.tarjeta_id, selectedCiclo);
@@ -864,6 +870,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
             <div className="tarjeta-csv-busy" role="status" aria-live="polite">
               <span className="btn-spinner" aria-hidden="true" />
               <strong>Registrando resumen...</strong>
+              <small>{csvImportProgress.processed} de {csvImportProgress.total || csvImportableRows.length} filas procesadas</small>
             </div>
           )}
         </div>
