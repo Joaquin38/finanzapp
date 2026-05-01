@@ -543,10 +543,11 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
 
   const handleCicloChange = (value) => {
     if (value === selectedCiclo) return;
+    cycleLoadRef.current += 1;
     setLoading(true);
     setLoadingAction('cycle-load');
-    setSelectedCiclo(value);
     setFilters((prev) => ({ ...prev, ciclo: value }));
+    window.setTimeout(() => setSelectedCiclo(value), 0);
   };
 
   const navegarResumen = (offset) => {
@@ -983,8 +984,9 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
           </p>
         )}
         <div className="tarjeta-summary-navigator" aria-label="Navegar resumenes de tarjeta">
-          <button type="button" className="btn-inline secondary" onClick={() => navegarResumen(-1)} disabled={loadingAction === 'cycle-load'}>
-            Anterior
+          <button type="button" className="btn-inline secondary btn-with-spinner" onClick={() => navegarResumen(-1)} disabled={loadingAction === 'cycle-load'}>
+            {loadingAction === 'cycle-load' && <span className="btn-spinner" aria-hidden="true" />}
+            {loadingAction === 'cycle-load' ? 'Cargando...' : 'Anterior'}
           </button>
           <label>
             Ver resumen
@@ -994,8 +996,9 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
               ))}
             </select>
           </label>
-          <button type="button" className="btn-inline secondary" onClick={() => navegarResumen(1)} disabled={loadingAction === 'cycle-load'}>
-            Siguiente
+          <button type="button" className="btn-inline secondary btn-with-spinner" onClick={() => navegarResumen(1)} disabled={loadingAction === 'cycle-load'}>
+            {loadingAction === 'cycle-load' && <span className="btn-spinner" aria-hidden="true" />}
+            {loadingAction === 'cycle-load' ? 'Cargando...' : 'Siguiente'}
           </button>
         </div>
         <div className="tarjeta-current-grid">
