@@ -982,6 +982,14 @@ function compararCiclos(a, b) {
   return String(a || '').localeCompare(String(b || ''));
 }
 
+function calcularCuotaInicialCompra(cantidadCuotas, cuotaActual, cuotaInicial, cicloAsignado, fechaCompra) {
+  const cuotas = Math.max(Number(cantidadCuotas || 1), 1);
+  const informada = Number(cuotaActual || cuotaInicial || 1);
+  const cuota = Number.isInteger(informada) && informada >= 1 && informada <= cuotas ? informada : 1;
+  const cicloCompra = fechaIso(fechaCompra).slice(0, 7);
+  return cicloAsignado && compararCiclos(cicloAsignado, cicloCompra) >= 0 ? 1 : cuota;
+}
+
 function normalizarTexto(value) {
   return String(value || '')
     .normalize('NFD')
@@ -1086,7 +1094,7 @@ async function asegurarSuscripcionMesSiguienteAbierta(tarjeta, cicloInicial, rep
 async function recalcularAsignacionConsumosTarjeta() {
   const { rows } = await pool.query(
     `
-    SELECT ct.id, ct.fecha_compra, ct.cierre_id, ct.ciclo_asignado,
+    SELECT ct.id, ct.fecha_compra, ct.cierre_id, ct.ciclo_asignado, ct.cantidad_cuotas, ct.cuota_inicial,
            tc.id AS tarjeta_id, tc.hogar_id, tc.dia_cierre_default, tc.dia_vencimiento_default
     FROM consumos_tarjeta ct
     JOIN tarjetas_credito tc ON tc.id = ct.tarjeta_id
@@ -1094,18 +1102,26 @@ async function recalcularAsignacionConsumosTarjeta() {
   );
 
   for (const row of rows) {
-    const { cicloAsignado, cierreAsignado } = await resolverResumenCompraTarjeta({ ...row, id: row.tarjeta_id }, fechaIso(row.fecha_compra));
-    if (!cierreAsignado || (row.ciclo_asignado === cicloAsignado && Number(row.cierre_id) === Number(cierreAsignado.id))) continue;
+    const fechaCompra = fechaIso(row.fecha_compra);
+    const { cicloAsignado, cierreAsignado } = await resolverResumenCompraTarjeta({ ...row, id: row.tarjeta_id }, fechaCompra);
+    const cuotaInicial = calcularCuotaInicialCompra(row.cantidad_cuotas, row.cuota_inicial, row.cuota_inicial, cicloAsignado, fechaCompra);
+    if (
+      !cierreAsignado ||
+      (row.ciclo_asignado === cicloAsignado &&
+        Number(row.cierre_id) === Number(cierreAsignado.id) &&
+        Number(row.cuota_inicial || 1) === cuotaInicial)
+    ) continue;
 
     await pool.query(
       `
       UPDATE consumos_tarjeta
       SET cierre_id = $1,
           ciclo_asignado = $2,
+          cuota_inicial = $3,
           actualizado_en = NOW()
-      WHERE id = $3
+      WHERE id = $4
       `,
-      [cierreAsignado.id, cicloAsignado, row.id]
+      [cierreAsignado.id, cicloAsignado, cuotaInicial, row.id]
     );
   }
 }
@@ -2733,7 +2749,7 @@ app.post('/tarjetas-credito/consumos', async (req, res) => {
   } = req.body || {};
   const tarjetaId = Number(tarjeta_id);
   const cuotas = Number(cantidad_cuotas || 1);
-  const cuotaInicial = Number(cuota_actual || cuota_inicial || 1);
+  const cuotaInicialInformada = Number(cuota_actual || cuota_inicial || 1);
   const montoTotal = Number(monto_total || 0);
   const montoCuota = Number(monto_cuota || 0);
   const auditoriaUsuarioId = usuarioAuditoriaId(req);
@@ -2744,7 +2760,7 @@ app.post('/tarjetas-credito/consumos', async (req, res) => {
   if (!parseFecha(fecha_compra)) return res.status(400).json({ error: 'fecha_compra debe tener formato YYYY-MM-DD' });
   if (!['ARS', 'USD'].includes(moneda)) return res.status(400).json({ error: 'moneda debe ser ARS o USD' });
   if (!Number.isInteger(cuotas) || cuotas < 1) return res.status(400).json({ error: 'cantidad_cuotas debe ser mayor o igual a 1' });
-  if (!Number.isInteger(cuotaInicial) || cuotaInicial < 1 || cuotaInicial > cuotas) return res.status(400).json({ error: 'cuota_actual debe estar entre 1 y cantidad_cuotas' });
+  if (!Number.isInteger(cuotaInicialInformada) || cuotaInicialInformada < 1 || cuotaInicialInformada > cuotas) return res.status(400).json({ error: 'cuota_actual debe estar entre 1 y cantidad_cuotas' });
   if (!esNumeroPositivo(montoTotal) && !esNumeroPositivo(montoCuota)) {
     return res.status(400).json({ error: 'Informá monto total o monto de cuota' });
   }
@@ -2771,6 +2787,7 @@ app.post('/tarjetas-credito/consumos', async (req, res) => {
     if (cierreAsignado?.estado === 'cerrado') {
       return res.status(409).json({ error: 'El resumen asignado esta cerrado' });
     }
+    const cuotaInicial = calcularCuotaInicialCompra(cuotas, cuota_actual, cuota_inicial, cicloAsignado, fecha_compra);
     const totalFinal = esNumeroPositivo(montoTotal) ? montoTotal : Number((montoCuota * cuotas).toFixed(2));
     const cuotaFinal = esNumeroPositivo(montoCuota) ? montoCuota : Number((totalFinal / cuotas).toFixed(2));
     const repiteMesSiguiente = cuotas === 1 && esCategoriaSuscripcion(categoria);
@@ -2851,7 +2868,7 @@ app.post('/tarjetas-credito/consumos/importar', async (req, res) => {
       const tarjetaId = Number(tarjeta_id);
       const cierreId = Number(cierre_id || 0);
       const cuotas = Number(cantidad_cuotas || 1);
-      const cuotaInicial = Number(cuota_actual || cuota_inicial || 1);
+      const cuotaInicialInformada = Number(cuota_actual || cuota_inicial || 1);
       const montoTotal = Number(monto_total || 0);
       const montoCuota = Number(monto_cuota || 0);
       const auditoriaUsuarioId = usuarioAuditoriaId(req);
@@ -2860,7 +2877,7 @@ app.post('/tarjetas-credito/consumos/importar', async (req, res) => {
       if (!parseFecha(fecha_compra)) throw Object.assign(new Error('fecha_compra debe tener formato YYYY-MM-DD'), { statusCode: 400 });
       if (!['ARS', 'USD'].includes(moneda)) throw Object.assign(new Error('moneda debe ser ARS o USD'), { statusCode: 400 });
       if (!Number.isInteger(cuotas) || cuotas < 1) throw Object.assign(new Error('cantidad_cuotas debe ser mayor o igual a 1'), { statusCode: 400 });
-      if (!Number.isInteger(cuotaInicial) || cuotaInicial < 1 || cuotaInicial > cuotas) throw Object.assign(new Error('cuota_actual debe estar entre 1 y cantidad_cuotas'), { statusCode: 400 });
+      if (!Number.isInteger(cuotaInicialInformada) || cuotaInicialInformada < 1 || cuotaInicialInformada > cuotas) throw Object.assign(new Error('cuota_actual debe estar entre 1 y cantidad_cuotas'), { statusCode: 400 });
       if (!esNumeroPositivo(montoTotal) && !esNumeroPositivo(montoCuota)) throw Object.assign(new Error('Informa monto total o monto de cuota'), { statusCode: 400 });
 
       let tarjeta = tarjetaCache.get(tarjetaId);
@@ -2897,6 +2914,7 @@ app.post('/tarjetas-credito/consumos/importar', async (req, res) => {
       else cierreCache.set(cierreCacheKey, cierreAsignado);
       if (cierreAsignado?.estado === 'cerrado') throw Object.assign(new Error('El resumen asignado esta cerrado'), { statusCode: 409 });
 
+      const cuotaInicial = calcularCuotaInicialCompra(cuotas, cuota_actual, cuota_inicial, cicloAsignado, fecha_compra);
       const totalFinal = esNumeroPositivo(montoTotal) ? montoTotal : Number((montoCuota * cuotas).toFixed(2));
       const cuotaFinal = esNumeroPositivo(montoCuota) ? montoCuota : Number((totalFinal / cuotas).toFixed(2));
       const repiteMesSiguiente = cuotas === 1 && esCategoriaSuscripcion(categoria);
