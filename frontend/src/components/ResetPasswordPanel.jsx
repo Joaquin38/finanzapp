@@ -1,4 +1,4 @@
-import logoFinanzApp from '../assets/finanzapp-logo.png';
+import logoFinanzApp from '../assets/finanzapp-logo-auth.png';
 import PasswordSetupForm from './PasswordSetupForm.jsx';
 
 export default function ResetPasswordPanel({
@@ -11,7 +11,7 @@ export default function ResetPasswordPanel({
 }) {
   return (
     <main className="auth-shell">
-      <section className="auth-card">
+      <section className="auth-card auth-card-reset">
         <img src={logoFinanzApp} alt="FinanzApp" className="auth-logo" />
         <p className="eyebrow">FinanzApp</p>
         <h1>Restablecer password</h1>
