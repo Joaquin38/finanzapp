@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { createConsumoTarjeta, deleteConsumoTarjeta, getTarjetasCredito, updateCierreTarjeta, updateConsumoTarjeta } from '../services/api.js';
+import { createConsumoTarjeta, deleteConsumoTarjeta, getTarjetasCredito, importConsumosTarjeta, updateCierreTarjeta, updateConsumoTarjeta } from '../services/api.js';
 
 const moneyFormat = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
 const csvExpectedHeaders = [
@@ -384,7 +384,10 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
     setCsvImportFileName('');
     setCsvImportOpen(true);
   };
-  const closeCsvImportModal = () => setCsvImportOpen(false);
+  const closeCsvImportModal = () => {
+    if (loadingAction === 'csv-import') return;
+    setCsvImportOpen(false);
+  };
   const csvCanContinue = csvImportStep === 1
     ? csvImportRows.length > 0 && !csvImportError
     : csvImportStep === 2
@@ -442,33 +445,28 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
     actionLockRef.current = true;
     setLoading(true);
     setLoadingAction('csv-import');
-    let imported = 0;
-    let errors = 0;
     try {
-      for (const row of csvImportableRows) {
-        try {
-          await createConsumoTarjeta({
-            tarjeta_id: Number(tarjetaActual?.id || form.tarjeta_id),
-            fecha_compra: row.fecha_compra,
-            descripcion: row.descripcion,
-            categoria: row.categoria || null,
-            moneda: row.moneda,
-            cuota_actual: row.cuota_actual ? resolveCsvCuotaInicial(row) : null,
-            cantidad_cuotas: Number(row.cantidad_cuotas || 1),
-            monto_total: parseAmount(row.monto_total),
-            monto_cuota: parseAmount(row.monto_cuota),
-            titular: row.titular || null,
-            observaciones: row.observaciones || null
-          });
-          imported += 1;
-        } catch {
-          errors += 1;
-        }
-      }
-      closeCsvImportModal();
+      const data = await importConsumosTarjeta({
+        consumos: csvImportableRows.map((row) => ({
+          tarjeta_id: Number(tarjetaActual?.id || form.tarjeta_id),
+          fecha_compra: row.fecha_compra,
+          descripcion: row.descripcion,
+          categoria: row.categoria || null,
+          moneda: row.moneda,
+          cuota_actual: row.cuota_actual ? resolveCsvCuotaInicial(row) : null,
+          cantidad_cuotas: Number(row.cantidad_cuotas || 1),
+          monto_total: parseAmount(row.monto_total),
+          monto_cuota: parseAmount(row.monto_cuota),
+          titular: row.titular || null,
+          observaciones: row.observaciones || null
+        }))
+      });
+      setCsvImportOpen(false);
       setCsvImportRows([]);
       await cargarTarjetas(form.tarjeta_id, selectedCiclo);
-      onToast?.({ message: `Importados: ${imported}. Ignorados: ${csvImportStats.ignored}. Con error: ${errors}.` });
+      onToast?.({ message: `Importados: ${data.importados || csvImportableRows.length}. Ignorados: ${csvImportStats.ignored}.` });
+    } catch (err) {
+      onToast?.({ type: 'error', message: err.message || 'No se pudo importar el CSV. No se guardo ningun consumo.' });
     } finally {
       actionLockRef.current = false;
       setLoading(false);
@@ -719,7 +717,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
               <p className="eyebrow">Tarjeta de credito</p>
               <h2 id="csv-import-title">Importar consumos desde CSV</h2>
             </div>
-            <button className="close-btn" type="button" onClick={closeCsvImportModal} aria-label="Cerrar">
+            <button className="close-btn" type="button" onClick={closeCsvImportModal} aria-label="Cerrar" disabled={loadingAction === 'csv-import'}>
               x
             </button>
           </div>
@@ -843,16 +841,16 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
             )}
           </div>
           <div className="confirm-actions tarjeta-csv-actions">
-            <button className="btn-inline secondary" type="button" onClick={closeCsvImportModal}>
+            <button className="btn-inline secondary" type="button" onClick={closeCsvImportModal} disabled={loadingAction === 'csv-import'}>
               Cancelar
             </button>
             {csvImportStep > 1 && (
-              <button className="btn-inline secondary" type="button" onClick={() => setCsvImportStep(csvImportStep === 2 ? 1 : 2)}>
+              <button className="btn-inline secondary" type="button" onClick={() => setCsvImportStep(csvImportStep === 2 ? 1 : 2)} disabled={loadingAction === 'csv-import'}>
                 {csvImportStep === 2 ? 'Volver' : 'Volver a revisar'}
               </button>
             )}
             {csvImportStep < csvImportSteps.length ? (
-              <button className="btn-inline" type="button" onClick={() => setCsvImportStep((step) => Math.min(csvImportSteps.length, step + 1))} disabled={!csvCanContinue}>
+              <button className="btn-inline" type="button" onClick={() => setCsvImportStep((step) => Math.min(csvImportSteps.length, step + 1))} disabled={!csvCanContinue || loadingAction === 'csv-import'}>
                 Continuar
               </button>
             ) : (
@@ -862,6 +860,12 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
               </button>
             )}
           </div>
+          {loadingAction === 'csv-import' && (
+            <div className="tarjeta-csv-busy" role="status" aria-live="polite">
+              <span className="btn-spinner" aria-hidden="true" />
+              <strong>Registrando resumen...</strong>
+            </div>
+          )}
         </div>
       </section>
     );

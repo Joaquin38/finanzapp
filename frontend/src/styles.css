@@ -4296,6 +4296,7 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   padding: 0;
 }
 .tarjeta-csv-modal {
+  position: relative;
   width: 100%;
   max-height: 100vh;
   height: 100vh;
@@ -4402,6 +4403,24 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   background: var(--surface);
   justify-content: flex-end;
   gap: 10px;
+}
+.tarjeta-csv-busy {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 10px;
+  background: rgba(15, 23, 42, 0.72);
+  color: #fff;
+  text-align: center;
+}
+.tarjeta-csv-busy .btn-spinner {
+  width: 26px;
+  height: 26px;
+  border-color: rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
 }
 .tarjeta-csv-confirm {
   display: grid;

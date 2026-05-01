@@ -992,14 +992,14 @@ function fechaPorDiaDeCiclo(ciclo, dia) {
   return `${ciclo}-${String(Math.min(Number(dia), ultimoDia)).padStart(2, '0')}`;
 }
 
-async function obtenerOCrearCierreTarjeta(tarjeta, ciclo, usuarioId = null) {
+async function obtenerOCrearCierreTarjeta(tarjeta, ciclo, usuarioId = null, db = pool) {
   if (!tarjeta?.id || !cicloEsValido(ciclo)) return null;
   const fechaCierreDefault = fechaPorDiaDeCiclo(ciclo, tarjeta.dia_cierre_default);
   const fechaVencimientoDefault = tarjeta.dia_vencimiento_default
     ? fechaPorDiaDeCiclo(ciclo, tarjeta.dia_vencimiento_default)
     : null;
 
-  const { rows: insertRows } = await pool.query(
+  const { rows: insertRows } = await db.query(
     `
     INSERT INTO cierres_tarjeta (tarjeta_id, ciclo, fecha_cierre, fecha_vencimiento, creado_por_usuario_id, actualizado_por_usuario_id)
     VALUES ($1, $2, $3, $4, $5, $5)
@@ -1011,7 +1011,7 @@ async function obtenerOCrearCierreTarjeta(tarjeta, ciclo, usuarioId = null) {
   );
   if (insertRows.length > 0) return insertRows[0];
 
-  const { rows } = await pool.query(
+  const { rows } = await db.query(
     `
     SELECT id, tarjeta_id, ciclo, fecha_cierre, fecha_vencimiento, estado,
            creado_en, actualizado_en, created_at, updated_at
@@ -1024,33 +1024,33 @@ async function obtenerOCrearCierreTarjeta(tarjeta, ciclo, usuarioId = null) {
   return rows[0] || null;
 }
 
-async function resolverResumenCompraTarjeta(tarjeta, fechaCompra, usuarioId = null) {
+async function resolverResumenCompraTarjeta(tarjeta, fechaCompra, usuarioId = null, db = pool) {
   const fechaCompraIso = fechaIso(fechaCompra);
   const fecha = new Date(`${fechaCompraIso}T00:00:00`);
   const cicloCompra = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
   const siguiente = siguienteCiclo(cicloCompra);
-  const cierreCompra = await obtenerOCrearCierreTarjeta(tarjeta, cicloCompra, usuarioId);
+  const cierreCompra = await obtenerOCrearCierreTarjeta(tarjeta, cicloCompra, usuarioId, db);
   const fechaCierreCompra = fechaIso(cierreCompra?.fecha_cierre);
   const cicloAsignado = fechaCierreCompra && fechaCompraIso > fechaCierreCompra ? siguiente : cicloCompra;
   const cierreAsignado = cicloAsignado === cicloCompra
     ? cierreCompra
-    : await obtenerOCrearCierreTarjeta(tarjeta, cicloAsignado, usuarioId);
+    : await obtenerOCrearCierreTarjeta(tarjeta, cicloAsignado, usuarioId, db);
   return { cicloAsignado, cierreAsignado };
 }
 
-async function obtenerOCrearCierresCuotasTarjeta(tarjeta, cicloInicial, cantidadCuotas, usuarioId = null) {
+async function obtenerOCrearCierresCuotasTarjeta(tarjeta, cicloInicial, cantidadCuotas, usuarioId = null, db = pool) {
   const cierres = [];
   const totalCuotas = Math.max(Number(cantidadCuotas || 1), 1);
   for (let index = 0; index < totalCuotas; index += 1) {
     const cicloCuota = sumarMesesCiclo(cicloInicial, index);
-    const cierre = await obtenerOCrearCierreTarjeta(tarjeta, cicloCuota, usuarioId);
+    const cierre = await obtenerOCrearCierreTarjeta(tarjeta, cicloCuota, usuarioId, db);
     if (cierre) cierres.push(cierre);
   }
   return cierres;
 }
 
-async function asegurarCierresCuotasAbiertos(tarjeta, cicloInicial, cantidadCuotas, usuarioId = null) {
-  const cierres = await obtenerOCrearCierresCuotasTarjeta(tarjeta, cicloInicial, cantidadCuotas, usuarioId);
+async function asegurarCierresCuotasAbiertos(tarjeta, cicloInicial, cantidadCuotas, usuarioId = null, db = pool) {
+  const cierres = await obtenerOCrearCierresCuotasTarjeta(tarjeta, cicloInicial, cantidadCuotas, usuarioId, db);
   const cerrado = cierres.find((item) => item.estado === 'cerrado');
   if (cerrado) {
     const error = new Error(`El resumen ${cerrado.ciclo} esta cerrado`);
@@ -1060,9 +1060,9 @@ async function asegurarCierresCuotasAbiertos(tarjeta, cicloInicial, cantidadCuot
   return cierres;
 }
 
-async function asegurarSuscripcionMesSiguienteAbierta(tarjeta, cicloInicial, repiteMesSiguiente, usuarioId = null) {
+async function asegurarSuscripcionMesSiguienteAbierta(tarjeta, cicloInicial, repiteMesSiguiente, usuarioId = null, db = pool) {
   if (!repiteMesSiguiente) return null;
-  const cierre = await obtenerOCrearCierreTarjeta(tarjeta, sumarMesesCiclo(cicloInicial, 1), usuarioId);
+  const cierre = await obtenerOCrearCierreTarjeta(tarjeta, sumarMesesCiclo(cicloInicial, 1), usuarioId, db);
   if (cierre?.estado === 'cerrado') {
     const error = new Error(`El resumen ${cierre.ciclo} esta cerrado`);
     error.statusCode = 409;
@@ -2756,6 +2756,122 @@ app.post('/tarjetas-credito/consumos', async (req, res) => {
   } catch (error) {
     if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
     return res.status(500).json({ error: 'Error creando consumo de tarjeta', detalle: error.message });
+  }
+});
+
+app.post('/tarjetas-credito/consumos/importar', async (req, res) => {
+  const consumos = Array.isArray(req.body?.consumos) ? req.body.consumos : [];
+  if (consumos.length === 0) return res.status(400).json({ error: 'No hay consumos para importar' });
+
+  const client = await pool.connect();
+  try {
+    await asegurarTarjetasCredito();
+    await client.query('BEGIN');
+    const items = [];
+    for (const payload of consumos) {
+      const {
+        tarjeta_id,
+        fecha_compra,
+        cierre_id,
+        descripcion,
+        categoria,
+        moneda,
+        monto_total,
+        cuota_actual,
+        cuota_inicial,
+        cantidad_cuotas = 1,
+        monto_cuota,
+        titular,
+        observaciones
+      } = payload || {};
+      const tarjetaId = Number(tarjeta_id);
+      const cierreId = Number(cierre_id || 0);
+      const cuotas = Number(cantidad_cuotas || 1);
+      const cuotaInicial = Number(cuota_actual || cuota_inicial || 1);
+      const montoTotal = Number(monto_total || 0);
+      const montoCuota = Number(monto_cuota || 0);
+      const auditoriaUsuarioId = usuarioAuditoriaId(req);
+
+      if (!tarjetaId || !fecha_compra || !descripcion || !moneda || !cuotas) throw Object.assign(new Error('Faltan campos obligatorios'), { statusCode: 400 });
+      if (!parseFecha(fecha_compra)) throw Object.assign(new Error('fecha_compra debe tener formato YYYY-MM-DD'), { statusCode: 400 });
+      if (!['ARS', 'USD'].includes(moneda)) throw Object.assign(new Error('moneda debe ser ARS o USD'), { statusCode: 400 });
+      if (!Number.isInteger(cuotas) || cuotas < 1) throw Object.assign(new Error('cantidad_cuotas debe ser mayor o igual a 1'), { statusCode: 400 });
+      if (!Number.isInteger(cuotaInicial) || cuotaInicial < 1 || cuotaInicial > cuotas) throw Object.assign(new Error('cuota_actual debe estar entre 1 y cantidad_cuotas'), { statusCode: 400 });
+      if (!esNumeroPositivo(montoTotal) && !esNumeroPositivo(montoCuota)) throw Object.assign(new Error('Informa monto total o monto de cuota'), { statusCode: 400 });
+
+      const { rows: tarjetaRows } = await client.query(
+        `
+        SELECT id, hogar_id, dia_cierre_default, dia_vencimiento_default
+        FROM tarjetas_credito
+        WHERE id = $1 AND activa = true
+        `,
+        [tarjetaId]
+      );
+      if (tarjetaRows.length === 0) throw Object.assign(new Error('Tarjeta no encontrada'), { statusCode: 404 });
+
+      const tarjeta = tarjetaRows[0];
+      if (!puedeOperarHogar(req.usuario, Number(tarjeta.hogar_id))) throw Object.assign(new Error('No tenes permisos para operar esta tarjeta'), { statusCode: 403 });
+
+      let cicloAsignado;
+      let cierreAsignado;
+      if (cierreId) {
+        const { rows: cierreRows } = await client.query(
+          'SELECT id, tarjeta_id, ciclo, estado FROM cierres_tarjeta WHERE id = $1 AND tarjeta_id = $2 LIMIT 1',
+          [cierreId, tarjetaId]
+        );
+        if (cierreRows.length === 0) throw Object.assign(new Error('Resumen de tarjeta no encontrado'), { statusCode: 404 });
+        cierreAsignado = cierreRows[0];
+        cicloAsignado = cierreAsignado.ciclo;
+      } else {
+        ({ cicloAsignado, cierreAsignado } = await resolverResumenCompraTarjeta(tarjeta, fecha_compra, auditoriaUsuarioId, client));
+      }
+      if (cierreAsignado?.estado === 'cerrado') throw Object.assign(new Error('El resumen asignado esta cerrado'), { statusCode: 409 });
+
+      const totalFinal = esNumeroPositivo(montoTotal) ? montoTotal : Number((montoCuota * cuotas).toFixed(2));
+      const cuotaFinal = esNumeroPositivo(montoCuota) ? montoCuota : Number((totalFinal / cuotas).toFixed(2));
+      const repiteMesSiguiente = cuotas === 1 && esCategoriaSuscripcion(categoria);
+      const cuotasRestantes = Math.max(cuotas - cuotaInicial + 1, 1);
+      await asegurarCierresCuotasAbiertos(tarjeta, cicloAsignado, cuotasRestantes, auditoriaUsuarioId, client);
+      await asegurarSuscripcionMesSiguienteAbierta(tarjeta, cicloAsignado, repiteMesSiguiente, auditoriaUsuarioId, client);
+
+      const { rows } = await client.query(
+        `
+        INSERT INTO consumos_tarjeta (
+          tarjeta_id, cierre_id, ciclo_asignado, fecha_compra, descripcion, categoria,
+          moneda, monto_total, cantidad_cuotas, monto_cuota, cuota_inicial, repite_mes_siguiente,
+          titular, observaciones, creado_por_usuario_id, actualizado_por_usuario_id
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $15)
+        RETURNING *
+        `,
+        [
+          tarjetaId,
+          cierreAsignado.id,
+          cicloAsignado,
+          fecha_compra,
+          String(descripcion).trim(),
+          categoria ? String(categoria).trim() : null,
+          moneda,
+          totalFinal,
+          cuotas,
+          cuotaFinal,
+          cuotaInicial,
+          repiteMesSiguiente,
+          titular ? String(titular).trim() : null,
+          observaciones ? String(observaciones).trim() : null,
+          auditoriaUsuarioId
+        ]
+      );
+      items.push(rows[0]);
+    }
+    await client.query('COMMIT');
+    return res.status(201).json({ items, importados: items.length });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
+    return res.status(500).json({ error: 'Error importando consumos de tarjeta', detalle: error.message });
+  } finally {
+    client.release();
   }
 });
 
