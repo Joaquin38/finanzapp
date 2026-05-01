@@ -85,6 +85,7 @@ function formatSignedMoney(value, formatMoney) {
 
 function buildCategoryAnalysis(analisisTarjeta = {}) {
   const serie = [...(analisisTarjeta.serie || [])].reverse();
+  const serieExtendida = [...(analisisTarjeta.serie_extendida || analisisTarjeta.serie || [])].reverse();
   const actual = analisisTarjeta.actual || {};
   const actualCategorias = actual.categorias || [];
   const totalArs = Number(actual.total_ars || 0);
@@ -112,7 +113,20 @@ function buildCategoryAnalysis(analisisTarjeta = {}) {
   const concentracionTop3Usd = totalUsd > 0
     ? distribucion.slice(0, 3).reduce((acc, item) => acc + item.usd, 0) / totalUsd * 100
     : 0;
-  return { serie, distribucion, topCategorias, maxArs, maxUsd, maxCategoriaArs, concentracionTop3Ars, concentracionTop3Usd };
+  return { serie, serieExtendida, distribucion, topCategorias, maxArs, maxUsd, maxCategoriaArs, concentracionTop3Ars, concentracionTop3Usd };
+}
+
+function buildCategoryCurveData(serie = [], selectedCategories = [], periodCount = 6) {
+  const visibleSerie = serie.slice(Math.max(0, serie.length - periodCount));
+  const maxArs = Math.max(...visibleSerie.flatMap((cycle) => selectedCategories.map((category) => {
+    const found = (cycle.categorias || []).find((entry) => entry.categoria === category) || {};
+    return Number(found.total_ars || 0);
+  })), 1);
+  const maxUsd = Math.max(...visibleSerie.flatMap((cycle) => selectedCategories.map((category) => {
+    const found = (cycle.categorias || []).find((entry) => entry.categoria === category) || {};
+    return Number(found.total_usd || 0);
+  })), 1);
+  return { visibleSerie, maxArs, maxUsd };
 }
 
 function parseAmount(value) {
@@ -326,6 +340,9 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
   const [filters, setFilters] = useState({ ciclo: '', categoria: '', moneda: '', cuotas: '', texto: '' });
   const [calcSource, setCalcSource] = useState('total');
   const [vistaTarjeta, setVistaTarjeta] = useState('principal');
+  const [analysisCategorySelection, setAnalysisCategorySelection] = useState([]);
+  const [analysisPeriodCount, setAnalysisPeriodCount] = useState(6);
+  const [analysisCurveCurrency, setAnalysisCurveCurrency] = useState('ARS');
   const [csvImportOpen, setCsvImportOpen] = useState(false);
   const [csvImportStep, setCsvImportStep] = useState(1);
   const [csvImportRows, setCsvImportRows] = useState([]);
@@ -400,6 +417,24 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
   const analisisActual = analisisTarjeta?.actual || {};
   const categoriaPrincipalAnalisis = analisisActual.categorias?.[0] || null;
   const analisisCategorias = useMemo(() => buildCategoryAnalysis(analisisTarjeta || {}), [analisisTarjeta]);
+  const analysisCategoryOptions = useMemo(() => {
+    const totals = new Map();
+    analisisCategorias.serieExtendida.forEach((cycle) => {
+      (cycle.categorias || []).forEach((item) => {
+        const key = item.categoria || 'Sin categoria';
+        const current = totals.get(key) || 0;
+        totals.set(key, current + Number(item.total_ars || 0) + Number(item.total_usd || 0));
+      });
+    });
+    return Array.from(totals.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([categoria]) => categoria);
+  }, [analisisCategorias.serieExtendida]);
+  const selectedAnalysisCategories = analysisCategorySelection.filter((category) => analysisCategoryOptions.includes(category));
+  const categoryCurveData = useMemo(
+    () => buildCategoryCurveData(analisisCategorias.serieExtendida, selectedAnalysisCategories, analysisPeriodCount),
+    [analisisCategorias.serieExtendida, analysisPeriodCount, selectedAnalysisCategories]
+  );
   const csvImportSteps = ['Subir CSV', 'Revisar consumos', 'Confirmar importacion'];
   const csvExistingCycles = useMemo(
     () => new Set([selectedCiclo, ...historialResumenes.map((item) => item.ciclo), ...consumos.map((item) => item.ciclo_asignado)].filter(Boolean)),
@@ -409,6 +444,13 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
     () => csvImportRows.map((row) => ({ ...row, _validation: validateCsvImportRow(row, savedCierreForm.fecha_cierre, selectedCiclo, tarjetaActual, csvExistingCycles, consumosRegistrados, historialResumenes) })),
     [csvImportRows, savedCierreForm.fecha_cierre, selectedCiclo, tarjetaActual, csvExistingCycles, consumosRegistrados, historialResumenes]
   );
+  useEffect(() => {
+    if (analysisCategoryOptions.length === 0) return;
+    setAnalysisCategorySelection((current) => {
+      const valid = current.filter((category) => analysisCategoryOptions.includes(category)).slice(0, 6);
+      return valid.length > 0 ? valid : analysisCategoryOptions.slice(0, Math.min(3, analysisCategoryOptions.length));
+    });
+  }, [analysisCategoryOptions]);
   const csvHasInvalidRows = csvRowsWithValidation.some((row) => row._validation.estado === 'invalida');
   const csvImportableRows = csvRowsWithValidation.filter((row) => !row._ignored && row._validation.estado !== 'invalida');
   const csvImportStats = useMemo(() => csvRowsWithValidation.reduce(
@@ -462,6 +504,13 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
   };
   const deleteCsvImportRow = (rowId) => {
     setCsvImportRows((rows) => rows.filter((row) => row._id !== rowId));
+  };
+  const toggleAnalysisCategory = (category) => {
+    setAnalysisCategorySelection((current) => {
+      if (current.includes(category)) return current.length <= 1 ? current : current.filter((item) => item !== category);
+      if (current.length >= 6) return current;
+      return [...current, category];
+    });
   };
   const handleCsvFileChange = (event) => {
     const file = event.target.files?.[0];
@@ -1715,6 +1764,103 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
               </div>
             ))}
             {analisisCategorias.distribucion.length === 0 && <p className="empty-state">Sin consumos categorizados.</p>}
+          </div>
+        </div>
+        <div className="tarjeta-analysis-block tarjeta-category-curve">
+          <div className="tarjeta-curve-header">
+            <div>
+              <h3>Evolucion personalizada por categoria</h3>
+              <p>
+                Desde {formatCycleLabel(analisisTarjeta?.ciclo_base_abierto || selectedCiclo)} hacia atras.
+              </p>
+            </div>
+            <div className="tarjeta-curve-controls">
+              <label>
+                Periodos
+                <input
+                  type="range"
+                  min="6"
+                  max="12"
+                  value={analysisPeriodCount}
+                  onChange={(e) => setAnalysisPeriodCount(Number(e.target.value))}
+                />
+                <strong>{analysisPeriodCount}</strong>
+              </label>
+              <div className="tarjeta-curve-currency" aria-label="Moneda del grafico">
+                {['ARS', 'USD'].map((currency) => (
+                  <button
+                    key={currency}
+                    type="button"
+                    className={analysisCurveCurrency === currency ? 'active' : ''}
+                    onClick={() => setAnalysisCurveCurrency(currency)}
+                  >
+                    {currency}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="tarjeta-category-picker">
+            {analysisCategoryOptions.map((category) => {
+              const active = selectedAnalysisCategories.includes(category);
+              const disabled = !active && selectedAnalysisCategories.length >= 6;
+              return (
+                <button
+                  key={category}
+                  type="button"
+                  className={active ? 'active' : ''}
+                  disabled={disabled}
+                  onClick={() => toggleAnalysisCategory(category)}
+                >
+                  {category}
+                </button>
+              );
+            })}
+            {analysisCategoryOptions.length === 0 && <p className="empty-state">Sin categorias para comparar.</p>}
+          </div>
+          <div className="tarjeta-category-curve-chart">
+            <svg viewBox="0 0 920 250" role="img" aria-label="Evolucion de categorias seleccionadas">
+              {[0, 1, 2, 3].map((line) => (
+                <line key={line} x1="44" x2="880" y1={34 + line * 48} y2={34 + line * 48} />
+              ))}
+              {categoryCurveData.visibleSerie.map((cycle, index) => {
+                const x = 44 + (index * (836 / Math.max(categoryCurveData.visibleSerie.length - 1, 1)));
+                return (
+                  <g key={cycle.ciclo}>
+                    <line className="period-line" x1={x} x2={x} y1="28" y2="190" />
+                    <text x={x} y="224">{formatCycleLabel(cycle.ciclo).slice(0, 3)}</text>
+                  </g>
+                );
+              })}
+              {selectedAnalysisCategories.map((category, categoryIndex) => {
+                const color = ['#2563eb', '#16a34a', '#f59e0b', '#7c3aed', '#dc2626', '#0891b2'][categoryIndex % 6];
+                const maxValue = analysisCurveCurrency === 'USD' ? categoryCurveData.maxUsd : categoryCurveData.maxArs;
+                const points = categoryCurveData.visibleSerie.map((cycle, index) => {
+                  const found = (cycle.categorias || []).find((entry) => entry.categoria === category) || {};
+                  const value = Number(analysisCurveCurrency === 'USD' ? found.total_usd : found.total_ars) || 0;
+                  const x = 44 + (index * (836 / Math.max(categoryCurveData.visibleSerie.length - 1, 1)));
+                  const y = 190 - ((value / Math.max(maxValue, 1)) * 150);
+                  return { x, y, value, cycle: cycle.ciclo };
+                });
+                return (
+                  <g key={category}>
+                    <polyline points={points.map((point) => `${point.x},${point.y}`).join(' ')} stroke={color} />
+                    {points.map((point) => (
+                      <circle key={`${category}-${point.cycle}`} cx={point.x} cy={point.y} r="4" fill={color}>
+                        <title>{category} - {formatCycleLabel(point.cycle)}: {analysisCurveCurrency === 'USD' ? formatUsd(point.value) : formatMoney(point.value)}</title>
+                      </circle>
+                    ))}
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
+          <div className="tarjeta-category-curve-legend">
+            {selectedAnalysisCategories.map((category, index) => (
+              <span key={category} style={{ '--curve-color': ['#2563eb', '#16a34a', '#f59e0b', '#7c3aed', '#dc2626', '#0891b2'][index % 6] }}>
+                {category}
+              </span>
+            ))}
           </div>
         </div>
         <div className="tarjeta-analysis-block tarjeta-cycle-chart">
