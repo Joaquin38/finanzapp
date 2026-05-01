@@ -1207,7 +1207,7 @@ function resumirCicloTarjeta(ciclo, consumos) {
   });
 
   resumen.categorias = Array.from(categorias.values())
-    .sort((a, b) => (b.total_ars + b.total_usd) - (a.total_ars + a.total_usd));
+    .sort((a, b) => (b.total_ars - a.total_ars) || (b.total_usd - a.total_usd));
   return resumen;
 }
 
@@ -1215,7 +1215,7 @@ function construirAnalisisTarjeta(consumosExpandidos, historialResumenes, cicloS
   const ultimoCerrado = [...historialResumenes]
     .filter((item) => item.estado === 'cerrado')
     .sort((a, b) => compararCiclos(b.ciclo, a.ciclo))[0] || null;
-  const cicloPunta = ultimoCerrado ? sumarMesesCiclo(ultimoCerrado.ciclo, 1) : cicloSeleccionado;
+  const cicloPunta = cicloSeleccionado;
   const ciclos = Array.from({ length: 6 }, (_, index) => sumarMesesCiclo(cicloPunta, -index)).filter(Boolean);
   const serie = ciclos.map((ciclo) => resumirCicloTarjeta(ciclo, consumosExpandidos));
   const actual = serie[0] || resumirCicloTarjeta(cicloPunta, []);
@@ -2634,8 +2634,28 @@ app.get('/tarjetas-credito', async (req, res) => {
           [hogarId, tarjetaConsultaId]
         )
       : { rows: [] };
-    const consumosExpandidos = expandirConsumosTarjeta(consumosBase);
-    const consumos = consumosExpandidos
+    const { rows: consumosAnalisisBase } = cicloEsValido(ciclo)
+      ? await pool.query(
+          `
+          SELECT ct.id, ct.tarjeta_id, ct.cierre_id, ct.ciclo_asignado, ct.fecha_compra,
+                 ct.descripcion, ct.categoria, ct.moneda, ct.monto_total,
+                 ct.cantidad_cuotas, ct.monto_cuota, ct.cuota_inicial, ct.repite_mes_siguiente,
+                 ct.titular, ct.observaciones,
+                 crt.fecha_cierre,
+                 CASE WHEN ct.ciclo_asignado = $2 THEN 'actual' ELSE 'historico' END AS resumen_relativo
+          FROM consumos_tarjeta ct
+          JOIN tarjetas_credito tc ON tc.id = ct.tarjeta_id
+          LEFT JOIN cierres_tarjeta crt ON crt.id = ct.cierre_id
+          WHERE tc.hogar_id = $1
+            AND ($3::BIGINT IS NULL OR ct.tarjeta_id = $3)
+          ORDER BY ct.fecha_compra DESC, ct.id DESC
+          `,
+          [hogarId, ciclo, tarjetaConsultaId]
+        )
+      : { rows: [] };
+    const consumosExpandidosVista = expandirConsumosTarjeta(consumosBase);
+    const consumosExpandidosAnalisis = expandirConsumosTarjeta(consumosAnalisisBase);
+    const consumos = consumosExpandidosVista
       .filter((item) => compararCiclos(item.ciclo_asignado, ciclo) >= 0)
       .sort((a, b) => compararCiclos(b.ciclo_asignado, a.ciclo_asignado) || new Date(b.fecha_compra) - new Date(a.fecha_compra));
 
@@ -2663,7 +2683,7 @@ app.get('/tarjetas-credito', async (req, res) => {
         )
       : { rows: [] };
     const historialResumenes = cierresHistorial.map((cierre) => {
-      const cuotasResumen = consumosExpandidos.filter((item) => item.ciclo_asignado === cierre.ciclo);
+      const cuotasResumen = consumosExpandidosAnalisis.filter((item) => item.ciclo_asignado === cierre.ciclo);
       return cuotasResumen.reduce(
         (acc, item) => {
           if (item.moneda === 'USD') acc.total_usd += Number(item.monto_resumen || item.monto_cuota || 0);
@@ -2674,7 +2694,7 @@ app.get('/tarjetas-credito', async (req, res) => {
         { ...cierre, total_ars: 0, total_usd: 0, consumos: 0 }
       );
     });
-    const analisisTarjeta = construirAnalisisTarjeta(consumosExpandidos, historialResumenes, ciclo);
+    const analisisTarjeta = construirAnalisisTarjeta(consumosExpandidosAnalisis, historialResumenes, ciclo);
 
     return res.status(200).json({
       tarjetas,
