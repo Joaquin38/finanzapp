@@ -648,7 +648,7 @@ export async function createConsumoTarjeta(payload) {
   }
 }
 
-export async function importConsumosTarjeta(payload) {
+export async function importConsumosTarjeta(payload, onProgress) {
   try {
     const response = await fetch(`${API_URL}/tarjetas-credito/consumos/importar`, {
       method: 'POST',
@@ -661,7 +661,31 @@ export async function importConsumosTarjeta(payload) {
       throw new Error(detail.error || 'No se pudo importar el CSV');
     }
 
-    return response.json();
+    if (!response.body) return response.json();
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let donePayload = null;
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const event = JSON.parse(line);
+        if (event.type === 'error') throw new Error(event.error || 'No se pudo importar el CSV');
+        if (event.type === 'done') donePayload = event;
+        if (event.type === 'progress') onProgress?.(event);
+      }
+    }
+    if (buffer.trim()) {
+      const event = JSON.parse(buffer);
+      if (event.type === 'error') throw new Error(event.error || 'No se pudo importar el CSV');
+      if (event.type === 'done') donePayload = event;
+    }
+    return donePayload || {};
   } catch (error) {
     throw new Error(normalizeFetchError(error));
   }

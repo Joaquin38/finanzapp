@@ -761,7 +761,7 @@ async function asegurarPasswordResetTokens() {
   `);
 }
 
-async function asegurarTarjetasCredito() {
+async function asegurarTarjetasCredito({ recalcular = true } = {}) {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS tarjetas_credito (
       id BIGSERIAL PRIMARY KEY,
@@ -823,18 +823,20 @@ async function asegurarTarjetasCredito() {
     )
   `);
   await pool.query('ALTER TABLE consumos_tarjeta ADD COLUMN IF NOT EXISTS repite_mes_siguiente BOOLEAN NOT NULL DEFAULT FALSE');
-  await pool.query(`
-    UPDATE consumos_tarjeta
-    SET repite_mes_siguiente = CASE
-      WHEN LOWER(COALESCE(categoria, '')) IN ('suscripcion', 'suscripciones') AND cantidad_cuotas = 1 THEN true
-      ELSE false
-    END
-  `);
+  if (recalcular) {
+    await pool.query(`
+      UPDATE consumos_tarjeta
+      SET repite_mes_siguiente = CASE
+        WHEN LOWER(COALESCE(categoria, '')) IN ('suscripcion', 'suscripciones') AND cantidad_cuotas = 1 THEN true
+        ELSE false
+      END
+    `);
+  }
   await pool.query('CREATE INDEX IF NOT EXISTS idx_tarjetas_credito_hogar ON tarjetas_credito (hogar_id, activa)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_cierres_tarjeta_tarjeta_ciclo ON cierres_tarjeta (tarjeta_id, ciclo)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_consumos_tarjeta_cierre ON consumos_tarjeta (cierre_id)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_consumos_tarjeta_tarjeta_fecha ON consumos_tarjeta (tarjeta_id, fecha_compra)');
-  await recalcularAsignacionConsumosTarjeta();
+  if (recalcular) await recalcularAsignacionConsumosTarjeta();
 }
 
 async function asegurarDatosColon260() {
@@ -2764,10 +2766,19 @@ app.post('/tarjetas-credito/consumos/importar', async (req, res) => {
   if (consumos.length === 0) return res.status(400).json({ error: 'No hay consumos para importar' });
 
   const client = await pool.connect();
+  const writeProgress = (payload) => {
+    res.write(`${JSON.stringify(payload)}\n`);
+    if (typeof res.flush === 'function') res.flush();
+  };
   try {
-    await asegurarTarjetasCredito();
+    await asegurarTarjetasCredito({ recalcular: false });
+    res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache');
+    if (typeof res.flushHeaders === 'function') res.flushHeaders();
     await client.query('BEGIN');
     const items = [];
+    const tarjetaCache = new Map();
+    const cierreCache = new Map();
     for (const payload of consumos) {
       const {
         tarjeta_id,
@@ -2799,17 +2810,20 @@ app.post('/tarjetas-credito/consumos/importar', async (req, res) => {
       if (!Number.isInteger(cuotaInicial) || cuotaInicial < 1 || cuotaInicial > cuotas) throw Object.assign(new Error('cuota_actual debe estar entre 1 y cantidad_cuotas'), { statusCode: 400 });
       if (!esNumeroPositivo(montoTotal) && !esNumeroPositivo(montoCuota)) throw Object.assign(new Error('Informa monto total o monto de cuota'), { statusCode: 400 });
 
-      const { rows: tarjetaRows } = await client.query(
-        `
-        SELECT id, hogar_id, dia_cierre_default, dia_vencimiento_default
-        FROM tarjetas_credito
-        WHERE id = $1 AND activa = true
-        `,
-        [tarjetaId]
-      );
-      if (tarjetaRows.length === 0) throw Object.assign(new Error('Tarjeta no encontrada'), { statusCode: 404 });
-
-      const tarjeta = tarjetaRows[0];
+      let tarjeta = tarjetaCache.get(tarjetaId);
+      if (!tarjeta) {
+        const { rows: tarjetaRows } = await client.query(
+          `
+          SELECT id, hogar_id, dia_cierre_default, dia_vencimiento_default
+          FROM tarjetas_credito
+          WHERE id = $1 AND activa = true
+          `,
+          [tarjetaId]
+        );
+        if (tarjetaRows.length === 0) throw Object.assign(new Error('Tarjeta no encontrada'), { statusCode: 404 });
+        tarjeta = tarjetaRows[0];
+        tarjetaCache.set(tarjetaId, tarjeta);
+      }
       if (!puedeOperarHogar(req.usuario, Number(tarjeta.hogar_id))) throw Object.assign(new Error('No tenes permisos para operar esta tarjeta'), { statusCode: 403 });
 
       let cicloAsignado;
@@ -2825,6 +2839,9 @@ app.post('/tarjetas-credito/consumos/importar', async (req, res) => {
       } else {
         ({ cicloAsignado, cierreAsignado } = await resolverResumenCompraTarjeta(tarjeta, fecha_compra, auditoriaUsuarioId, client));
       }
+      const cierreCacheKey = `${tarjetaId}:${cicloAsignado}`;
+      if (cierreCache.has(cierreCacheKey)) cierreAsignado = cierreCache.get(cierreCacheKey);
+      else cierreCache.set(cierreCacheKey, cierreAsignado);
       if (cierreAsignado?.estado === 'cerrado') throw Object.assign(new Error('El resumen asignado esta cerrado'), { statusCode: 409 });
 
       const totalFinal = esNumeroPositivo(montoTotal) ? montoTotal : Number((montoCuota * cuotas).toFixed(2));
@@ -2863,11 +2880,17 @@ app.post('/tarjetas-credito/consumos/importar', async (req, res) => {
         ]
       );
       items.push(rows[0]);
+      writeProgress({ type: 'progress', processed: items.length, total: consumos.length });
     }
     await client.query('COMMIT');
-    return res.status(201).json({ items, importados: items.length });
+    writeProgress({ type: 'done', processed: items.length, total: consumos.length, importados: items.length });
+    return res.end();
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
+    if (res.headersSent) {
+      writeProgress({ type: 'error', error: error.statusCode ? error.message : 'Error importando consumos de tarjeta' });
+      return res.end();
+    }
     if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
     return res.status(500).json({ error: 'Error importando consumos de tarjeta', detalle: error.message });
   } finally {
