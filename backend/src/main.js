@@ -1133,6 +1133,180 @@ function expandirConsumosTarjeta(consumosBase) {
   });
 }
 
+function calcularVariacionPorcentual(actual, referencia) {
+  if (!referencia) return null;
+  return ((Number(actual || 0) - Number(referencia || 0)) / Number(referencia || 1)) * 100;
+}
+
+function promediarValores(items, selector) {
+  const valores = items.map(selector).filter((value) => Number(value || 0) > 0);
+  if (valores.length === 0) return 0;
+  return valores.reduce((acc, value) => acc + Number(value || 0), 0) / valores.length;
+}
+
+function resumirCicloTarjeta(ciclo, consumos) {
+  const categorias = new Map();
+  const items = consumos.filter((item) => item.ciclo_asignado === ciclo);
+  const resumen = {
+    ciclo,
+    total_ars: 0,
+    total_usd: 0,
+    consumos: items.length,
+    cuotas_ars: 0,
+    cuotas_usd: 0,
+    suscripciones_ars: 0,
+    suscripciones_usd: 0,
+    suscripciones: 0,
+    categorias: []
+  };
+
+  items.forEach((item) => {
+    const monto = Number(item.monto_resumen || item.monto_cuota || item.monto_total || 0);
+    const categoria = item.categoria || 'Sin categoria';
+    const esUsd = item.moneda === 'USD';
+    const esCuota = Number(item.cantidad_cuotas || 1) > 1;
+    const esSuscripcion = Boolean(item.repite_mes_siguiente || item.es_suscripcion_replicada || esCategoriaSuscripcion(categoria));
+
+    if (!categorias.has(categoria)) {
+      categorias.set(categoria, { categoria, total_ars: 0, total_usd: 0, consumos: 0 });
+    }
+    const bucket = categorias.get(categoria);
+    bucket.consumos += 1;
+
+    if (esUsd) {
+      resumen.total_usd += monto;
+      bucket.total_usd += monto;
+      if (esCuota) resumen.cuotas_usd += monto;
+      if (esSuscripcion) resumen.suscripciones_usd += monto;
+    } else {
+      resumen.total_ars += monto;
+      bucket.total_ars += monto;
+      if (esCuota) resumen.cuotas_ars += monto;
+      if (esSuscripcion) resumen.suscripciones_ars += monto;
+    }
+    if (esSuscripcion) resumen.suscripciones += 1;
+  });
+
+  resumen.categorias = Array.from(categorias.values())
+    .sort((a, b) => (b.total_ars + b.total_usd) - (a.total_ars + a.total_usd));
+  return resumen;
+}
+
+function construirAnalisisTarjeta(consumosExpandidos, historialResumenes, cicloSeleccionado) {
+  const ultimoCerrado = [...historialResumenes]
+    .filter((item) => item.estado === 'cerrado')
+    .sort((a, b) => compararCiclos(b.ciclo, a.ciclo))[0] || null;
+  const cicloPunta = ultimoCerrado ? sumarMesesCiclo(ultimoCerrado.ciclo, 1) : cicloSeleccionado;
+  const ciclos = Array.from({ length: 6 }, (_, index) => sumarMesesCiclo(cicloPunta, -index)).filter(Boolean);
+  const serie = ciclos.map((ciclo) => resumirCicloTarjeta(ciclo, consumosExpandidos));
+  const actual = serie[0] || resumirCicloTarjeta(cicloPunta, []);
+  const anteriores = serie.slice(1);
+  const promedioArs = promediarValores(anteriores, (item) => item.total_ars);
+  const promedioUsd = promediarValores(anteriores, (item) => item.total_usd);
+  const promedioSuscripcionesArs = promediarValores(anteriores, (item) => item.suscripciones_ars);
+  const promedioCuotasArs = promediarValores(anteriores, (item) => item.cuotas_ars);
+  const variacionTotalArs = calcularVariacionPorcentual(actual.total_ars, promedioArs);
+  const variacionSuscripcionesArs = calcularVariacionPorcentual(actual.suscripciones_ars, promedioSuscripcionesArs);
+  const variacionCuotasArs = calcularVariacionPorcentual(actual.cuotas_ars, promedioCuotasArs);
+  const categoriaPrincipal = actual.categorias[0] || null;
+  const participacionCategoriaPrincipal = actual.total_ars > 0 && categoriaPrincipal
+    ? (categoriaPrincipal.total_ars / actual.total_ars) * 100
+    : 0;
+  const participacionSuscripciones = actual.total_ars > 0 ? (actual.suscripciones_ars / actual.total_ars) * 100 : 0;
+  const participacionCuotas = actual.total_ars > 0 ? (actual.cuotas_ars / actual.total_ars) * 100 : 0;
+
+  const categoriasPrevias = new Map();
+  anteriores.forEach((item) => {
+    item.categorias.forEach((categoria) => {
+      if (!categoriasPrevias.has(categoria.categoria)) {
+        categoriasPrevias.set(categoria.categoria, { total_ars: 0, total_usd: 0, muestras: 0 });
+      }
+      const bucket = categoriasPrevias.get(categoria.categoria);
+      bucket.total_ars += Number(categoria.total_ars || 0);
+      bucket.total_usd += Number(categoria.total_usd || 0);
+      bucket.muestras += 1;
+    });
+  });
+
+  const categoriasComparadas = Array.from(new Set([
+    ...actual.categorias.map((item) => item.categoria),
+    ...Array.from(categoriasPrevias.keys())
+  ])).map((categoria) => {
+    const actualCategoria = actual.categorias.find((item) => item.categoria === categoria) || { total_ars: 0, total_usd: 0, consumos: 0 };
+    const previa = categoriasPrevias.get(categoria) || { total_ars: 0, total_usd: 0, muestras: 0 };
+    const promedioCategoriaArs = previa.muestras > 0 ? previa.total_ars / previa.muestras : 0;
+    const promedioCategoriaUsd = previa.muestras > 0 ? previa.total_usd / previa.muestras : 0;
+    return {
+      categoria,
+      actual_ars: actualCategoria.total_ars,
+      promedio_ars: promedioCategoriaArs,
+      diferencia_ars: actualCategoria.total_ars - promedioCategoriaArs,
+      variacion_ars: calcularVariacionPorcentual(actualCategoria.total_ars, promedioCategoriaArs),
+      actual_usd: actualCategoria.total_usd,
+      promedio_usd: promedioCategoriaUsd,
+      diferencia_usd: actualCategoria.total_usd - promedioCategoriaUsd,
+      consumos: actualCategoria.consumos || 0
+    };
+  }).filter((item) => item.actual_ars > 0 || item.promedio_ars > 0 || item.actual_usd > 0 || item.promedio_usd > 0)
+    .sort((a, b) => Math.abs(b.diferencia_ars) - Math.abs(a.diferencia_ars))
+    .slice(0, 5);
+
+  const nivel = promedioArs <= 0
+    ? 'Sin historial'
+    : actual.total_ars > promedioArs * 1.2
+      ? 'Consumo alto'
+      : actual.total_ars < promedioArs * 0.85
+        ? 'Consumo bajo'
+        : 'Consumo normal';
+  const tonoNivel = nivel === 'Consumo alto' ? 'warning' : nivel === 'Consumo bajo' ? 'positive' : 'muted';
+  const insights = [];
+
+  if (promedioArs <= 0) {
+    insights.push('Todavia falta historial comparable para separar patron de ruido.');
+  } else if (actual.total_ars > promedioArs * 1.2) {
+    insights.push('El consumo viene por encima del patron reciente; conviene revisar altas nuevas antes de seguir sumando gastos variables.');
+  } else if (actual.total_ars < promedioArs * 0.85) {
+    insights.push('El nivel actual esta por debajo del promedio reciente; buen momento para sostener el freno y no reemplazarlo con cuotas.');
+  } else {
+    insights.push('El nivel general esta cerca del patron reciente; la decision pasa mas por composicion que por monto total.');
+  }
+
+  if (actual.suscripciones_ars > 0 && (participacionSuscripciones >= 30 || actual.suscripciones_ars > promedioSuscripcionesArs * 1.15)) {
+    insights.push('Las suscripciones pesan en la base del resumen; revisar altas recurrentes tiene mas impacto que recortar compras aisladas.');
+  }
+  if (participacionCategoriaPrincipal >= 45 && categoriaPrincipal) {
+    insights.push(`${categoriaPrincipal.categoria} concentra demasiado el resumen; si no fue planificado, es la primera categoria a auditar.`);
+  }
+  if (actual.cuotas_ars > 0 && participacionCuotas >= 35) {
+    insights.push('La carga en cuotas es relevante; antes de financiar nuevas compras, mira el arrastre de los proximos resumenes.');
+  }
+  const categoriaConMayorSalto = categoriasComparadas.find((item) => item.diferencia_ars > Math.max(promedioArs * 0.12, 0));
+  if (categoriaConMayorSalto) {
+    insights.push(`${categoriaConMayorSalto.categoria} explica el mayor salto contra el promedio; ahi esta la palanca principal de decision.`);
+  }
+
+  return {
+    ciclo_punta: cicloPunta,
+    ultimo_cerrado: ultimoCerrado?.ciclo || null,
+    nivel,
+    tono_nivel: tonoNivel,
+    actual,
+    promedio_ars: promedioArs,
+    promedio_usd: promedioUsd,
+    promedio_suscripciones_ars: promedioSuscripcionesArs,
+    promedio_cuotas_ars: promedioCuotasArs,
+    variacion_total_ars: variacionTotalArs,
+    variacion_suscripciones_ars: variacionSuscripcionesArs,
+    variacion_cuotas_ars: variacionCuotasArs,
+    participacion_suscripciones: participacionSuscripciones,
+    participacion_cuotas: participacionCuotas,
+    participacion_categoria_principal: participacionCategoriaPrincipal,
+    categorias_comparadas: categoriasComparadas,
+    serie,
+    insights: insights.slice(0, 5)
+  };
+}
+
 async function asegurarEstadosGastosFijosPorCiclo() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS estados_gastos_fijos_ciclo (
@@ -2459,13 +2633,15 @@ app.get('/tarjetas-credito', async (req, res) => {
         { ...cierre, total_ars: 0, total_usd: 0, consumos: 0 }
       );
     });
+    const analisisTarjeta = construirAnalisisTarjeta(consumosExpandidos, historialResumenes, ciclo);
 
     return res.status(200).json({
       tarjetas,
       cierre: cierreActual || null,
       consumos,
       resumen,
-      historial_resumenes: historialResumenes
+      historial_resumenes: historialResumenes,
+      analisis_tarjeta: analisisTarjeta
     });
   } catch (error) {
     return res.status(500).json({ error: 'Error consultando tarjetas', detalle: error.message });

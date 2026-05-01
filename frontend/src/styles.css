@@ -3643,9 +3643,9 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
 }
 .tarjeta-view-switch {
   display: inline-grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 4px;
-  width: min(360px, 100%);
+  width: min(520px, 100%);
   padding: 4px;
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -4160,7 +4160,7 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
 }
 .tarjeta-analysis-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
 }
 .tarjeta-analysis-grid article {
@@ -4180,6 +4180,112 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
 .tarjeta-analysis-grid strong {
   color: var(--text-primary);
   font-size: 18px;
+}
+.tarjeta-analysis-grid small {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+.tarjeta-analysis-status {
+  justify-self: start;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 900;
+}
+.tarjeta-analysis-status.warning,
+.tarjeta-category-row span.warning {
+  background: rgba(245, 158, 11, 0.14);
+  color: #b45309;
+}
+.tarjeta-analysis-status.positive,
+.tarjeta-category-row span.positive {
+  background: rgba(34, 197, 94, 0.14);
+  color: #15803d;
+}
+.tarjeta-analysis-status.muted,
+.tarjeta-category-row span.muted {
+  background: var(--surface-soft);
+  color: var(--text-secondary);
+}
+.tarjeta-analysis-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+.tarjeta-analysis-block {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+.tarjeta-analysis-block h3 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 15px;
+}
+.tarjeta-trend-list,
+.tarjeta-category-impact {
+  display: grid;
+  gap: 8px;
+}
+.tarjeta-trend-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.8fr) minmax(100px, 1.2fr) minmax(100px, auto);
+  align-items: center;
+  gap: 8px;
+}
+.tarjeta-trend-row span,
+.tarjeta-category-row small {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+.tarjeta-trend-row div {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--border);
+}
+.tarjeta-trend-row i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #7c3aed;
+}
+.tarjeta-trend-row strong {
+  color: var(--text-primary);
+  font-size: 13px;
+  text-align: right;
+}
+.tarjeta-category-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.tarjeta-category-row div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.tarjeta-category-row strong {
+  color: var(--text-primary);
+  font-size: 13px;
+}
+.tarjeta-category-row span {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 900;
 }
 .tarjeta-insights-list {
   display: grid;
@@ -5111,6 +5217,7 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   .tarjeta-current-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tarjeta-table-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tarjeta-analysis-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tarjeta-analysis-layout { grid-template-columns: 1fr; }
   .tarjeta-consumo-form { grid-template-columns: 1fr; }
   .tarjeta-form-group-purchase,
   .tarjeta-form-group-amounts,
@@ -5396,7 +5503,10 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   .tarjeta-close-action { width: 100%; }
   .tarjeta-table-filters,
   .tarjeta-analysis-grid,
+  .tarjeta-analysis-layout,
+  .tarjeta-trend-row,
   .tarjeta-detail-grid { grid-template-columns: 1fr; }
+  .tarjeta-trend-row strong { text-align: left; }
   .tarjeta-summary-navigator { grid-template-columns: 1fr; }
   .tarjeta-consumo-form { grid-template-columns: 1fr; }
   .tarjeta-form-group-purchase,

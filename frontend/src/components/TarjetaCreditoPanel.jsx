@@ -49,6 +49,16 @@ function formatDate(value) {
   return day && month && year ? `${day}/${month}/${year}` : '-';
 }
 
+function formatPercent(value) {
+  if (value == null || Number.isNaN(Number(value))) return 'Sin referencia';
+  const numeric = Number(value);
+  return `${numeric > 0 ? '+' : ''}${numeric.toFixed(1)}%`;
+}
+
+function formatUsd(value) {
+  return `USD ${Number(value || 0).toLocaleString('es-AR', moneyFormat)}`;
+}
+
 function parseAmount(value) {
   const raw = String(value ?? '').trim();
   const normalized = raw.includes(',') ? raw.replace(/\./g, '').replace(',', '.') : raw;
@@ -96,6 +106,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
   const [savedCierreForm, setSavedCierreForm] = useState({ fecha_cierre: '', fecha_vencimiento: '' });
   const [resumen, setResumen] = useState({ total_ars: 0, total_usd: 0, consumos: 0, cuotas_futuras: 0 });
   const [historialResumenes, setHistorialResumenes] = useState([]);
+  const [analisisTarjeta, setAnalisisTarjeta] = useState(null);
   const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState(null);
   const [editingCicloBase, setEditingCicloBase] = useState('');
@@ -167,41 +178,8 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
   }, [form.fecha_compra, savedCierreForm.fecha_cierre, selectedCiclo]);
   const previewPasaAlSiguiente = String(previewCicloAsignado).localeCompare(String(selectedCiclo)) > 0;
   const consumoAsignadoAResumenCerrado = resumenSeleccionadoCerrado && previewCicloAsignado === selectedCiclo;
-  const resumenAnalisis = useMemo(() => {
-    const actuales = consumos.filter((item) => item.ciclo_asignado === selectedCiclo);
-    const categorias = new Map();
-    let totalArs = 0;
-    let totalUsd = 0;
-    let totalCuotas = 0;
-    let totalUnPago = 0;
-    let consumoMayor = null;
-
-    actuales.forEach((item) => {
-      const monto = Number(item.monto_resumen || item.monto_cuota || item.monto_total || 0);
-      const categoria = item.categoria || 'Sin categoria';
-      categorias.set(categoria, (categorias.get(categoria) || 0) + monto);
-      if (item.moneda === 'USD') totalUsd += monto;
-      else totalArs += monto;
-      if (Number(item.cantidad_cuotas || 1) > 1) totalCuotas += monto;
-      else totalUnPago += monto;
-      if (!consumoMayor || monto > Number(consumoMayor.monto_resumen || consumoMayor.monto_cuota || 0)) consumoMayor = item;
-    });
-
-    const categoriaPrincipal = Array.from(categorias.entries())
-      .map(([categoria, total]) => ({ categoria, total }))
-      .sort((a, b) => b.total - a.total)[0] || null;
-    const baseCuotas = totalCuotas + totalUnPago;
-
-    return {
-      totalArs,
-      totalUsd,
-      categoriaPrincipal,
-      consumoMayor,
-      porcentajeCuotas: baseCuotas > 0 ? Math.round((totalCuotas / baseCuotas) * 100) : 0,
-      cantidadConsumos: actuales.length,
-      nuevosConsumosCuotas: actuales.filter((item) => Number(item.cantidad_cuotas || 1) > 1).length
-    };
-  }, [consumos, selectedCiclo]);
+  const analisisActual = analisisTarjeta?.actual || {};
+  const categoriaPrincipalAnalisis = analisisActual.categorias?.[0] || null;
 
   const cargarTarjetas = async (tarjetaId = form.tarjeta_id, cicloConsulta = selectedCiclo) => {
     if (!hogarId) return;
@@ -217,6 +195,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
     setConsumos(data.consumos || []);
     setResumen(data.resumen || { total_ars: 0, total_usd: 0, consumos: 0, cuotas_futuras: 0 });
     setHistorialResumenes(data.historial_resumenes || []);
+    setAnalisisTarjeta(data.analisis_tarjeta || null);
     setFilters((prev) => ({ ...prev, ciclo: cicloConsulta }));
     setForm((prev) => ({
       ...prev,
@@ -440,11 +419,19 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
       <div className="panel tarjeta-hero">
         <div>
           <p className="eyebrow">Tarjeta de credito</p>
-          <h2>{vistaTarjeta === 'principal' ? 'Consumo actual' : 'Historial y analisis'}</h2>
+          <h2>
+            {vistaTarjeta === 'principal'
+              ? 'Consumo actual'
+              : vistaTarjeta === 'historial'
+                ? 'Historial'
+                : 'Analisis'}
+          </h2>
           <p>
             {vistaTarjeta === 'principal'
               ? `${tarjetaActual?.nombre || 'Tarjeta principal'} - resumen en curso y cuotas futuras.`
-              : 'Resumenes anteriores y analisis del ciclo seleccionado.'}
+              : vistaTarjeta === 'historial'
+                ? 'Resumenes anteriores y estado de cierres.'
+                : 'Tendencias y comparativas desde el proximo resumen abierto.'}
           </p>
         </div>
         <div className="tarjeta-view-switch" aria-label="Cambiar pantalla de tarjeta">
@@ -458,11 +445,19 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
           </button>
           <button
             type="button"
-            className={vistaTarjeta === 'secundaria' ? 'active' : ''}
-            aria-pressed={vistaTarjeta === 'secundaria'}
-            onClick={() => setVistaTarjeta('secundaria')}
+            className={vistaTarjeta === 'historial' ? 'active' : ''}
+            aria-pressed={vistaTarjeta === 'historial'}
+            onClick={() => setVistaTarjeta('historial')}
           >
-            Historial y analisis
+            Historial
+          </button>
+          <button
+            type="button"
+            className={vistaTarjeta === 'analisis' ? 'active' : ''}
+            aria-pressed={vistaTarjeta === 'analisis'}
+            onClick={() => setVistaTarjeta('analisis')}
+          >
+            Analisis
           </button>
         </div>
       </div>
@@ -842,7 +837,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
         )}
       </section>
         </>
-      ) : (
+      ) : vistaTarjeta === 'historial' ? (
         <>
       <section className="panel tarjeta-history tarjeta-section-card tarjeta-section-history">
         <div className="panel-header">
@@ -907,44 +902,99 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
           </table>
         </div>
       </section>
-
+        </>
+      ) : (
+        <>
       <section className="panel tarjeta-analisis-resumen tarjeta-section-card tarjeta-section-analysis">
         <div className="panel-header">
           <div>
             <p className="eyebrow">Analisis</p>
-            <h2>Analisis del resumen</h2>
-            <p>Lectura del ciclo seleccionado.</p>
+            <h2>Comportamiento de consumo</h2>
+            <p>
+              Punta {formatCycleLabel(analisisTarjeta?.ciclo_punta || selectedCiclo)}
+              {analisisTarjeta?.ultimo_cerrado ? ` desde ultimo cerrado ${formatCycleLabel(analisisTarjeta.ultimo_cerrado)}` : ''}
+            </p>
           </div>
+          <em className={`tarjeta-analysis-status ${analisisTarjeta?.tono_nivel || 'muted'}`}>
+            {analisisTarjeta?.nivel || 'Sin datos'}
+          </em>
         </div>
         <div className="tarjeta-analysis-grid">
           <article>
-            <span>Total ARS</span>
-            <strong>{formatMoney(resumenAnalisis.totalArs)}</strong>
+            <span>Total ARS punta</span>
+            <strong>{formatMoney(analisisActual.total_ars || 0)}</strong>
+            <small>Promedio previo {formatMoney(analisisTarjeta?.promedio_ars || 0)}</small>
           </article>
           <article>
-            <span>Total USD</span>
-            <strong>USD {Number(resumenAnalisis.totalUsd || 0).toLocaleString('es-AR', moneyFormat)}</strong>
+            <span>Variacion consumo</span>
+            <strong>{formatPercent(analisisTarjeta?.variacion_total_ars)}</strong>
+            <small>Contra ciclos anteriores</small>
           </article>
           <article>
-            <span>Cantidad de consumos</span>
-            <strong>{resumenAnalisis.cantidadConsumos}</strong>
+            <span>Suscripciones</span>
+            <strong>{formatMoney(analisisActual.suscripciones_ars || 0)}</strong>
+            <small>{Math.round(analisisTarjeta?.participacion_suscripciones || 0)}% del resumen</small>
           </article>
           <article>
-            <span>Nuevos consumos en cuotas</span>
-            <strong>{resumenAnalisis.nuevosConsumosCuotas}</strong>
+            <span>Cuotas</span>
+            <strong>{formatMoney(analisisActual.cuotas_ars || 0)}</strong>
+            <small>{Math.round(analisisTarjeta?.participacion_cuotas || 0)}% del resumen</small>
+          </article>
+          <article>
+            <span>Total USD punta</span>
+            <strong>{formatUsd(analisisActual.total_usd || 0)}</strong>
+            <small>Promedio previo {formatUsd(analisisTarjeta?.promedio_usd || 0)}</small>
+          </article>
+          <article>
+            <span>Categoria dominante</span>
+            <strong>{categoriaPrincipalAnalisis?.categoria || 'Sin datos'}</strong>
+            <small>{Math.round(analisisTarjeta?.participacion_categoria_principal || 0)}% del ARS</small>
           </article>
         </div>
+        <div className="tarjeta-analysis-layout">
+          <div className="tarjeta-analysis-block">
+            <h3>Tendencia</h3>
+            <div className="tarjeta-trend-list">
+              {(analisisTarjeta?.serie || []).map((item) => {
+                const maxValue = Math.max(...(analisisTarjeta?.serie || []).map((serieItem) => Number(serieItem.total_ars || 0)), 1);
+                const width = Math.max(6, Math.round((Number(item.total_ars || 0) / maxValue) * 100));
+                return (
+                  <div className="tarjeta-trend-row" key={item.ciclo}>
+                    <span>{formatCycleLabel(item.ciclo)}</span>
+                    <div><i style={{ width: `${width}%` }} /></div>
+                    <strong>{formatMoney(item.total_ars || 0)}</strong>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          <div className="tarjeta-analysis-block">
+            <h3>Categorias con impacto</h3>
+            <div className="tarjeta-category-impact">
+              {(analisisTarjeta?.categorias_comparadas || []).map((item) => (
+                <div className="tarjeta-category-row" key={item.categoria}>
+                  <div>
+                    <strong>{item.categoria}</strong>
+                    <small>Promedio {formatMoney(item.promedio_ars || 0)} - {formatPercent(item.variacion_ars)}</small>
+                  </div>
+                  <span className={item.diferencia_ars > 0 ? 'warning' : item.diferencia_ars < 0 ? 'positive' : 'muted'}>
+                    {item.diferencia_ars >= 0 ? '+' : '-'}{formatMoney(Math.abs(item.diferencia_ars || 0))}
+                  </span>
+                </div>
+              ))}
+              {(analisisTarjeta?.categorias_comparadas || []).length === 0 && (
+                <p className="empty-state">Sin categorias comparables.</p>
+              )}
+            </div>
+          </div>
+        </div>
         <div className="tarjeta-insights-list">
-          <p>
-            La categoria principal es {resumenAnalisis.categoriaPrincipal?.categoria || 'sin datos'} con{' '}
-            {formatMoney(resumenAnalisis.categoriaPrincipal?.total || 0)}.
-          </p>
-          <p>
-            El consumo mas alto fue {resumenAnalisis.consumoMayor?.descripcion || 'sin datos'}.
-          </p>
-          <p>
-            El {resumenAnalisis.porcentajeCuotas}% del resumen corresponde a compras en cuotas.
-          </p>
+          {(analisisTarjeta?.insights || []).map((insight) => (
+            <p key={insight}>{insight}</p>
+          ))}
+          {(analisisTarjeta?.insights || []).length === 0 && (
+            <p>Sin datos suficientes para detectar desvios con peso.</p>
+          )}
         </div>
       </section>
         </>
