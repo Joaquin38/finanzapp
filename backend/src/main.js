@@ -2572,7 +2572,7 @@ app.get('/tarjetas-credito', async (req, res) => {
   if (!hogarId) return res.status(400).json({ error: 'hogar_id es obligatorio' });
 
   try {
-    await asegurarTarjetasCredito();
+    await asegurarTarjetasCredito({ recalcular: false });
 
     await pool.query(
       `
@@ -2620,22 +2620,6 @@ app.get('/tarjetas-credito', async (req, res) => {
           [hogarId, ciclo, tarjetaConsultaId]
         )
       : { rows: [] };
-    if (tarjetaActual) {
-      await Promise.all(
-        consumosBase
-          .filter((item) => Number(item.cantidad_cuotas || 1) > 1)
-          .map((item) => {
-            const cuotas = Math.max(Number(item.cantidad_cuotas || 1), 1);
-            const cuotaInicial = Math.min(Math.max(Number(item.cuota_inicial || 1), 1), cuotas);
-            return obtenerOCrearCierresCuotasTarjeta(tarjetaActual, item.ciclo_asignado, cuotas - cuotaInicial + 1, auditoriaUsuarioId);
-          })
-      );
-      await Promise.all(
-        consumosBase
-          .filter((item) => item.repite_mes_siguiente)
-          .map((item) => obtenerOCrearCierreTarjeta(tarjetaActual, sumarMesesCiclo(item.ciclo_asignado, 1), auditoriaUsuarioId))
-      );
-    }
     const consumosExpandidos = expandirConsumosTarjeta(consumosBase);
     const consumos = consumosExpandidos
       .filter((item) => compararCiclos(item.ciclo_asignado, ciclo) >= 0)
