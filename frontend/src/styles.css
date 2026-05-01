@@ -1353,7 +1353,7 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
   gap: 10px;
   min-width: 0;
   max-width: 100%;
-  overflow: hidden;
+  overflow: visible;
   padding: 10px;
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -1407,7 +1407,7 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
   height: 100%;
   min-width: 0;
   max-width: 100%;
-  overflow: hidden;
+  overflow: visible;
   padding: 12px;
   border-left-width: 1px;
   border-radius: 10px;
@@ -1425,6 +1425,7 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
   align-items: center;
   gap: 7px;
   min-width: 0;
+  overflow: visible;
 }
 .decision-card-header h3 {
   flex: 1;
@@ -1511,8 +1512,9 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
   position: absolute;
   right: 0;
   bottom: calc(100% + 8px);
-  z-index: 20;
+  z-index: 100;
   width: min(260px, calc(100vw - 40px));
+  max-width: min(260px, calc(100vw - 40px));
   padding: 9px 10px;
   border: 1px solid var(--border);
   border-radius: 10px;
