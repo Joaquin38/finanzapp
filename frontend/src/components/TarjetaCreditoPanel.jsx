@@ -7,6 +7,7 @@ const csvExpectedHeaders = [
   'descripcion',
   'categoria',
   'moneda',
+  'cuota_actual',
   'cantidad_cuotas',
   'modo_carga',
   'monto_total',
@@ -17,8 +18,8 @@ const csvExpectedHeaders = [
 const csvTemplateFileName = 'plantilla_consumos_tarjeta_finanzapp.csv';
 const csvTemplateRows = [
   csvExpectedHeaders.join(','),
-  '2026-05-01,Supermercado,Supermercado,ARS,1,total,25000,25000,Titular,Compra ejemplo',
-  '2026-05-02,Electrodomestico,Hogar,ARS,6,cuota,120000,20000,Titular,Compra en cuotas'
+  '2026-05-01,Supermercado,Supermercado,ARS,,1,total,25000,25000,Titular,Compra ejemplo',
+  '2026-05-02,Electrodomestico,Hogar,ARS,2,6,cuota,120000,20000,Titular,Compra en cuotas'
 ];
 
 const initialForm = {
@@ -159,11 +160,14 @@ function parseCsvText(text) {
   const lines = String(text || '').split(/\r?\n/).filter((line) => line.trim());
   if (lines.length <= 1) throw new Error('El archivo esta vacio o no tiene filas.');
   const headers = parseCsvLine(lines[0]).map((header) => header.replace(/^\uFEFF/, '').trim());
-  const missing = csvExpectedHeaders.filter((header) => !headers.includes(header));
+  const requiredHeaders = csvExpectedHeaders.filter((header) => header !== 'cuota_actual');
+  const missing = requiredHeaders.filter((header) => !headers.includes(header));
   if (missing.length) throw new Error(`Faltan headers: ${missing.join(', ')}`);
   const rows = lines.slice(1).map((line) => {
     const values = parseCsvLine(line);
-    return Object.fromEntries(headers.map((header, index) => [header, values[index] || '']));
+    const row = Object.fromEntries(headers.map((header, index) => [header, values[index] || '']));
+    if (!Object.prototype.hasOwnProperty.call(row, 'cuota_actual')) row.cuota_actual = '';
+    return row;
   });
   if (!rows.length) throw new Error('El archivo no tiene consumos.');
   return rows;
@@ -179,6 +183,11 @@ function downloadCsvTemplate() {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+function resolveCsvCuotaInicial(row) {
+  const value = Number(row.cuota_actual || 0);
+  return Number.isInteger(value) && value > 0 ? value : 1;
 }
 
 function normalizeCsvText(value) {
@@ -201,6 +210,7 @@ function validateCsvImportRow(row, fechaCierre, selectedCiclo, tarjeta, ciclosEx
   const fecha = String(row.fecha_compra || '').slice(0, 10);
   const descripcion = String(row.descripcion || '').trim();
   const moneda = String(row.moneda || '').trim().toUpperCase();
+  const cuotaActual = String(row.cuota_actual || '').trim() ? Number(row.cuota_actual) : null;
   const cuotas = Number(row.cantidad_cuotas || 0);
   const modo = String(row.modo_carga || '').trim().toLowerCase();
   const montoTotal = parseAmount(row.monto_total);
@@ -218,6 +228,7 @@ function validateCsvImportRow(row, fechaCierre, selectedCiclo, tarjeta, ciclosEx
   if (!descripcion) return { estado: 'invalida', motivo: 'Descripcion vacia', assignedCycle };
   if (!['ARS', 'USD'].includes(moneda)) return { estado: 'invalida', motivo: 'Moneda invalida', assignedCycle };
   if (!Number.isFinite(cuotas) || cuotas < 1) return { estado: 'invalida', motivo: 'Cuotas invalidas', assignedCycle };
+  if (cuotaActual != null && (!Number.isInteger(cuotaActual) || cuotaActual < 1 || cuotaActual > cuotas)) return { estado: 'invalida', motivo: 'Cuota actual invalida', assignedCycle };
   if (!['total', 'cuota'].includes(modo)) return { estado: 'invalida', motivo: 'Modo invalido', assignedCycle };
   if (modo === 'total' && (!Number.isFinite(montoTotal) || montoTotal <= 0)) return { estado: 'invalida', motivo: 'Falta monto total', assignedCycle };
   if (modo === 'cuota' && (!Number.isFinite(montoCuota) || montoCuota <= 0)) return { estado: 'invalida', motivo: 'Falta monto cuota', assignedCycle };
@@ -430,6 +441,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
             descripcion: row.descripcion,
             categoria: row.categoria || null,
             moneda: row.moneda,
+            cuota_actual: row.cuota_actual ? resolveCsvCuotaInicial(row) : null,
             cantidad_cuotas: Number(row.cantidad_cuotas || 1),
             monto_total: parseAmount(row.monto_total),
             monto_cuota: parseAmount(row.monto_cuota),
@@ -1144,7 +1156,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
                     Descargar plantilla CSV
                   </button>
                   <input type="file" accept=".csv,text/csv" onChange={handleCsvFileChange} />
-                  <small>{csvImportFileName || 'Formato esperado: fecha_compra,descripcion,categoria,moneda,cantidad_cuotas,modo_carga,monto_total,monto_cuota,titular,observaciones'}</small>
+                  <small>{csvImportFileName || csvExpectedHeaders.join(',')}</small>
                   {csvImportError && <p className="tarjeta-csv-error">{csvImportError}</p>}
                   {!csvImportError && csvImportRows.length > 0 && (
                     <p className="tarjeta-csv-ok">{csvImportRows.length} filas detectadas.</p>
@@ -1160,6 +1172,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
                         <th>Descripcion</th>
                         <th>Categoria</th>
                         <th>Moneda</th>
+                        <th>Cuota actual</th>
                         <th>Cuotas</th>
                         <th>Modo</th>
                         <th>Monto total</th>
@@ -1195,6 +1208,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
                                 <option value="USD">USD</option>
                               </select>
                             ) : row.moneda}</td>
+                            <td>{row._editing ? <input type="number" min="1" step="1" value={row.cuota_actual || ''} onChange={(e) => updateCsvImportRow(row._id, 'cuota_actual', e.target.value)} placeholder="auto" /> : (row.cuota_actual || 'auto')}</td>
                             <td>{row._editing ? <input type="number" min="1" step="1" value={row.cantidad_cuotas || ''} onChange={(e) => updateCsvImportRow(row._id, 'cantidad_cuotas', e.target.value)} /> : row.cantidad_cuotas}</td>
                             <td>{row._editing ? (
                               <select value={row.modo_carga || 'total'} onChange={(e) => updateCsvImportRow(row._id, 'modo_carga', e.target.value)}>

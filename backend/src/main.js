@@ -1106,8 +1106,10 @@ async function aplicarCorreccionesCuotasTarjeta() {
 function expandirConsumosTarjeta(consumosBase) {
   return consumosBase.flatMap((item) => {
     const cuotas = Math.max(Number(item.cantidad_cuotas || 1), 1);
-    const cuotasCompra = Array.from({ length: cuotas }, (_, index) => {
-      const cuotaNumero = Number(item.cuota_inicial || 1) + index;
+    const cuotaInicial = Math.min(Math.max(Number(item.cuota_inicial || 1), 1), cuotas);
+    const cuotasRestantes = Math.max(cuotas - cuotaInicial + 1, 1);
+    const cuotasCompra = Array.from({ length: cuotasRestantes }, (_, index) => {
+      const cuotaNumero = cuotaInicial + index;
       const cicloCuota = sumarMesesCiclo(item.ciclo_asignado, index);
       return {
         ...item,
@@ -2595,7 +2597,11 @@ app.get('/tarjetas-credito', async (req, res) => {
       await Promise.all(
         consumosBase
           .filter((item) => Number(item.cantidad_cuotas || 1) > 1)
-          .map((item) => obtenerOCrearCierresCuotasTarjeta(tarjetaActual, item.ciclo_asignado, item.cantidad_cuotas, auditoriaUsuarioId))
+          .map((item) => {
+            const cuotas = Math.max(Number(item.cantidad_cuotas || 1), 1);
+            const cuotaInicial = Math.min(Math.max(Number(item.cuota_inicial || 1), 1), cuotas);
+            return obtenerOCrearCierresCuotasTarjeta(tarjetaActual, item.ciclo_asignado, cuotas - cuotaInicial + 1, auditoriaUsuarioId);
+          })
       );
       await Promise.all(
         consumosBase
@@ -2668,6 +2674,8 @@ app.post('/tarjetas-credito/consumos', async (req, res) => {
     categoria,
     moneda,
     monto_total,
+    cuota_actual,
+    cuota_inicial,
     cantidad_cuotas = 1,
     monto_cuota,
     titular,
@@ -2676,6 +2684,7 @@ app.post('/tarjetas-credito/consumos', async (req, res) => {
   const tarjetaId = Number(tarjeta_id);
   const cierreId = Number(cierre_id || 0);
   const cuotas = Number(cantidad_cuotas || 1);
+  const cuotaInicial = Number(cuota_actual || cuota_inicial || 1);
   const montoTotal = Number(monto_total || 0);
   const montoCuota = Number(monto_cuota || 0);
   const auditoriaUsuarioId = usuarioAuditoriaId(req);
@@ -2686,6 +2695,7 @@ app.post('/tarjetas-credito/consumos', async (req, res) => {
   if (!parseFecha(fecha_compra)) return res.status(400).json({ error: 'fecha_compra debe tener formato YYYY-MM-DD' });
   if (!['ARS', 'USD'].includes(moneda)) return res.status(400).json({ error: 'moneda debe ser ARS o USD' });
   if (!Number.isInteger(cuotas) || cuotas < 1) return res.status(400).json({ error: 'cantidad_cuotas debe ser mayor o igual a 1' });
+  if (!Number.isInteger(cuotaInicial) || cuotaInicial < 1 || cuotaInicial > cuotas) return res.status(400).json({ error: 'cuota_actual debe estar entre 1 y cantidad_cuotas' });
   if (!esNumeroPositivo(montoTotal) && !esNumeroPositivo(montoCuota)) {
     return res.status(400).json({ error: 'Informá monto total o monto de cuota' });
   }
@@ -2727,7 +2737,8 @@ app.post('/tarjetas-credito/consumos', async (req, res) => {
     const totalFinal = esNumeroPositivo(montoTotal) ? montoTotal : Number((montoCuota * cuotas).toFixed(2));
     const cuotaFinal = esNumeroPositivo(montoCuota) ? montoCuota : Number((totalFinal / cuotas).toFixed(2));
     const repiteMesSiguiente = cuotas === 1 && esCategoriaSuscripcion(categoria);
-    await asegurarCierresCuotasAbiertos(tarjeta, cicloAsignado, cuotas, auditoriaUsuarioId);
+    const cuotasRestantes = Math.max(cuotas - cuotaInicial + 1, 1);
+    await asegurarCierresCuotasAbiertos(tarjeta, cicloAsignado, cuotasRestantes, auditoriaUsuarioId);
     await asegurarSuscripcionMesSiguienteAbierta(tarjeta, cicloAsignado, repiteMesSiguiente, auditoriaUsuarioId);
 
     const { rows } = await pool.query(
@@ -2737,7 +2748,7 @@ app.post('/tarjetas-credito/consumos', async (req, res) => {
         moneda, monto_total, cantidad_cuotas, monto_cuota, cuota_inicial, repite_mes_siguiente,
         titular, observaciones, creado_por_usuario_id, actualizado_por_usuario_id
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 1, $11, $12, $13, $14, $14)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $15)
       RETURNING *
       `,
       [
@@ -2751,6 +2762,7 @@ app.post('/tarjetas-credito/consumos', async (req, res) => {
         totalFinal,
         cuotas,
         cuotaFinal,
+        cuotaInicial,
         repiteMesSiguiente,
         titular ? String(titular).trim() : null,
         observaciones ? String(observaciones).trim() : null,
