@@ -83,6 +83,32 @@ function formatSignedMoney(value, formatMoney) {
   return `${numeric >= 0 ? '+' : '-'}${formatMoney(Math.abs(numeric))}`;
 }
 
+const categoryCurvePalette = ['#2563eb', '#059669', '#d97706', '#7c3aed', '#dc2626', '#0891b2', '#be123c', '#4f46e5', '#0f766e', '#9333ea'];
+
+function getCategoryCurveColor(category) {
+  const hash = String(category || '').split('').reduce((acc, char) => ((acc * 31) + char.charCodeAt(0)) % 9973, 0);
+  return categoryCurvePalette[hash % categoryCurvePalette.length];
+}
+
+function formatAxisMoney(value, currency) {
+  const numeric = Number(value || 0);
+  const abs = Math.abs(numeric);
+  const suffix = abs >= 1000000 ? ' M' : abs >= 1000 ? ' k' : '';
+  const divider = abs >= 1000000 ? 1000000 : abs >= 1000 ? 1000 : 1;
+  const amount = (numeric / divider).toLocaleString('es-AR', { maximumFractionDigits: abs >= 1000 ? 1 : 0 });
+  return currency === 'USD' ? `USD ${amount}${suffix}` : `$${amount}${suffix}`;
+}
+
+function buildSmoothPath(points = []) {
+  if (points.length === 0) return '';
+  if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
+  return points.slice(0, -1).reduce((path, point, index) => {
+    const next = points[index + 1];
+    const controlX = point.x + (next.x - point.x) / 2;
+    return `${path} C ${controlX} ${point.y}, ${controlX} ${next.y}, ${next.x} ${next.y}`;
+  }, `M ${points[0].x} ${points[0].y}`);
+}
+
 function buildCategoryAnalysis(analisisTarjeta = {}) {
   const serie = [...(analisisTarjeta.serie || [])].reverse();
   const serieExtendida = [...(analisisTarjeta.serie_extendida || analisisTarjeta.serie || [])].reverse();
@@ -126,7 +152,9 @@ function buildCategoryCurveData(serie = [], selectedCategories = [], periodCount
     const found = (cycle.categorias || []).find((entry) => entry.categoria === category) || {};
     return Number(found.total_usd || 0);
   })), 1);
-  return { visibleSerie, maxArs, maxUsd };
+  const yTicksArs = [1, 0.5, 0].map((ratio) => maxArs * ratio);
+  const yTicksUsd = [1, 0.5, 0].map((ratio) => maxUsd * ratio);
+  return { visibleSerie, maxArs, maxUsd, yTicksArs, yTicksUsd };
 }
 
 function parseAmount(value) {
@@ -1804,14 +1832,17 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
             {analysisCategoryOptions.map((category) => {
               const active = selectedAnalysisCategories.includes(category);
               const disabled = !active && selectedAnalysisCategories.length >= 6;
+              const color = getCategoryCurveColor(category);
               return (
                 <button
                   key={category}
                   type="button"
                   className={active ? 'active' : ''}
                   disabled={disabled}
+                  style={{ '--category-color': color }}
                   onClick={() => toggleAnalysisCategory(category)}
                 >
+                  <i aria-hidden="true" />
                   {category}
                 </button>
               );
@@ -1820,11 +1851,19 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
           </div>
           <div className="tarjeta-category-curve-chart">
             <svg viewBox="0 0 920 250" role="img" aria-label="Evolucion de categorias seleccionadas">
-              {[0, 1, 2, 3].map((line) => (
-                <line key={line} x1="44" x2="880" y1={34 + line * 48} y2={34 + line * 48} />
-              ))}
+              {(analysisCurveCurrency === 'USD' ? categoryCurveData.yTicksUsd : categoryCurveData.yTicksArs).map((value, index) => {
+                const y = 38 + index * 76;
+                return (
+                  <g key={`${analysisCurveCurrency}-${value}-${index}`}>
+                    <line x1="76" x2="880" y1={y} y2={y} />
+                    <text className="axis-label" x="66" y={y + 4}>
+                      {formatAxisMoney(value, analysisCurveCurrency)}
+                    </text>
+                  </g>
+                );
+              })}
               {categoryCurveData.visibleSerie.map((cycle, index) => {
-                const x = 44 + (index * (836 / Math.max(categoryCurveData.visibleSerie.length - 1, 1)));
+                const x = 76 + (index * (804 / Math.max(categoryCurveData.visibleSerie.length - 1, 1)));
                 return (
                   <g key={cycle.ciclo}>
                     <line className="period-line" x1={x} x2={x} y1="28" y2="190" />
@@ -1832,21 +1871,21 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
                   </g>
                 );
               })}
-              {selectedAnalysisCategories.map((category, categoryIndex) => {
-                const color = ['#2563eb', '#16a34a', '#f59e0b', '#7c3aed', '#dc2626', '#0891b2'][categoryIndex % 6];
+              {selectedAnalysisCategories.map((category) => {
+                const color = getCategoryCurveColor(category);
                 const maxValue = analysisCurveCurrency === 'USD' ? categoryCurveData.maxUsd : categoryCurveData.maxArs;
                 const points = categoryCurveData.visibleSerie.map((cycle, index) => {
                   const found = (cycle.categorias || []).find((entry) => entry.categoria === category) || {};
                   const value = Number(analysisCurveCurrency === 'USD' ? found.total_usd : found.total_ars) || 0;
-                  const x = 44 + (index * (836 / Math.max(categoryCurveData.visibleSerie.length - 1, 1)));
+                  const x = 76 + (index * (804 / Math.max(categoryCurveData.visibleSerie.length - 1, 1)));
                   const y = 190 - ((value / Math.max(maxValue, 1)) * 150);
                   return { x, y, value, cycle: cycle.ciclo };
                 });
                 return (
                   <g key={category}>
-                    <polyline points={points.map((point) => `${point.x},${point.y}`).join(' ')} stroke={color} />
+                    <path d={buildSmoothPath(points)} stroke={color} />
                     {points.map((point) => (
-                      <circle key={`${category}-${point.cycle}`} cx={point.x} cy={point.y} r="4" fill={color}>
+                      <circle key={`${category}-${point.cycle}`} cx={point.x} cy={point.y} r="3" fill={color}>
                         <title>{category} - {formatCycleLabel(point.cycle)}: {analysisCurveCurrency === 'USD' ? formatUsd(point.value) : formatMoney(point.value)}</title>
                       </circle>
                     ))}
@@ -1856,8 +1895,8 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
             </svg>
           </div>
           <div className="tarjeta-category-curve-legend">
-            {selectedAnalysisCategories.map((category, index) => (
-              <span key={category} style={{ '--curve-color': ['#2563eb', '#16a34a', '#f59e0b', '#7c3aed', '#dc2626', '#0891b2'][index % 6] }}>
+            {selectedAnalysisCategories.map((category) => (
+              <span key={category} style={{ '--curve-color': getCategoryCurveColor(category) }}>
                 {category}
               </span>
             ))}
