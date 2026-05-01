@@ -2615,9 +2615,30 @@ app.get('/tarjetas-credito', async (req, res) => {
           LEFT JOIN cierres_tarjeta crt ON crt.id = ct.cierre_id
           WHERE tc.hogar_id = $1
             AND ($3::BIGINT IS NULL OR ct.tarjeta_id = $3)
+            AND (
+              ct.ciclo_asignado >= $2
+              OR TO_CHAR(TO_DATE(ct.ciclo_asignado || '-01', 'YYYY-MM-DD') + (GREATEST(ct.cantidad_cuotas - ct.cuota_inicial, 0) || ' months')::INTERVAL, 'YYYY-MM') >= $2
+              OR (ct.repite_mes_siguiente AND TO_CHAR(TO_DATE(ct.ciclo_asignado || '-01', 'YYYY-MM-DD') + INTERVAL '1 month', 'YYYY-MM') >= $2)
+            )
           ORDER BY ct.fecha_compra DESC, ct.id DESC
           `,
           [hogarId, ciclo, tarjetaConsultaId]
+        )
+      : { rows: [] };
+    const { rows: consumosRegistrados } = cicloEsValido(ciclo)
+      ? await pool.query(
+          `
+          SELECT ct.id, ct.tarjeta_id, ct.cierre_id, ct.ciclo_asignado, ct.fecha_compra,
+                 ct.descripcion, ct.categoria, ct.moneda, ct.monto_total,
+                 ct.cantidad_cuotas, ct.monto_cuota, ct.cuota_inicial,
+                 ct.titular, ct.observaciones
+          FROM consumos_tarjeta ct
+          JOIN tarjetas_credito tc ON tc.id = ct.tarjeta_id
+          WHERE tc.hogar_id = $1
+            AND ($2::BIGINT IS NULL OR ct.tarjeta_id = $2)
+          ORDER BY ct.fecha_compra DESC, ct.id DESC
+          `,
+          [hogarId, tarjetaConsultaId]
         )
       : { rows: [] };
     const consumosExpandidos = expandirConsumosTarjeta(consumosBase);
@@ -2666,7 +2687,7 @@ app.get('/tarjetas-credito', async (req, res) => {
       tarjetas,
       cierre: cierreActual || null,
       consumos,
-      consumos_registrados: consumosExpandidos,
+      consumos_registrados: consumosRegistrados,
       resumen,
       historial_resumenes: historialResumenes,
       analisis_tarjeta: analisisTarjeta

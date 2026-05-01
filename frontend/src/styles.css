@@ -3766,6 +3766,23 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
 .tarjeta-summary-state.abierto {
   color: #16a34a;
 }
+.tarjeta-inline-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: max-content;
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.12);
+  color: #1d4ed8;
+  font-size: 13px;
+  font-weight: 900;
+}
+.tarjeta-inline-loading .btn-spinner {
+  width: 14px;
+  height: 14px;
+}
 .tarjeta-summary-navigator {
   display: grid;
   grid-template-columns: auto minmax(220px, 320px) auto;
