@@ -508,12 +508,31 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
   }, [ciclo]);
 
   useEffect(() => {
-    cargarTarjetas().catch((err) => onToast?.({ type: 'error', message: err.message }));
+    let active = true;
+    setLoading(true);
+    setLoadingAction('cycle-load');
+    cargarTarjetas()
+      .catch((err) => onToast?.({ type: 'error', message: err.message }))
+      .finally(() => {
+        if (!active) return;
+        setLoading(false);
+        setLoadingAction('');
+      });
+    return () => {
+      active = false;
+    };
   }, [hogarId, selectedCiclo]);
 
   const handleTarjetaChange = (value) => {
     setForm((prev) => ({ ...prev, tarjeta_id: value }));
-    cargarTarjetas(value, selectedCiclo).catch((err) => onToast?.({ type: 'error', message: err.message }));
+    setLoading(true);
+    setLoadingAction('cycle-load');
+    cargarTarjetas(value, selectedCiclo)
+      .catch((err) => onToast?.({ type: 'error', message: err.message }))
+      .finally(() => {
+        setLoading(false);
+        setLoadingAction('');
+      });
   };
 
   const handleCicloChange = (value) => {
@@ -880,6 +899,12 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
 
   return (
     <section className="tarjeta-panel">
+      {loadingAction === 'cycle-load' && (
+        <div className="tarjeta-loading-overlay" role="status" aria-live="polite">
+          <span className="btn-spinner" aria-hidden="true" />
+          <strong>Actualizando resumen...</strong>
+        </div>
+      )}
       <div className="panel tarjeta-hero">
         <div>
           <p className="eyebrow">Tarjeta de credito</p>
@@ -943,25 +968,25 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
           Resumen {formatCycleLabel(selectedCiclo)} {resumenSeleccionadoCerrado ? 'cerrado' : 'abierto'}
         </p>
         <div className="tarjeta-summary-navigator" aria-label="Navegar resumenes de tarjeta">
-          <button type="button" className="btn-inline secondary" onClick={() => navegarResumen(-1)}>
+          <button type="button" className="btn-inline secondary" onClick={() => navegarResumen(-1)} disabled={loadingAction === 'cycle-load'}>
             Anterior
           </button>
           <label>
             Ver resumen
-            <select value={selectedCiclo} onChange={(e) => handleCicloChange(e.target.value)}>
+            <select value={selectedCiclo} onChange={(e) => handleCicloChange(e.target.value)} disabled={loadingAction === 'cycle-load'}>
               {ciclosNavegacionResumen.map((item) => (
                 <option key={item} value={item}>{formatCycleLabel(item)}</option>
               ))}
             </select>
           </label>
-          <button type="button" className="btn-inline secondary" onClick={() => navegarResumen(1)}>
+          <button type="button" className="btn-inline secondary" onClick={() => navegarResumen(1)} disabled={loadingAction === 'cycle-load'}>
             Siguiente
           </button>
         </div>
         <div className="tarjeta-current-grid">
           <label>
             Tarjeta seleccionada
-            <select value={form.tarjeta_id} onChange={(e) => handleTarjetaChange(e.target.value)}>
+            <select value={form.tarjeta_id} onChange={(e) => handleTarjetaChange(e.target.value)} disabled={loadingAction === 'cycle-load'}>
               {tarjetas.map((tarjeta) => (
                 <option key={tarjeta.id} value={tarjeta.id}>{tarjeta.nombre}</option>
               ))}

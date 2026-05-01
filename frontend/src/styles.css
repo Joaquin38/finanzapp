@@ -3607,8 +3607,29 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   color: var(--text-primary);
 }
 .tarjeta-panel {
+  position: relative;
   display: grid;
   gap: 16px;
+}
+.tarjeta-loading-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 15;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 10px;
+  min-height: 220px;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.68);
+  color: #fff;
+  text-align: center;
+}
+.tarjeta-loading-overlay .btn-spinner {
+  width: 26px;
+  height: 26px;
+  border-color: rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
 }
 .tarjeta-hero {
   display: flex;
