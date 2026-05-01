@@ -300,6 +300,14 @@ function validateCsvImportRow(row, fechaCierre, selectedCiclo, tarjeta, ciclosEx
   return { estado: 'valida', motivo: 'Lista para importar', assignedCycle, pasaAlProximo, willCreateSummary, nextSummaryDefaults, posibleDuplicado };
 }
 
+function getCsvResumenImpact(row) {
+  const cuotas = Math.max(Number(row.cantidad_cuotas || 1), 1);
+  const montoCuota = parseAmount(row.monto_cuota);
+  const montoTotal = parseAmount(row.monto_total);
+  if (cuotas > 1) return Number(montoCuota || 0);
+  return Number(montoTotal || montoCuota || 0);
+}
+
 export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = [], formatMoney, onToast }) {
   const [tarjetas, setTarjetas] = useState([]);
   const [consumos, setConsumos] = useState([]);
@@ -409,9 +417,9 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
       else if (row._validation.estado === 'invalida') acc.invalid += 1;
       else {
         acc.toImport += 1;
-        const total = parseAmount(row.monto_total);
-        if (row.moneda === 'USD') acc.totalUsd += Number(total || 0);
-        else acc.totalArs += Number(total || 0);
+        const impactoResumen = getCsvResumenImpact(row);
+        if (row.moneda === 'USD') acc.totalUsd += impactoResumen;
+        else acc.totalArs += impactoResumen;
       }
       return acc;
     },
@@ -908,8 +916,8 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
                 <div><span>Filas a importar</span><strong>{csvImportStats.toImport}</strong></div>
                 <div><span>Filas ignoradas</span><strong>{csvImportStats.ignored}</strong></div>
                 <div><span>Filas invalidas</span><strong>{csvImportStats.invalid}</strong></div>
-                <div><span>Total ARS</span><strong>{formatMoney(csvImportStats.totalArs)}</strong></div>
-                <div><span>Total USD</span><strong>{formatUsd(csvImportStats.totalUsd)}</strong></div>
+                <div><span>Estimado resumen ARS</span><strong>{formatMoney(csvImportStats.totalArs)}</strong></div>
+                <div><span>Estimado resumen USD</span><strong>{formatUsd(csvImportStats.totalUsd)}</strong></div>
               </div>
             )}
           </div>
@@ -1516,8 +1524,8 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
                   <div><span>Filas a importar</span><strong>{csvImportStats.toImport}</strong></div>
                   <div><span>Filas ignoradas</span><strong>{csvImportStats.ignored}</strong></div>
                   <div><span>Filas invalidas</span><strong>{csvImportStats.invalid}</strong></div>
-                  <div><span>Total ARS</span><strong>{formatMoney(csvImportStats.totalArs)}</strong></div>
-                  <div><span>Total USD</span><strong>{formatUsd(csvImportStats.totalUsd)}</strong></div>
+                  <div><span>Estimado resumen ARS</span><strong>{formatMoney(csvImportStats.totalArs)}</strong></div>
+                  <div><span>Estimado resumen USD</span><strong>{formatUsd(csvImportStats.totalUsd)}</strong></div>
                 </div>
               )}
             </div>
