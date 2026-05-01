@@ -4345,8 +4345,130 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
 }
 .tarjeta-category-distribution,
 .tarjeta-cycle-chart,
-.tarjeta-category-heatmap {
+.tarjeta-category-heatmap,
+.tarjeta-category-curve {
   background: var(--surface);
+}
+.tarjeta-curve-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 14px;
+}
+.tarjeta-curve-header p {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+.tarjeta-curve-controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.tarjeta-curve-controls label {
+  display: grid;
+  grid-template-columns: auto 120px auto;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+.tarjeta-curve-controls input {
+  accent-color: #2563eb;
+}
+.tarjeta-curve-currency {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(44px, 1fr));
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-soft);
+}
+.tarjeta-curve-currency button,
+.tarjeta-category-picker button {
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+.tarjeta-curve-currency button {
+  min-height: 28px;
+}
+.tarjeta-curve-currency button.active,
+.tarjeta-category-picker button.active {
+  background: #2563eb;
+  color: #fff;
+}
+.tarjeta-category-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.tarjeta-category-picker button {
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-soft);
+}
+.tarjeta-category-picker button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.tarjeta-category-curve-chart {
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.tarjeta-category-curve-chart svg {
+  display: block;
+  min-width: 720px;
+  width: 100%;
+  height: auto;
+}
+.tarjeta-category-curve-chart line {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.tarjeta-category-curve-chart .period-line {
+  stroke-dasharray: 3 5;
+  opacity: 0.7;
+}
+.tarjeta-category-curve-chart polyline {
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.tarjeta-category-curve-chart text {
+  fill: var(--text-muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-anchor: middle;
+}
+.tarjeta-category-curve-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.tarjeta-category-curve-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 800;
+}
+.tarjeta-category-curve-legend span::before {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--curve-color);
 }
 .tarjeta-category-bars {
   display: grid;
@@ -5758,6 +5880,8 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   .tarjeta-table-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tarjeta-analysis-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tarjeta-analysis-layout { grid-template-columns: 1fr; }
+  .tarjeta-curve-header { flex-direction: column; }
+  .tarjeta-curve-controls { justify-content: flex-start; }
   .tarjeta-category-bar-row { grid-template-columns: minmax(160px, 1fr) minmax(0, 1fr); }
   .tarjeta-category-bar-values.usd { grid-column: 2; }
   .tarjeta-cycle-chart-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -6055,6 +6179,7 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   .tarjeta-cycle-chart-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tarjeta-category-heatmap-head,
   .tarjeta-category-heatmap-row { grid-template-columns: minmax(90px, 1fr) repeat(6, minmax(18px, 0.25fr)); }
+  .tarjeta-curve-controls label { grid-template-columns: 1fr; }
   .tarjeta-trend-row strong { text-align: left; }
   .tarjeta-summary-navigator { grid-template-columns: 1fr; }
   .tarjeta-consumo-form { grid-template-columns: 1fr; }

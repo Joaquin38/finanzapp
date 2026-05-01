@@ -1216,8 +1216,11 @@ function construirAnalisisTarjeta(consumosExpandidos, historialResumenes, cicloS
     .filter((item) => item.estado === 'cerrado')
     .sort((a, b) => compararCiclos(b.ciclo, a.ciclo))[0] || null;
   const cicloPunta = cicloSeleccionado;
+  const cicloBaseAbierto = ultimoCerrado ? sumarMesesCiclo(ultimoCerrado.ciclo, 1) : cicloSeleccionado;
   const ciclos = Array.from({ length: 6 }, (_, index) => sumarMesesCiclo(cicloPunta, -index)).filter(Boolean);
+  const ciclosExtendidos = Array.from({ length: 12 }, (_, index) => sumarMesesCiclo(cicloBaseAbierto, -index)).filter(Boolean);
   const serie = ciclos.map((ciclo) => resumirCicloTarjeta(ciclo, consumosExpandidos));
+  const serieExtendida = ciclosExtendidos.map((ciclo) => resumirCicloTarjeta(ciclo, consumosExpandidos));
   const actual = serie[0] || resumirCicloTarjeta(cicloPunta, []);
   const anteriores = serie.slice(1);
   const promedioArs = promediarValores(anteriores, (item) => item.total_ars);
@@ -1325,6 +1328,7 @@ function construirAnalisisTarjeta(consumosExpandidos, historialResumenes, cicloS
 
   return {
     ciclo_punta: cicloPunta,
+    ciclo_base_abierto: cicloBaseAbierto,
     ultimo_cerrado: ultimoCerrado?.ciclo || null,
     nivel,
     tono_nivel: tonoNivel,
@@ -1352,6 +1356,7 @@ function construirAnalisisTarjeta(consumosExpandidos, historialResumenes, cicloS
     participacion_categoria_principal_usd: participacionCategoriaPrincipalUsd,
     categorias_comparadas: categoriasComparadas,
     serie,
+    serie_extendida: serieExtendida,
     insights: insights.slice(0, 5)
   };
 }
