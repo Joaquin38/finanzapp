@@ -7,6 +7,7 @@ const csvExpectedHeaders = [
   'descripcion',
   'categoria',
   'moneda',
+  'cuota_actual',
   'cantidad_cuotas',
   'modo_carga',
   'monto_total',
@@ -17,8 +18,8 @@ const csvExpectedHeaders = [
 const csvTemplateFileName = 'plantilla_consumos_tarjeta_finanzapp.csv';
 const csvTemplateRows = [
   csvExpectedHeaders.join(','),
-  '2026-05-01,Supermercado,Supermercado,ARS,1,total,25000,25000,Titular,Compra ejemplo',
-  '2026-05-02,Electrodomestico,Hogar,ARS,6,cuota,120000,20000,Titular,Compra en cuotas'
+  '2026-05-01,Supermercado,Supermercado,ARS,,1,total,25000,25000,Titular,Compra ejemplo',
+  '2026-05-02,Electrodomestico,Hogar,ARS,2,6,cuota,120000,20000,Titular,Compra en cuotas'
 ];
 
 const initialForm = {
@@ -77,11 +78,6 @@ function formatUsd(value) {
   return `USD ${Number(value || 0).toLocaleString('es-AR', moneyFormat)}`;
 }
 
-function formatSignedMoney(value, formatter) {
-  const numeric = Number(value || 0);
-  return `${numeric >= 0 ? '+' : '-'}${formatter(Math.abs(numeric))}`;
-}
-
 function parseAmount(value) {
   const raw = String(value ?? '').trim();
   const normalized = raw.includes(',') ? raw.replace(/\./g, '').replace(',', '.') : raw;
@@ -130,11 +126,19 @@ function resolvePreviewCycle(fechaCompra, fechaCierreReferencia) {
   return diaCompra > diaCierre ? addMonthsToCycle(cicloCompra, 1) : cicloCompra;
 }
 
-function resolveCsvAssignedCycle(fechaCompra, fechaCierreSeleccionada, selectedCiclo) {
-  if (!fechaCompra || !fechaCierreSeleccionada || !selectedCiclo) return '';
-  return String(fechaCompra).slice(0, 10) <= String(fechaCierreSeleccionada).slice(0, 10)
-    ? selectedCiclo
-    : addMonthsToCycle(selectedCiclo, 1);
+function getCsvClosureDate(ciclo, selectedCiclo, fechaCierreSeleccionada, tarjeta, cierresExistentes) {
+  const cierreExistente = cierresExistentes.find((item) => item.ciclo === ciclo);
+  if (cierreExistente?.fecha_cierre) return String(cierreExistente.fecha_cierre).slice(0, 10);
+  if (ciclo === selectedCiclo && fechaCierreSeleccionada) return String(fechaCierreSeleccionada).slice(0, 10);
+  return getDateForCycleDay(ciclo, tarjeta?.dia_cierre_default || 31);
+}
+
+function resolveCsvAssignedCycle(fechaCompra, selectedCiclo, fechaCierreSeleccionada, tarjeta, cierresExistentes = []) {
+  if (!fechaCompra) return '';
+  const cicloCompra = String(fechaCompra).slice(0, 7);
+  const fechaCierreCompra = getCsvClosureDate(cicloCompra, selectedCiclo, fechaCierreSeleccionada, tarjeta, cierresExistentes);
+  if (!fechaCierreCompra) return '';
+  return String(fechaCompra).slice(0, 10) <= fechaCierreCompra ? cicloCompra : addMonthsToCycle(cicloCompra, 1);
 }
 
 function parseCsvLine(line) {
@@ -164,11 +168,14 @@ function parseCsvText(text) {
   const lines = String(text || '').split(/\r?\n/).filter((line) => line.trim());
   if (lines.length <= 1) throw new Error('El archivo esta vacio o no tiene filas.');
   const headers = parseCsvLine(lines[0]).map((header) => header.replace(/^\uFEFF/, '').trim());
-  const missing = csvExpectedHeaders.filter((header) => !headers.includes(header));
+  const requiredHeaders = csvExpectedHeaders.filter((header) => header !== 'cuota_actual');
+  const missing = requiredHeaders.filter((header) => !headers.includes(header));
   if (missing.length) throw new Error(`Faltan headers: ${missing.join(', ')}`);
   const rows = lines.slice(1).map((line) => {
     const values = parseCsvLine(line);
-    return Object.fromEntries(headers.map((header, index) => [header, values[index] || '']));
+    const row = Object.fromEntries(headers.map((header, index) => [header, values[index] || '']));
+    if (!Object.prototype.hasOwnProperty.call(row, 'cuota_actual')) row.cuota_actual = '';
+    return row;
   });
   if (!rows.length) throw new Error('El archivo no tiene consumos.');
   return rows;
@@ -186,43 +193,59 @@ function downloadCsvTemplate() {
   URL.revokeObjectURL(url);
 }
 
-function normalizeCsvText(value) {
-  return String(value || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+function resolveCsvCuotaInicial(row) {
+  const value = Number(row.cuota_actual || 0);
+  return Number.isInteger(value) && value > 0 ? value : 1;
+}
+
+function amountsAreClose(a, b, moneda) {
+  const left = Number(a || 0);
+  const right = Number(b || 0);
+  if (!Number.isFinite(left) || !Number.isFinite(right) || left <= 0 || right <= 0) return false;
+  const tolerance = String(moneda || '').toUpperCase() === 'USD' ? 1 : 10;
+  return Math.abs(left - right) <= tolerance;
 }
 
 function hasSimilarConsumo(row, consumosExistentes, tarjetaId) {
-  return consumosExistentes.some((item) => (
+  const moneda = String(row.moneda || '').toUpperCase();
+  const montoTotal = parseAmount(row.monto_total);
+  const montoCuota = parseAmount(row.monto_cuota);
+  return consumosExistentes.find((item) => (
     Number(item.tarjeta_id) === Number(tarjetaId) &&
     String(item.fecha_compra || '').slice(0, 10) === String(row.fecha_compra || '').slice(0, 10) &&
-    normalizeCsvText(item.descripcion) === normalizeCsvText(row.descripcion) &&
-    String(item.moneda || '').toUpperCase() === String(row.moneda || '').toUpperCase() &&
-    Number(item.monto_total || 0) === Number(parseAmount(row.monto_total) || 0) &&
-    Number(item.cantidad_cuotas || 1) === Number(row.cantidad_cuotas || 1)
+    String(item.moneda || '').toUpperCase() === moneda &&
+    Number(item.cantidad_cuotas || 1) === Number(row.cantidad_cuotas || 1) &&
+    (
+      amountsAreClose(item.monto_cuota, montoCuota, moneda) ||
+      amountsAreClose(item.monto_total, montoTotal, moneda)
+    )
   ));
 }
 
-function validateCsvImportRow(row, fechaCierre, selectedCiclo, tarjeta, ciclosExistentes, consumosExistentes) {
+function validateCsvImportRow(row, fechaCierre, selectedCiclo, tarjeta, ciclosExistentes, consumosExistentes, cierresExistentes) {
   if (row._ignored) return { estado: 'ignorada', motivo: 'Fila ignorada', assignedCycle: '' };
   const fecha = String(row.fecha_compra || '').slice(0, 10);
   const descripcion = String(row.descripcion || '').trim();
   const moneda = String(row.moneda || '').trim().toUpperCase();
+  const cuotaActual = String(row.cuota_actual || '').trim() ? Number(row.cuota_actual) : null;
   const cuotas = Number(row.cantidad_cuotas || 0);
   const modo = String(row.modo_carga || '').trim().toLowerCase();
   const montoTotal = parseAmount(row.monto_total);
   const montoCuota = parseAmount(row.monto_cuota);
-  const assignedCycle = resolveCsvAssignedCycle(fecha, fechaCierre, selectedCiclo);
-  const nextCycle = addMonthsToCycle(selectedCiclo, 1);
-  const pasaAlProximo = assignedCycle === nextCycle;
-  const willCreateSummary = pasaAlProximo && !ciclosExistentes.has(nextCycle);
+  const assignedCycle = resolveCsvAssignedCycle(fecha, selectedCiclo, fechaCierre, tarjeta, cierresExistentes);
+  const cicloCompra = String(fecha || '').slice(0, 7);
+  const pasaAlProximo = assignedCycle && assignedCycle !== cicloCompra;
+  const willCreateSummary = assignedCycle && !ciclosExistentes.has(assignedCycle);
   const nextSummaryDefaults = willCreateSummary ? {
-    fecha_cierre: getDateForCycleDay(nextCycle, tarjeta?.dia_cierre_default || 31),
-    fecha_vencimiento: getDateForCycleDay(nextCycle, tarjeta?.dia_vencimiento_default)
+    fecha_cierre: getDateForCycleDay(assignedCycle, tarjeta?.dia_cierre_default || 31),
+    fecha_vencimiento: getDateForCycleDay(assignedCycle, tarjeta?.dia_vencimiento_default)
   } : null;
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha) || Number.isNaN(new Date(`${fecha}T00:00:00`).getTime())) return { estado: 'invalida', motivo: 'Fecha invalida', assignedCycle };
   if (!descripcion) return { estado: 'invalida', motivo: 'Descripcion vacia', assignedCycle };
   if (!['ARS', 'USD'].includes(moneda)) return { estado: 'invalida', motivo: 'Moneda invalida', assignedCycle };
   if (!Number.isFinite(cuotas) || cuotas < 1) return { estado: 'invalida', motivo: 'Cuotas invalidas', assignedCycle };
+  if (cuotaActual != null && (!Number.isInteger(cuotaActual) || cuotaActual < 1 || cuotaActual > cuotas)) return { estado: 'invalida', motivo: 'Cuota actual invalida', assignedCycle };
   if (!['total', 'cuota'].includes(modo)) return { estado: 'invalida', motivo: 'Modo invalido', assignedCycle };
   if (modo === 'total' && (!Number.isFinite(montoTotal) || montoTotal <= 0)) return { estado: 'invalida', motivo: 'Falta monto total', assignedCycle };
   if (modo === 'cuota' && (!Number.isFinite(montoCuota) || montoCuota <= 0)) return { estado: 'invalida', motivo: 'Falta monto cuota', assignedCycle };
@@ -231,9 +254,12 @@ function validateCsvImportRow(row, fechaCierre, selectedCiclo, tarjeta, ciclosEx
   const categoria = String(row.categoria || '').trim().toLowerCase();
   const montoCalculado = modo === 'total' ? montoTotal : montoCuota * cuotas;
   const posibleDuplicado = hasSimilarConsumo(row, consumosExistentes, tarjeta?.id);
+  if (posibleDuplicado) {
+    const mismoResumen = String(posibleDuplicado.ciclo_asignado || '') === String(assignedCycle || '');
+    return { estado: 'revisar', motivo: mismoResumen ? 'Ya cargado en este resumen' : 'Ya cargado en otro resumen', assignedCycle, pasaAlProximo, willCreateSummary, nextSummaryDefaults, posibleDuplicado };
+  }
   if (!categoria || categoria === 'sin categoria' || categoria === 'sin categoría') return { estado: 'revisar', motivo: 'Sin categoria', assignedCycle, pasaAlProximo, willCreateSummary, nextSummaryDefaults };
   if (!Number.isFinite(montoCalculado) || montoCalculado <= 0) return { estado: 'revisar', motivo: 'Monto calculado 0', assignedCycle, pasaAlProximo, willCreateSummary, nextSummaryDefaults };
-  if (posibleDuplicado) return { estado: 'revisar', motivo: 'Ya existe un consumo similar', assignedCycle, pasaAlProximo, willCreateSummary, nextSummaryDefaults, posibleDuplicado };
   return { estado: 'valida', motivo: 'Lista para importar', assignedCycle, pasaAlProximo, willCreateSummary, nextSummaryDefaults, posibleDuplicado };
 }
 
@@ -246,6 +272,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
   const [savedCierreForm, setSavedCierreForm] = useState({ fecha_cierre: '', fecha_vencimiento: '' });
   const [resumen, setResumen] = useState({ total_ars: 0, total_usd: 0, consumos: 0, cuotas_futuras: 0 });
   const [historialResumenes, setHistorialResumenes] = useState([]);
+  const [consumosRegistrados, setConsumosRegistrados] = useState([]);
   const [analisisTarjeta, setAnalisisTarjeta] = useState(null);
   const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState(null);
@@ -331,8 +358,8 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
     [consumos, historialResumenes, selectedCiclo]
   );
   const csvRowsWithValidation = useMemo(
-    () => csvImportRows.map((row) => ({ ...row, _validation: validateCsvImportRow(row, savedCierreForm.fecha_cierre, selectedCiclo, tarjetaActual, csvExistingCycles, consumos) })),
-    [csvImportRows, savedCierreForm.fecha_cierre, selectedCiclo, tarjetaActual, csvExistingCycles, consumos]
+    () => csvImportRows.map((row) => ({ ...row, _validation: validateCsvImportRow(row, savedCierreForm.fecha_cierre, selectedCiclo, tarjetaActual, csvExistingCycles, consumosRegistrados, historialResumenes) })),
+    [csvImportRows, savedCierreForm.fecha_cierre, selectedCiclo, tarjetaActual, csvExistingCycles, consumosRegistrados, historialResumenes]
   );
   const csvHasInvalidRows = csvRowsWithValidation.some((row) => row._validation.estado === 'invalida');
   const csvImportableRows = csvRowsWithValidation.filter((row) => !row._ignored && row._validation.estado !== 'invalida');
@@ -418,23 +445,15 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
     let imported = 0;
     let errors = 0;
     try {
-      const cierreIdsByCycle = new Map();
-      if (cierre?.id) cierreIdsByCycle.set(selectedCiclo, cierre.id);
       for (const row of csvImportableRows) {
         try {
-          const assignedCycle = row._validation.assignedCycle;
-          if (!cierreIdsByCycle.has(assignedCycle)) {
-            const data = await getTarjetasCredito(hogarId, assignedCycle, tarjetaActual?.id);
-            if (data.cierre?.id) cierreIdsByCycle.set(assignedCycle, data.cierre.id);
-          }
           await createConsumoTarjeta({
             tarjeta_id: Number(tarjetaActual?.id || form.tarjeta_id),
-            cierre_id: cierreIdsByCycle.get(assignedCycle),
-            ciclo_actual: selectedCiclo,
             fecha_compra: row.fecha_compra,
             descripcion: row.descripcion,
             categoria: row.categoria || null,
             moneda: row.moneda,
+            cuota_actual: row.cuota_actual ? resolveCsvCuotaInicial(row) : null,
             cantidad_cuotas: Number(row.cantidad_cuotas || 1),
             monto_total: parseAmount(row.monto_total),
             monto_cuota: parseAmount(row.monto_cuota),
@@ -469,6 +488,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
     setCierreForm(nextCierreForm);
     setSavedCierreForm(nextCierreForm);
     setConsumos(data.consumos || []);
+    setConsumosRegistrados(data.consumos_registrados || data.consumos || []);
     setResumen(data.resumen || { total_ars: 0, total_usd: 0, consumos: 0, cuotas_futuras: 0 });
     setHistorialResumenes(data.historial_resumenes || []);
     setAnalisisTarjeta(data.analisis_tarjeta || null);
@@ -689,6 +709,163 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
     { label: 'Cantidad de consumos', value: resumen.consumos || 0, tone: 'count' },
     { label: 'Cuotas futuras', value: resumen.cuotas_futuras || 0, tone: 'future' }
   ];
+
+  if (csvImportOpen) {
+    return (
+      <section className="tarjeta-panel tarjeta-csv-screen">
+        <div className="panel tarjeta-csv-modal">
+          <div className="panel-header tarjeta-csv-screen-header">
+            <div>
+              <p className="eyebrow">Tarjeta de credito</p>
+              <h2 id="csv-import-title">Importar consumos desde CSV</h2>
+            </div>
+            <button className="close-btn" type="button" onClick={closeCsvImportModal} aria-label="Cerrar">
+              x
+            </button>
+          </div>
+          <div className="tarjeta-csv-steps">
+            {csvImportSteps.map((step, index) => {
+              const stepNumber = index + 1;
+              return (
+                <div className={stepNumber === csvImportStep ? 'active' : stepNumber < csvImportStep ? 'done' : ''} key={step}>
+                  <span>{stepNumber}</span>
+                  <strong>{step}</strong>
+                </div>
+              );
+            })}
+          </div>
+          <div className="tarjeta-csv-placeholder">
+            <span>Paso {csvImportStep}</span>
+            <strong>{csvImportSteps[csvImportStep - 1]}</strong>
+            {csvImportStep === 1 ? (
+              <div className="tarjeta-csv-upload">
+                <button className="btn-inline secondary" type="button" onClick={downloadCsvTemplate}>
+                  Descargar plantilla CSV
+                </button>
+                <input type="file" accept=".csv,text/csv" onChange={handleCsvFileChange} />
+                <small>{csvImportFileName || csvExpectedHeaders.join(',')}</small>
+                {csvImportError && <p className="tarjeta-csv-error">{csvImportError}</p>}
+                {!csvImportError && csvImportRows.length > 0 && (
+                  <p className="tarjeta-csv-ok">{csvImportRows.length} filas detectadas.</p>
+                )}
+              </div>
+            ) : csvImportStep === 2 ? (
+              <div className="tarjeta-csv-table-wrap">
+                <table className="tarjeta-table tarjeta-csv-table">
+                  <thead>
+                    <tr>
+                      <th>Estado</th>
+                      <th>Fecha</th>
+                      <th>Descripcion</th>
+                      <th>Categoria</th>
+                      <th>Moneda</th>
+                      <th>Cuota actual</th>
+                      <th>Cuotas</th>
+                      <th>Modo</th>
+                      <th>Monto total</th>
+                      <th>Monto cuota</th>
+                      <th>Resumen asignado</th>
+                      <th>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {csvRowsWithValidation.map((row) => {
+                      const validation = row._validation;
+                      const rowStatus = row._editing && validation.estado !== 'ignorada' ? 'editando' : validation.estado;
+                      return (
+                        <tr className={`csv-row-${validation.estado}`} key={row._id}>
+                          <td>
+                            <span className="pill">{rowStatus}</span>
+                            <small>{validation.motivo}</small>
+                            {validation.posibleDuplicado && <small className="tarjeta-csv-duplicate">posible duplicado</small>}
+                          </td>
+                          <td>{row._editing ? <input type="date" value={row.fecha_compra || ''} onChange={(e) => updateCsvImportRow(row._id, 'fecha_compra', e.target.value)} /> : row.fecha_compra}</td>
+                          <td>{row._editing ? <input value={row.descripcion || ''} onChange={(e) => updateCsvImportRow(row._id, 'descripcion', e.target.value)} /> : row.descripcion}</td>
+                          <td>{row._editing ? (
+                            <select value={row.categoria || ''} onChange={(e) => updateCsvImportRow(row._id, 'categoria', e.target.value)}>
+                              <option value="">Sin categoria</option>
+                              {categoriasEgreso.map((categoria) => (
+                                <option key={categoria.id} value={categoria.nombre}>{categoria.nombre}</option>
+                              ))}
+                            </select>
+                          ) : (row.categoria || 'Sin categoria')}</td>
+                          <td>{row._editing ? (
+                            <select value={row.moneda || 'ARS'} onChange={(e) => updateCsvImportRow(row._id, 'moneda', e.target.value)}>
+                              <option value="ARS">ARS</option>
+                              <option value="USD">USD</option>
+                            </select>
+                          ) : row.moneda}</td>
+                          <td>{row._editing ? <input type="number" min="1" step="1" value={row.cuota_actual || ''} onChange={(e) => updateCsvImportRow(row._id, 'cuota_actual', e.target.value)} placeholder="auto" /> : (row.cuota_actual || 'auto')}</td>
+                          <td>{row._editing ? <input type="number" min="1" step="1" value={row.cantidad_cuotas || ''} onChange={(e) => updateCsvImportRow(row._id, 'cantidad_cuotas', e.target.value)} /> : row.cantidad_cuotas}</td>
+                          <td>{row._editing ? (
+                            <select value={row.modo_carga || 'total'} onChange={(e) => updateCsvImportRow(row._id, 'modo_carga', e.target.value)}>
+                              <option value="total">total</option>
+                              <option value="cuota">cuota</option>
+                            </select>
+                          ) : row.modo_carga}</td>
+                          <td>{row._editing ? <input value={row.monto_total || ''} onChange={(e) => updateCsvImportRow(row._id, 'monto_total', e.target.value)} /> : row.monto_total}</td>
+                          <td>{row._editing ? <input value={row.monto_cuota || ''} onChange={(e) => updateCsvImportRow(row._id, 'monto_cuota', e.target.value)} /> : row.monto_cuota}</td>
+                          <td>
+                            <span className="pill">{validation.assignedCycle ? formatCycleLabel(validation.assignedCycle) : '-'}</span>
+                            {validation.pasaAlProximo && <small className="tarjeta-csv-next-badge">Pasa al proximo resumen</small>}
+                            {validation.willCreateSummary && <small>Se creara con cierre {formatDate(validation.nextSummaryDefaults?.fecha_cierre)}</small>}
+                          </td>
+                          <td>
+                            {row._editing && (
+                              <div className="tarjeta-csv-row-extra">
+                                <input placeholder="Titular" value={row.titular || ''} onChange={(e) => updateCsvImportRow(row._id, 'titular', e.target.value)} />
+                                <input placeholder="Observaciones" value={row.observaciones || ''} onChange={(e) => updateCsvImportRow(row._id, 'observaciones', e.target.value)} />
+                              </div>
+                            )}
+                            <div className="acciones-inline">
+                              <button className="btn-inline secondary" type="button" onClick={() => toggleCsvImportRowEdit(row._id)}>{row._editing ? 'OK' : 'Editar'}</button>
+                              <button className="btn-inline secondary" type="button" onClick={() => toggleCsvImportRowIgnored(row._id)}>{row._ignored ? 'Restaurar' : 'Ignorar'}</button>
+                              <button className="btn-inline danger" type="button" onClick={() => deleteCsvImportRow(row._id)}>Eliminar</button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                {csvHasInvalidRows && (
+                  <p className="tarjeta-csv-error">Hay filas invalidas sin ignorar. Corregilas o ignoralas para continuar.</p>
+                )}
+              </div>
+            ) : (
+              <div className="tarjeta-csv-confirm">
+                <div><span>Filas a importar</span><strong>{csvImportStats.toImport}</strong></div>
+                <div><span>Filas ignoradas</span><strong>{csvImportStats.ignored}</strong></div>
+                <div><span>Filas invalidas</span><strong>{csvImportStats.invalid}</strong></div>
+                <div><span>Total ARS</span><strong>{formatMoney(csvImportStats.totalArs)}</strong></div>
+                <div><span>Total USD</span><strong>{formatUsd(csvImportStats.totalUsd)}</strong></div>
+              </div>
+            )}
+          </div>
+          <div className="confirm-actions tarjeta-csv-actions">
+            <button className="btn-inline secondary" type="button" onClick={closeCsvImportModal}>
+              Cancelar
+            </button>
+            {csvImportStep > 1 && (
+              <button className="btn-inline secondary" type="button" onClick={() => setCsvImportStep(csvImportStep === 2 ? 1 : 2)}>
+                {csvImportStep === 2 ? 'Volver' : 'Volver a revisar'}
+              </button>
+            )}
+            {csvImportStep < csvImportSteps.length ? (
+              <button className="btn-inline" type="button" onClick={() => setCsvImportStep((step) => Math.min(csvImportSteps.length, step + 1))} disabled={!csvCanContinue}>
+                Continuar
+              </button>
+            ) : (
+              <button className="btn-inline btn-with-spinner" type="button" onClick={handleConfirmCsvImport} disabled={loading || csvImportStats.toImport === 0}>
+                {loadingAction === 'csv-import' && <span className="btn-spinner" aria-hidden="true" />}
+                {loadingAction === 'csv-import' ? 'Importando...' : 'Confirmar importacion'}
+              </button>
+            )}
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="tarjeta-panel">
@@ -1118,7 +1295,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
         )}
       </section>
       {csvImportOpen && (
-        <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="csv-import-title">
+        <div className="modal-overlay tarjeta-csv-overlay" role="dialog" aria-modal="true" aria-labelledby="csv-import-title">
           <div className="modal-content tarjeta-csv-modal">
             <div className="modal-header">
               <div>
@@ -1149,7 +1326,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
                     Descargar plantilla CSV
                   </button>
                   <input type="file" accept=".csv,text/csv" onChange={handleCsvFileChange} />
-                  <small>{csvImportFileName || 'Formato esperado: fecha_compra,descripcion,categoria,moneda,cantidad_cuotas,modo_carga,monto_total,monto_cuota,titular,observaciones'}</small>
+                  <small>{csvImportFileName || csvExpectedHeaders.join(',')}</small>
                   {csvImportError && <p className="tarjeta-csv-error">{csvImportError}</p>}
                   {!csvImportError && csvImportRows.length > 0 && (
                     <p className="tarjeta-csv-ok">{csvImportRows.length} filas detectadas.</p>
@@ -1165,6 +1342,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
                         <th>Descripcion</th>
                         <th>Categoria</th>
                         <th>Moneda</th>
+                        <th>Cuota actual</th>
                         <th>Cuotas</th>
                         <th>Modo</th>
                         <th>Monto total</th>
@@ -1200,6 +1378,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
                                 <option value="USD">USD</option>
                               </select>
                             ) : row.moneda}</td>
+                            <td>{row._editing ? <input type="number" min="1" step="1" value={row.cuota_actual || ''} onChange={(e) => updateCsvImportRow(row._id, 'cuota_actual', e.target.value)} placeholder="auto" /> : (row.cuota_actual || 'auto')}</td>
                             <td>{row._editing ? <input type="number" min="1" step="1" value={row.cantidad_cuotas || ''} onChange={(e) => updateCsvImportRow(row._id, 'cantidad_cuotas', e.target.value)} /> : row.cantidad_cuotas}</td>
                             <td>{row._editing ? (
                               <select value={row.modo_carga || 'total'} onChange={(e) => updateCsvImportRow(row._id, 'modo_carga', e.target.value)}>
@@ -1219,10 +1398,16 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
                               )}
                             </td>
                             <td>
+                              {row._editing && (
+                                <div className="tarjeta-csv-row-extra">
+                                  <input placeholder="Titular" value={row.titular || ''} onChange={(e) => updateCsvImportRow(row._id, 'titular', e.target.value)} />
+                                  <input placeholder="Observaciones" value={row.observaciones || ''} onChange={(e) => updateCsvImportRow(row._id, 'observaciones', e.target.value)} />
+                                </div>
+                              )}
                               <div className="acciones-inline">
-                                <button className="icon-btn" type="button" onClick={() => toggleCsvImportRowEdit(row._id)}>{row._editing ? 'OK' : 'Editar'}</button>
-                                <button className="icon-btn" type="button" onClick={() => toggleCsvImportRowIgnored(row._id)}>{row._ignored ? 'Restaurar' : 'Ignorar'}</button>
-                                <button className="icon-btn danger" type="button" onClick={() => deleteCsvImportRow(row._id)}>Eliminar</button>
+                                <button className="btn-inline secondary" type="button" onClick={() => toggleCsvImportRowEdit(row._id)}>{row._editing ? 'OK' : 'Editar'}</button>
+                                <button className="btn-inline secondary" type="button" onClick={() => toggleCsvImportRowIgnored(row._id)}>{row._ignored ? 'Restaurar' : 'Ignorar'}</button>
+                                <button className="btn-inline danger" type="button" onClick={() => deleteCsvImportRow(row._id)}>Eliminar</button>
                               </div>
                             </td>
                           </tr>
@@ -1233,15 +1418,6 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
                   {csvHasInvalidRows && (
                     <p className="tarjeta-csv-error">Hay filas invalidas sin ignorar. Corregilas o ignoralas para continuar.</p>
                   )}
-                  <div className="tarjeta-csv-extra-edit">
-                    {csvImportRows.map((row) => row._editing && (
-                      <div key={`${row._id}-extra`}>
-                        <strong>{row.descripcion || 'Fila sin descripcion'}</strong>
-                        <input placeholder="Titular" value={row.titular || ''} onChange={(e) => updateCsvImportRow(row._id, 'titular', e.target.value)} />
-                        <input placeholder="Observaciones" value={row.observaciones || ''} onChange={(e) => updateCsvImportRow(row._id, 'observaciones', e.target.value)} />
-                      </div>
-                    ))}
-                  </div>
                 </div>
               ) : (
                 <div className="tarjeta-csv-confirm">
@@ -1366,54 +1542,29 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
             <small>Promedio previo {formatMoney(analisisTarjeta?.promedio_ars || 0)}</small>
           </article>
           <article>
+            <span>Variacion consumo</span>
+            <strong>{formatPercent(analisisTarjeta?.variacion_total_ars)}</strong>
+            <small>Contra ciclos anteriores</small>
+          </article>
+          <article>
+            <span>Suscripciones</span>
+            <strong>{formatMoney(analisisActual.suscripciones_ars || 0)}</strong>
+            <small>{Math.round(analisisTarjeta?.participacion_suscripciones || 0)}% del resumen</small>
+          </article>
+          <article>
+            <span>Cuotas</span>
+            <strong>{formatMoney(analisisActual.cuotas_ars || 0)}</strong>
+            <small>{Math.round(analisisTarjeta?.participacion_cuotas || 0)}% del resumen</small>
+          </article>
+          <article>
             <span>Total USD punta</span>
             <strong>{formatUsd(analisisActual.total_usd || 0)}</strong>
             <small>Promedio previo {formatUsd(analisisTarjeta?.promedio_usd || 0)}</small>
           </article>
           <article>
-            <span>Variacion consumo ARS</span>
-            <strong>{formatPercent(analisisTarjeta?.variacion_total_ars)}</strong>
-            <small>Contra ciclos anteriores en ARS</small>
-          </article>
-          <article>
-            <span>Variacion consumo USD</span>
-            <strong>{formatPercent(analisisTarjeta?.variacion_total_usd)}</strong>
-            <small>Contra ciclos anteriores en USD</small>
-          </article>
-          <article>
-            <span>Suscripciones ARS</span>
-            <strong>{formatMoney(analisisActual.suscripciones_ars || 0)}</strong>
-            <small>
-              Prom. {formatMoney(analisisTarjeta?.promedio_suscripciones_ars || 0)} - {formatPercent(analisisTarjeta?.variacion_suscripciones_ars)}
-            </small>
-          </article>
-          <article>
-            <span>Suscripciones USD</span>
-            <strong>{formatUsd(analisisActual.suscripciones_usd || 0)}</strong>
-            <small>
-              Prom. {formatUsd(analisisTarjeta?.promedio_suscripciones_usd || 0)} - {formatPercent(analisisTarjeta?.variacion_suscripciones_usd)}
-            </small>
-          </article>
-          <article>
-            <span>Cuotas ARS</span>
-            <strong>{formatMoney(analisisActual.cuotas_ars || 0)}</strong>
-            <small>
-              Prom. {formatMoney(analisisTarjeta?.promedio_cuotas_ars || 0)} - {formatPercent(analisisTarjeta?.variacion_cuotas_ars)}
-            </small>
-          </article>
-          <article>
-            <span>Cuotas USD</span>
-            <strong>{formatUsd(analisisActual.cuotas_usd || 0)}</strong>
-            <small>
-              Prom. {formatUsd(analisisTarjeta?.promedio_cuotas_usd || 0)} - {formatPercent(analisisTarjeta?.variacion_cuotas_usd)}
-            </small>
-          </article>
-          <article>
             <span>Categoria dominante</span>
             <strong>{categoriaPrincipalAnalisis?.categoria || 'Sin datos'}</strong>
-            <small>
-              {Math.round(analisisTarjeta?.participacion_categoria_principal_ars || 0)}% ARS / {Math.round(analisisTarjeta?.participacion_categoria_principal_usd || 0)}% USD
-            </small>
+            <small>{Math.round(analisisTarjeta?.participacion_categoria_principal || 0)}% del ARS</small>
           </article>
         </div>
         <div className="tarjeta-analysis-layout">
@@ -1427,10 +1578,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
                   <div className="tarjeta-trend-row" key={item.ciclo}>
                     <span>{formatCycleLabel(item.ciclo)}</span>
                     <div><i style={{ width: `${width}%` }} /></div>
-                    <strong className="tarjeta-trend-amounts">
-                      {formatMoney(item.total_ars || 0)}
-                      <small>{formatUsd(item.total_usd || 0)}</small>
-                    </strong>
+                    <strong>{formatMoney(item.total_ars || 0)}</strong>
                   </div>
                 );
               })}
@@ -1443,17 +1591,11 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
                 <div className="tarjeta-category-row" key={item.categoria}>
                   <div>
                     <strong>{item.categoria}</strong>
-                    <small>ARS prom. {formatMoney(item.promedio_ars || 0)} - {formatPercent(item.variacion_ars)}</small>
-                    <small>USD prom. {formatUsd(item.promedio_usd || 0)} - {formatPercent(item.variacion_usd)}</small>
+                    <small>Promedio {formatMoney(item.promedio_ars || 0)} - {formatPercent(item.variacion_ars)}</small>
                   </div>
-                  <div className="tarjeta-category-deltas">
-                    <span className={item.diferencia_ars > 0 ? 'warning' : item.diferencia_ars < 0 ? 'positive' : 'muted'}>
-                      ARS {formatSignedMoney(item.diferencia_ars, formatMoney)}
-                    </span>
-                    <span className={item.diferencia_usd > 0 ? 'warning' : item.diferencia_usd < 0 ? 'positive' : 'muted'}>
-                      {formatSignedMoney(item.diferencia_usd, formatUsd)}
-                    </span>
-                  </div>
+                  <span className={item.diferencia_ars > 0 ? 'warning' : item.diferencia_ars < 0 ? 'positive' : 'muted'}>
+                    {item.diferencia_ars >= 0 ? '+' : '-'}{formatMoney(Math.abs(item.diferencia_ars || 0))}
+                  </span>
                 </div>
               ))}
               {(analisisTarjeta?.categorias_comparadas || []).length === 0 && (

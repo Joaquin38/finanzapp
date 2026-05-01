@@ -108,6 +108,12 @@ function parseFecha(value) {
   return Number.isNaN(date.getTime()) ? null : value;
 }
 
+function fechaIso(value) {
+  if (!value) return '';
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  return String(value).slice(0, 10);
+}
+
 function esNumeroPositivo(value) {
   const number = Number(value);
   return Number.isFinite(number) && number > 0;
@@ -828,7 +834,7 @@ async function asegurarTarjetasCredito() {
   await pool.query('CREATE INDEX IF NOT EXISTS idx_cierres_tarjeta_tarjeta_ciclo ON cierres_tarjeta (tarjeta_id, ciclo)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_consumos_tarjeta_cierre ON consumos_tarjeta (cierre_id)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_consumos_tarjeta_tarjeta_fecha ON consumos_tarjeta (tarjeta_id, fecha_compra)');
-  await aplicarCorreccionesCuotasTarjeta();
+  await recalcularAsignacionConsumosTarjeta();
 }
 
 async function asegurarDatosColon260() {
@@ -1019,11 +1025,13 @@ async function obtenerOCrearCierreTarjeta(tarjeta, ciclo, usuarioId = null) {
 }
 
 async function resolverResumenCompraTarjeta(tarjeta, fechaCompra, usuarioId = null) {
-  const fecha = new Date(`${fechaCompra}T00:00:00`);
+  const fechaCompraIso = fechaIso(fechaCompra);
+  const fecha = new Date(`${fechaCompraIso}T00:00:00`);
   const cicloCompra = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
+  const siguiente = siguienteCiclo(cicloCompra);
   const cierreCompra = await obtenerOCrearCierreTarjeta(tarjeta, cicloCompra, usuarioId);
-  const fechaCierreCompra = String(cierreCompra?.fecha_cierre || '').slice(0, 10);
-  const cicloAsignado = fechaCierreCompra && fechaCompra > fechaCierreCompra ? siguienteCiclo(cicloCompra) : cicloCompra;
+  const fechaCierreCompra = fechaIso(cierreCompra?.fecha_cierre);
+  const cicloAsignado = fechaCierreCompra && fechaCompraIso > fechaCierreCompra ? siguiente : cicloCompra;
   const cierreAsignado = cicloAsignado === cicloCompra
     ? cierreCompra
     : await obtenerOCrearCierreTarjeta(tarjeta, cicloAsignado, usuarioId);
@@ -1063,42 +1071,29 @@ async function asegurarSuscripcionMesSiguienteAbierta(tarjeta, cicloInicial, rep
   return cierre;
 }
 
-async function aplicarCorreccionesCuotasTarjeta() {
-  const correcciones = [
-    { match: 'aire ac', ciclo: '2025-11' },
-    { match: 'riot', ciclo: '2026-01' },
-    { match: 'meli cuchillas', ciclo: '2026-02' },
-    { match: 'meli afilador', ciclo: '2026-02' },
-    { match: 'arredo', ciclo: '2026-02' },
-    { match: 'cetrogar - tv', ciclo: '2026-02' },
-    { match: 'cetrogar tv', ciclo: '2026-02' }
-  ];
+async function recalcularAsignacionConsumosTarjeta() {
   const { rows } = await pool.query(
     `
-    SELECT ct.id, ct.descripcion, ct.ciclo_asignado, ct.cantidad_cuotas,
+    SELECT ct.id, ct.fecha_compra, ct.cierre_id, ct.ciclo_asignado,
            tc.id AS tarjeta_id, tc.hogar_id, tc.dia_cierre_default, tc.dia_vencimiento_default
     FROM consumos_tarjeta ct
     JOIN tarjetas_credito tc ON tc.id = ct.tarjeta_id
-    WHERE ct.cantidad_cuotas > 1
     `
   );
 
   for (const row of rows) {
-    const descripcion = String(row.descripcion || '').toLowerCase();
-    const correccion = correcciones.find((item) => descripcion.includes(item.match));
-    if (!correccion || row.ciclo_asignado === correccion.ciclo) continue;
+    const { cicloAsignado, cierreAsignado } = await resolverResumenCompraTarjeta({ ...row, id: row.tarjeta_id }, fechaIso(row.fecha_compra));
+    if (!cierreAsignado || (row.ciclo_asignado === cicloAsignado && Number(row.cierre_id) === Number(cierreAsignado.id))) continue;
 
-    const cierre = await obtenerOCrearCierreTarjeta({ ...row, id: row.tarjeta_id }, correccion.ciclo);
     await pool.query(
       `
       UPDATE consumos_tarjeta
       SET cierre_id = $1,
           ciclo_asignado = $2,
-          cuota_inicial = 1,
           actualizado_en = NOW()
       WHERE id = $3
       `,
-      [cierre.id, correccion.ciclo, row.id]
+      [cierreAsignado.id, cicloAsignado, row.id]
     );
   }
 }
@@ -1106,8 +1101,10 @@ async function aplicarCorreccionesCuotasTarjeta() {
 function expandirConsumosTarjeta(consumosBase) {
   return consumosBase.flatMap((item) => {
     const cuotas = Math.max(Number(item.cantidad_cuotas || 1), 1);
-    const cuotasCompra = Array.from({ length: cuotas }, (_, index) => {
-      const cuotaNumero = Number(item.cuota_inicial || 1) + index;
+    const cuotaInicial = Math.min(Math.max(Number(item.cuota_inicial || 1), 1), cuotas);
+    const cuotasRestantes = Math.max(cuotas - cuotaInicial + 1, 1);
+    const cuotasCompra = Array.from({ length: cuotasRestantes }, (_, index) => {
+      const cuotaNumero = cuotaInicial + index;
       const cicloCuota = sumarMesesCiclo(item.ciclo_asignado, index);
       return {
         ...item,
@@ -2625,7 +2622,11 @@ app.get('/tarjetas-credito', async (req, res) => {
       await Promise.all(
         consumosBase
           .filter((item) => Number(item.cantidad_cuotas || 1) > 1)
-          .map((item) => obtenerOCrearCierresCuotasTarjeta(tarjetaActual, item.ciclo_asignado, item.cantidad_cuotas, auditoriaUsuarioId))
+          .map((item) => {
+            const cuotas = Math.max(Number(item.cantidad_cuotas || 1), 1);
+            const cuotaInicial = Math.min(Math.max(Number(item.cuota_inicial || 1), 1), cuotas);
+            return obtenerOCrearCierresCuotasTarjeta(tarjetaActual, item.ciclo_asignado, cuotas - cuotaInicial + 1, auditoriaUsuarioId);
+          })
       );
       await Promise.all(
         consumosBase
@@ -2656,7 +2657,7 @@ app.get('/tarjetas-credito', async (req, res) => {
           FROM cierres_tarjeta cr
           WHERE cr.tarjeta_id = $1
           ORDER BY cr.ciclo DESC
-          LIMIT 12
+          LIMIT 48
           `,
           [tarjetaConsultaId]
         )
@@ -2679,6 +2680,7 @@ app.get('/tarjetas-credito', async (req, res) => {
       tarjetas,
       cierre: cierreActual || null,
       consumos,
+      consumos_registrados: consumosExpandidos,
       resumen,
       historial_resumenes: historialResumenes,
       analisis_tarjeta: analisisTarjeta
@@ -2698,6 +2700,8 @@ app.post('/tarjetas-credito/consumos', async (req, res) => {
     categoria,
     moneda,
     monto_total,
+    cuota_actual,
+    cuota_inicial,
     cantidad_cuotas = 1,
     monto_cuota,
     titular,
@@ -2706,6 +2710,7 @@ app.post('/tarjetas-credito/consumos', async (req, res) => {
   const tarjetaId = Number(tarjeta_id);
   const cierreId = Number(cierre_id || 0);
   const cuotas = Number(cantidad_cuotas || 1);
+  const cuotaInicial = Number(cuota_actual || cuota_inicial || 1);
   const montoTotal = Number(monto_total || 0);
   const montoCuota = Number(monto_cuota || 0);
   const auditoriaUsuarioId = usuarioAuditoriaId(req);
@@ -2716,6 +2721,7 @@ app.post('/tarjetas-credito/consumos', async (req, res) => {
   if (!parseFecha(fecha_compra)) return res.status(400).json({ error: 'fecha_compra debe tener formato YYYY-MM-DD' });
   if (!['ARS', 'USD'].includes(moneda)) return res.status(400).json({ error: 'moneda debe ser ARS o USD' });
   if (!Number.isInteger(cuotas) || cuotas < 1) return res.status(400).json({ error: 'cantidad_cuotas debe ser mayor o igual a 1' });
+  if (!Number.isInteger(cuotaInicial) || cuotaInicial < 1 || cuotaInicial > cuotas) return res.status(400).json({ error: 'cuota_actual debe estar entre 1 y cantidad_cuotas' });
   if (!esNumeroPositivo(montoTotal) && !esNumeroPositivo(montoCuota)) {
     return res.status(400).json({ error: 'Informá monto total o monto de cuota' });
   }
@@ -2757,7 +2763,8 @@ app.post('/tarjetas-credito/consumos', async (req, res) => {
     const totalFinal = esNumeroPositivo(montoTotal) ? montoTotal : Number((montoCuota * cuotas).toFixed(2));
     const cuotaFinal = esNumeroPositivo(montoCuota) ? montoCuota : Number((totalFinal / cuotas).toFixed(2));
     const repiteMesSiguiente = cuotas === 1 && esCategoriaSuscripcion(categoria);
-    await asegurarCierresCuotasAbiertos(tarjeta, cicloAsignado, cuotas, auditoriaUsuarioId);
+    const cuotasRestantes = Math.max(cuotas - cuotaInicial + 1, 1);
+    await asegurarCierresCuotasAbiertos(tarjeta, cicloAsignado, cuotasRestantes, auditoriaUsuarioId);
     await asegurarSuscripcionMesSiguienteAbierta(tarjeta, cicloAsignado, repiteMesSiguiente, auditoriaUsuarioId);
 
     const { rows } = await pool.query(
@@ -2767,7 +2774,7 @@ app.post('/tarjetas-credito/consumos', async (req, res) => {
         moneda, monto_total, cantidad_cuotas, monto_cuota, cuota_inicial, repite_mes_siguiente,
         titular, observaciones, creado_por_usuario_id, actualizado_por_usuario_id
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 1, $11, $12, $13, $14, $14)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $15)
       RETURNING *
       `,
       [
@@ -2781,6 +2788,7 @@ app.post('/tarjetas-credito/consumos', async (req, res) => {
         totalFinal,
         cuotas,
         cuotaFinal,
+        cuotaInicial,
         repiteMesSiguiente,
         titular ? String(titular).trim() : null,
         observaciones ? String(observaciones).trim() : null,
