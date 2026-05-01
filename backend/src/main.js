@@ -307,47 +307,57 @@ async function enviarEmailResetPassword({ to, resetUrl }) {
   const transporter = getSmtpTransport();
   const safeResetUrl = escapeHtml(resetUrl);
   const ttlLabel = PASSWORD_RESET_TTL_MINUTES === 1 ? '1 minuto' : `${PASSWORD_RESET_TTL_MINUTES} minutos`;
+  const logoUrl = (() => {
+    try {
+      return `${new URL(resetUrl).origin}/finanzapp-logo.png`;
+    } catch {
+      return '';
+    }
+  })();
+  const safeLogoUrl = escapeHtml(logoUrl);
 
   await transporter.sendMail({
     from: SMTP_FROM,
     to,
-    subject: 'Restablece tu password de FinanzApp',
-    text: `Recibimos una solicitud para restablecer la password de tu cuenta en FinanzApp.\n\nAbri este enlace para crear una nueva password:\n${resetUrl}\n\nEl enlace vence en ${ttlLabel}. Si no solicitaste este cambio, podes ignorar este email.`,
+    subject: 'Recuperacion de acceso - FinanzApp',
+    text: `Recibimos una solicitud para recuperar el acceso a tu cuenta de FinanzApp.\n\nAbri este enlace para crear una nueva password:\n${resetUrl}\n\nEl enlace vence en ${ttlLabel}. Si no fuiste vos, podes ignorar este email.`,
     html: `
       <!doctype html>
       <html>
         <head>
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1">
-          <title>Restablecer password</title>
+          <title>Recuperacion de acceso</title>
         </head>
-        <body style="margin:0;padding:0;background:#eef4ff;font-family:Inter,Manrope,Arial,sans-serif;color:#0f172a;">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef4ff;margin:0;padding:28px 14px;">
+        <body style="margin:0;padding:0;background:#f1f5f9;font-family:Inter,Manrope,Arial,sans-serif;color:#0f172a;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;margin:0;padding:30px 14px;">
             <tr>
               <td align="center">
-                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border:1px solid #dbe7ff;border-radius:18px;overflow:hidden;box-shadow:0 18px 44px rgba(15,23,42,0.12);">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border:1px solid #e2e8f0;border-radius:18px;overflow:hidden;box-shadow:0 18px 44px rgba(15,23,42,0.10);">
                   <tr>
-                    <td style="padding:24px 26px 18px;background:linear-gradient(135deg,#2563eb,#14b8a6);">
-                      <div style="font-size:13px;line-height:1.3;font-weight:700;color:#dbeafe;text-transform:uppercase;">FinanzApp</div>
-                      <h1 style="margin:10px 0 0;font-size:24px;line-height:1.18;color:#ffffff;font-weight:700;">Restablecer password</h1>
+                    <td style="padding:28px 28px 18px;text-align:center;background:#ffffff;">
+                      ${safeLogoUrl ? `<img src="${safeLogoUrl}" width="86" height="86" alt="FinanzApp" style="display:block;width:86px;height:86px;object-fit:contain;margin:0 auto 16px;border:0;">` : ''}
+                      <div style="margin:0 0 8px;font-size:12px;line-height:1.3;font-weight:800;letter-spacing:1px;color:#2563eb;text-transform:uppercase;">FinanzApp</div>
+                      <h1 style="margin:0;font-size:24px;line-height:1.18;color:#0f172a;font-weight:800;">Recuperacion de acceso</h1>
                     </td>
                   </tr>
                   <tr>
-                    <td style="padding:26px;">
-                      <p style="margin:0 0 14px;font-size:16px;line-height:1.55;color:#334155;">Recibimos una solicitud para cambiar la password de tu cuenta.</p>
-                      <p style="margin:0 0 22px;font-size:15px;line-height:1.55;color:#475569;">Usa el boton de abajo para crear una nueva password. El enlace vence en <strong style="color:#0f172a;">${ttlLabel}</strong>.</p>
-                      <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 22px;">
+                    <td style="padding:0 28px 28px;">
+                      <div style="height:1px;background:#e2e8f0;margin:0 0 24px;"></div>
+                      <p style="margin:0 0 12px;font-size:15px;line-height:1.6;color:#334155;">Recibimos una solicitud para recuperar el acceso a tu cuenta.</p>
+                      <p style="margin:0 0 22px;font-size:14px;line-height:1.6;color:#64748b;">Crea una nueva password desde el boton. Por seguridad, el enlace vence en <strong style="color:#0f172a;">${ttlLabel}</strong>.</p>
+                      <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 22px;">
                         <tr>
-                          <td style="border-radius:999px;background:linear-gradient(135deg,#3b82f6,#14b8a6);">
-                            <a href="${safeResetUrl}" style="display:inline-block;padding:13px 22px;color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;">Crear nueva password</a>
+                          <td style="border-radius:12px;background:linear-gradient(135deg,#2563eb,#0f766e);box-shadow:0 14px 26px rgba(37,99,235,0.20);">
+                            <a href="${safeResetUrl}" style="display:inline-block;padding:13px 22px;color:#ffffff;text-decoration:none;font-weight:800;font-size:14px;">Crear nueva password</a>
                           </td>
                         </tr>
                       </table>
-                      <p style="margin:0 0 8px;font-size:13px;line-height:1.5;color:#64748b;">Si el boton no funciona, copia y pega este enlace en tu navegador:</p>
-                      <p style="margin:0 0 22px;word-break:break-all;font-size:12px;line-height:1.5;color:#2563eb;">${safeResetUrl}</p>
-                      <div style="border-top:1px solid #e2e8f0;padding-top:16px;">
-                        <p style="margin:0;font-size:13px;line-height:1.5;color:#64748b;">Si no pediste este cambio, ignora este email. Tu password actual se mantiene igual.</p>
+                      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px;">
+                        <p style="margin:0 0 8px;font-size:12px;line-height:1.5;color:#64748b;">Si el boton no funciona, usa este enlace:</p>
+                        <p style="margin:0;word-break:break-all;font-size:12px;line-height:1.5;color:#2563eb;">${safeResetUrl}</p>
                       </div>
+                      <p style="margin:18px 0 0;font-size:12px;line-height:1.55;color:#64748b;text-align:center;">Si no fuiste vos, ignora este email. Tu password actual se mantiene igual.</p>
                     </td>
                   </tr>
                 </table>
