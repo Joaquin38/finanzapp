@@ -108,6 +108,12 @@ function parseFecha(value) {
   return Number.isNaN(date.getTime()) ? null : value;
 }
 
+function fechaIso(value) {
+  if (!value) return '';
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  return String(value).slice(0, 10);
+}
+
 function esNumeroPositivo(value) {
   const number = Number(value);
   return Number.isFinite(number) && number > 0;
@@ -828,7 +834,7 @@ async function asegurarTarjetasCredito() {
   await pool.query('CREATE INDEX IF NOT EXISTS idx_cierres_tarjeta_tarjeta_ciclo ON cierres_tarjeta (tarjeta_id, ciclo)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_consumos_tarjeta_cierre ON consumos_tarjeta (cierre_id)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_consumos_tarjeta_tarjeta_fecha ON consumos_tarjeta (tarjeta_id, fecha_compra)');
-  await aplicarCorreccionesCuotasTarjeta();
+  await recalcularAsignacionConsumosTarjeta();
 }
 
 async function asegurarDatosColon260() {
@@ -1019,12 +1025,13 @@ async function obtenerOCrearCierreTarjeta(tarjeta, ciclo, usuarioId = null) {
 }
 
 async function resolverResumenCompraTarjeta(tarjeta, fechaCompra, usuarioId = null) {
-  const fecha = new Date(`${fechaCompra}T00:00:00`);
+  const fechaCompraIso = fechaIso(fechaCompra);
+  const fecha = new Date(`${fechaCompraIso}T00:00:00`);
   const cicloCompra = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
   const siguiente = siguienteCiclo(cicloCompra);
   const cierreCompra = await obtenerOCrearCierreTarjeta(tarjeta, cicloCompra, usuarioId);
-  const fechaCierreCompra = String(cierreCompra?.fecha_cierre || '').slice(0, 10);
-  const cicloAsignado = fechaCierreCompra && fechaCompra > fechaCierreCompra ? siguiente : cicloCompra;
+  const fechaCierreCompra = fechaIso(cierreCompra?.fecha_cierre);
+  const cicloAsignado = fechaCierreCompra && fechaCompraIso > fechaCierreCompra ? siguiente : cicloCompra;
   const cierreAsignado = cicloAsignado === cicloCompra
     ? cierreCompra
     : await obtenerOCrearCierreTarjeta(tarjeta, cicloAsignado, usuarioId);
@@ -1064,42 +1071,29 @@ async function asegurarSuscripcionMesSiguienteAbierta(tarjeta, cicloInicial, rep
   return cierre;
 }
 
-async function aplicarCorreccionesCuotasTarjeta() {
-  const correcciones = [
-    { match: 'aire ac', ciclo: '2025-11' },
-    { match: 'riot', ciclo: '2026-01' },
-    { match: 'meli cuchillas', ciclo: '2026-02' },
-    { match: 'meli afilador', ciclo: '2026-02' },
-    { match: 'arredo', ciclo: '2026-02' },
-    { match: 'cetrogar - tv', ciclo: '2026-02' },
-    { match: 'cetrogar tv', ciclo: '2026-02' }
-  ];
+async function recalcularAsignacionConsumosTarjeta() {
   const { rows } = await pool.query(
     `
-    SELECT ct.id, ct.descripcion, ct.ciclo_asignado, ct.cantidad_cuotas,
+    SELECT ct.id, ct.fecha_compra, ct.cierre_id, ct.ciclo_asignado,
            tc.id AS tarjeta_id, tc.hogar_id, tc.dia_cierre_default, tc.dia_vencimiento_default
     FROM consumos_tarjeta ct
     JOIN tarjetas_credito tc ON tc.id = ct.tarjeta_id
-    WHERE ct.cantidad_cuotas > 1
     `
   );
 
   for (const row of rows) {
-    const descripcion = String(row.descripcion || '').toLowerCase();
-    const correccion = correcciones.find((item) => descripcion.includes(item.match));
-    if (!correccion || row.ciclo_asignado === correccion.ciclo) continue;
+    const { cicloAsignado, cierreAsignado } = await resolverResumenCompraTarjeta({ ...row, id: row.tarjeta_id }, fechaIso(row.fecha_compra));
+    if (!cierreAsignado || (row.ciclo_asignado === cicloAsignado && Number(row.cierre_id) === Number(cierreAsignado.id))) continue;
 
-    const cierre = await obtenerOCrearCierreTarjeta({ ...row, id: row.tarjeta_id }, correccion.ciclo);
     await pool.query(
       `
       UPDATE consumos_tarjeta
       SET cierre_id = $1,
           ciclo_asignado = $2,
-          cuota_inicial = 1,
           actualizado_en = NOW()
       WHERE id = $3
       `,
-      [cierre.id, correccion.ciclo, row.id]
+      [cierreAsignado.id, cicloAsignado, row.id]
     );
   }
 }
