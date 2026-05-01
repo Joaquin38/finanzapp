@@ -126,12 +126,17 @@ function resolvePreviewCycle(fechaCompra, fechaCierreReferencia) {
   return diaCompra > diaCierre ? addMonthsToCycle(cicloCompra, 1) : cicloCompra;
 }
 
-function resolveCsvAssignedCycle(fechaCompra, selectedCiclo, fechaCierreSeleccionada, tarjeta) {
+function getCsvClosureDate(ciclo, selectedCiclo, fechaCierreSeleccionada, tarjeta, cierresExistentes) {
+  const cierreExistente = cierresExistentes.find((item) => item.ciclo === ciclo);
+  if (cierreExistente?.fecha_cierre) return String(cierreExistente.fecha_cierre).slice(0, 10);
+  if (ciclo === selectedCiclo && fechaCierreSeleccionada) return String(fechaCierreSeleccionada).slice(0, 10);
+  return getDateForCycleDay(ciclo, tarjeta?.dia_cierre_default || 31);
+}
+
+function resolveCsvAssignedCycle(fechaCompra, selectedCiclo, fechaCierreSeleccionada, tarjeta, cierresExistentes = []) {
   if (!fechaCompra) return '';
   const cicloCompra = String(fechaCompra).slice(0, 7);
-  const fechaCierreCompra = cicloCompra === selectedCiclo && fechaCierreSeleccionada
-    ? String(fechaCierreSeleccionada).slice(0, 10)
-    : getDateForCycleDay(cicloCompra, tarjeta?.dia_cierre_default || 31);
+  const fechaCierreCompra = getCsvClosureDate(cicloCompra, selectedCiclo, fechaCierreSeleccionada, tarjeta, cierresExistentes);
   if (!fechaCierreCompra) return '';
   return String(fechaCompra).slice(0, 10) <= fechaCierreCompra ? cicloCompra : addMonthsToCycle(cicloCompra, 1);
 }
@@ -208,7 +213,7 @@ function hasSimilarConsumo(row, consumosExistentes, tarjetaId) {
   ));
 }
 
-function validateCsvImportRow(row, fechaCierre, selectedCiclo, tarjeta, ciclosExistentes, consumosExistentes) {
+function validateCsvImportRow(row, fechaCierre, selectedCiclo, tarjeta, ciclosExistentes, consumosExistentes, cierresExistentes) {
   if (row._ignored) return { estado: 'ignorada', motivo: 'Fila ignorada', assignedCycle: '' };
   const fecha = String(row.fecha_compra || '').slice(0, 10);
   const descripcion = String(row.descripcion || '').trim();
@@ -218,7 +223,7 @@ function validateCsvImportRow(row, fechaCierre, selectedCiclo, tarjeta, ciclosEx
   const modo = String(row.modo_carga || '').trim().toLowerCase();
   const montoTotal = parseAmount(row.monto_total);
   const montoCuota = parseAmount(row.monto_cuota);
-  const assignedCycle = resolveCsvAssignedCycle(fecha, selectedCiclo, fechaCierre, tarjeta);
+  const assignedCycle = resolveCsvAssignedCycle(fecha, selectedCiclo, fechaCierre, tarjeta, cierresExistentes);
   const cicloCompra = String(fecha || '').slice(0, 7);
   const pasaAlProximo = assignedCycle && assignedCycle !== cicloCompra;
   const willCreateSummary = assignedCycle && !ciclosExistentes.has(assignedCycle);
@@ -340,8 +345,8 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
     [consumos, historialResumenes, selectedCiclo]
   );
   const csvRowsWithValidation = useMemo(
-    () => csvImportRows.map((row) => ({ ...row, _validation: validateCsvImportRow(row, savedCierreForm.fecha_cierre, selectedCiclo, tarjetaActual, csvExistingCycles, consumos) })),
-    [csvImportRows, savedCierreForm.fecha_cierre, selectedCiclo, tarjetaActual, csvExistingCycles, consumos]
+    () => csvImportRows.map((row) => ({ ...row, _validation: validateCsvImportRow(row, savedCierreForm.fecha_cierre, selectedCiclo, tarjetaActual, csvExistingCycles, consumos, historialResumenes) })),
+    [csvImportRows, savedCierreForm.fecha_cierre, selectedCiclo, tarjetaActual, csvExistingCycles, consumos, historialResumenes]
   );
   const csvHasInvalidRows = csvRowsWithValidation.some((row) => row._validation.estado === 'invalida');
   const csvImportableRows = csvRowsWithValidation.filter((row) => !row._ignored && row._validation.estado !== 'invalida');

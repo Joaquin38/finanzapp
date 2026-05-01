@@ -2669,7 +2669,6 @@ app.post('/tarjetas-credito/consumos', async (req, res) => {
     tarjeta_id,
     ciclo_actual,
     fecha_compra,
-    cierre_id,
     descripcion,
     categoria,
     moneda,
@@ -2682,7 +2681,6 @@ app.post('/tarjetas-credito/consumos', async (req, res) => {
     observaciones
   } = req.body || {};
   const tarjetaId = Number(tarjeta_id);
-  const cierreId = Number(cierre_id || 0);
   const cuotas = Number(cantidad_cuotas || 1);
   const cuotaInicial = Number(cuota_actual || cuota_inicial || 1);
   const montoTotal = Number(monto_total || 0);
@@ -2718,19 +2716,7 @@ app.post('/tarjetas-credito/consumos', async (req, res) => {
       return res.status(403).json({ error: 'No tenes permisos para operar esta tarjeta' });
     }
 
-    let cicloAsignado;
-    let cierreAsignado;
-    if (cierreId) {
-      const { rows: cierreRows } = await pool.query(
-        'SELECT id, tarjeta_id, ciclo, estado FROM cierres_tarjeta WHERE id = $1 AND tarjeta_id = $2 LIMIT 1',
-        [cierreId, tarjetaId]
-      );
-      if (cierreRows.length === 0) return res.status(404).json({ error: 'Resumen de tarjeta no encontrado' });
-      cierreAsignado = cierreRows[0];
-      cicloAsignado = cierreAsignado.ciclo;
-    } else {
-      ({ cicloAsignado, cierreAsignado } = await resolverResumenCompraTarjeta(tarjeta, fecha_compra, auditoriaUsuarioId));
-    }
+    const { cicloAsignado, cierreAsignado } = await resolverResumenCompraTarjeta(tarjeta, fecha_compra, auditoriaUsuarioId);
     if (cierreAsignado?.estado === 'cerrado') {
       return res.status(409).json({ error: 'El resumen asignado esta cerrado' });
     }
