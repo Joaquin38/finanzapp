@@ -126,11 +126,14 @@ function resolvePreviewCycle(fechaCompra, fechaCierreReferencia) {
   return diaCompra > diaCierre ? addMonthsToCycle(cicloCompra, 1) : cicloCompra;
 }
 
-function resolveCsvAssignedCycle(fechaCompra, fechaCierreSeleccionada, selectedCiclo) {
-  if (!fechaCompra || !fechaCierreSeleccionada || !selectedCiclo) return '';
-  return String(fechaCompra).slice(0, 10) <= String(fechaCierreSeleccionada).slice(0, 10)
-    ? selectedCiclo
-    : addMonthsToCycle(selectedCiclo, 1);
+function resolveCsvAssignedCycle(fechaCompra, selectedCiclo, fechaCierreSeleccionada, tarjeta) {
+  if (!fechaCompra) return '';
+  const cicloCompra = String(fechaCompra).slice(0, 7);
+  const fechaCierreCompra = cicloCompra === selectedCiclo && fechaCierreSeleccionada
+    ? String(fechaCierreSeleccionada).slice(0, 10)
+    : getDateForCycleDay(cicloCompra, tarjeta?.dia_cierre_default || 31);
+  if (!fechaCierreCompra) return '';
+  return String(fechaCompra).slice(0, 10) <= fechaCierreCompra ? cicloCompra : addMonthsToCycle(cicloCompra, 1);
 }
 
 function parseCsvLine(line) {
@@ -215,13 +218,13 @@ function validateCsvImportRow(row, fechaCierre, selectedCiclo, tarjeta, ciclosEx
   const modo = String(row.modo_carga || '').trim().toLowerCase();
   const montoTotal = parseAmount(row.monto_total);
   const montoCuota = parseAmount(row.monto_cuota);
-  const assignedCycle = resolveCsvAssignedCycle(fecha, fechaCierre, selectedCiclo);
-  const nextCycle = addMonthsToCycle(selectedCiclo, 1);
-  const pasaAlProximo = assignedCycle === nextCycle;
-  const willCreateSummary = pasaAlProximo && !ciclosExistentes.has(nextCycle);
+  const assignedCycle = resolveCsvAssignedCycle(fecha, selectedCiclo, fechaCierre, tarjeta);
+  const cicloCompra = String(fecha || '').slice(0, 7);
+  const pasaAlProximo = assignedCycle && assignedCycle !== cicloCompra;
+  const willCreateSummary = assignedCycle && !ciclosExistentes.has(assignedCycle);
   const nextSummaryDefaults = willCreateSummary ? {
-    fecha_cierre: getDateForCycleDay(nextCycle, tarjeta?.dia_cierre_default || 31),
-    fecha_vencimiento: getDateForCycleDay(nextCycle, tarjeta?.dia_vencimiento_default)
+    fecha_cierre: getDateForCycleDay(assignedCycle, tarjeta?.dia_cierre_default || 31),
+    fecha_vencimiento: getDateForCycleDay(assignedCycle, tarjeta?.dia_vencimiento_default)
   } : null;
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha) || Number.isNaN(new Date(`${fecha}T00:00:00`).getTime())) return { estado: 'invalida', motivo: 'Fecha invalida', assignedCycle };
@@ -424,19 +427,10 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
     let imported = 0;
     let errors = 0;
     try {
-      const cierreIdsByCycle = new Map();
-      if (cierre?.id) cierreIdsByCycle.set(selectedCiclo, cierre.id);
       for (const row of csvImportableRows) {
         try {
-          const assignedCycle = row._validation.assignedCycle;
-          if (!cierreIdsByCycle.has(assignedCycle)) {
-            const data = await getTarjetasCredito(hogarId, assignedCycle, tarjetaActual?.id);
-            if (data.cierre?.id) cierreIdsByCycle.set(assignedCycle, data.cierre.id);
-          }
           await createConsumoTarjeta({
             tarjeta_id: Number(tarjetaActual?.id || form.tarjeta_id),
-            cierre_id: cierreIdsByCycle.get(assignedCycle),
-            ciclo_actual: selectedCiclo,
             fecha_compra: row.fecha_compra,
             descripcion: row.descripcion,
             categoria: row.categoria || null,
