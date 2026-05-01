@@ -4291,8 +4291,24 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   background: var(--surface-soft);
   font-weight: 700;
 }
+.tarjeta-csv-overlay {
+  align-items: stretch;
+  padding: 0;
+}
 .tarjeta-csv-modal {
-  width: min(960px, 100%);
+  width: 100%;
+  max-height: 100vh;
+  height: 100vh;
+  border-radius: 0;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  padding: 18px 22px 0;
+}
+.tarjeta-csv-modal .modal-header {
+  top: -18px;
+  margin: -18px -22px 8px;
+  padding: 18px 22px 12px;
 }
 .tarjeta-csv-steps {
   display: grid;
@@ -4337,9 +4353,11 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   display: grid;
   gap: 8px;
   min-height: 220px;
-  place-items: center;
+  align-content: start;
+  justify-items: stretch;
+  overflow: auto;
   padding: 24px;
-  text-align: center;
+  text-align: left;
 }
 .tarjeta-csv-placeholder span {
   color: var(--text-muted);
@@ -4377,7 +4395,13 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   color: #15803d;
 }
 .tarjeta-csv-actions {
-  margin-top: 14px;
+  position: static !important;
+  margin: 12px -22px 0 !important;
+  padding: 14px 22px !important;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  justify-content: flex-end;
+  gap: 10px;
 }
 .tarjeta-csv-confirm {
   display: grid;
@@ -4405,17 +4429,71 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
 }
 .tarjeta-csv-table-wrap {
   width: 100%;
-  overflow-x: auto;
+  overflow: visible;
 }
 .tarjeta-csv-table {
-  min-width: 1180px;
+  min-width: 0;
+  display: block;
   text-align: left;
+}
+.tarjeta-csv-table thead {
+  display: none;
+}
+.tarjeta-csv-table tbody {
+  display: grid;
+  gap: 12px;
+}
+.tarjeta-csv-table tr {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.9fr) repeat(3, minmax(150px, 1fr)) minmax(180px, 1.1fr) minmax(220px, 1.2fr);
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.tarjeta-csv-table td {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  overflow-wrap: anywhere;
+}
+.tarjeta-csv-table td::before {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+.tarjeta-csv-table td:nth-child(1)::before { content: "Estado"; }
+.tarjeta-csv-table td:nth-child(2)::before { content: "Fecha"; }
+.tarjeta-csv-table td:nth-child(3)::before { content: "Descripcion"; }
+.tarjeta-csv-table td:nth-child(4)::before { content: "Categoria"; }
+.tarjeta-csv-table td:nth-child(5)::before { content: "Moneda"; }
+.tarjeta-csv-table td:nth-child(6)::before { content: "Cuota actual"; }
+.tarjeta-csv-table td:nth-child(7)::before { content: "Cuotas"; }
+.tarjeta-csv-table td:nth-child(8)::before { content: "Modo"; }
+.tarjeta-csv-table td:nth-child(9)::before { content: "Monto total"; }
+.tarjeta-csv-table td:nth-child(10)::before { content: "Monto cuota"; }
+.tarjeta-csv-table td:nth-child(11)::before { content: "Resumen asignado"; }
+.tarjeta-csv-table td:nth-child(12)::before { content: "Acciones"; }
+.tarjeta-csv-table .acciones-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tarjeta-csv-table .acciones-inline .btn-inline {
+  min-height: 32px;
+  padding: 6px 9px;
+  font-size: 12px;
 }
 .tarjeta-csv-table input,
 .tarjeta-csv-table select,
 .tarjeta-csv-extra-edit input {
   width: 100%;
-  min-width: 110px;
+  min-width: 0;
   padding: 7px 8px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -4468,6 +4546,37 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--surface);
+}
+@media (max-width: 1180px) {
+  .tarjeta-csv-table tr {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .tarjeta-csv-confirm {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 720px) {
+  .tarjeta-csv-modal {
+    padding: 14px 12px 0;
+  }
+  .tarjeta-csv-modal .modal-header {
+    margin: -14px -12px 8px;
+    padding: 14px 12px 10px;
+  }
+  .tarjeta-csv-steps,
+  .tarjeta-csv-table tr,
+  .tarjeta-csv-extra-edit div,
+  .tarjeta-csv-confirm {
+    grid-template-columns: 1fr;
+  }
+  .tarjeta-csv-placeholder {
+    padding: 14px;
+  }
+  .tarjeta-csv-actions {
+    margin-left: -12px !important;
+    margin-right: -12px !important;
+    padding: 12px !important;
+  }
 }
 .ahorro-form {
   display: grid;

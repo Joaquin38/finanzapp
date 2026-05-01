@@ -1125,7 +1125,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
         )}
       </section>
       {csvImportOpen && (
-        <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="csv-import-title">
+        <div className="modal-overlay tarjeta-csv-overlay" role="dialog" aria-modal="true" aria-labelledby="csv-import-title">
           <div className="modal-content tarjeta-csv-modal">
             <div className="modal-header">
               <div>
@@ -1229,9 +1229,9 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
                             </td>
                             <td>
                               <div className="acciones-inline">
-                                <button className="icon-btn" type="button" onClick={() => toggleCsvImportRowEdit(row._id)}>{row._editing ? 'OK' : 'Editar'}</button>
-                                <button className="icon-btn" type="button" onClick={() => toggleCsvImportRowIgnored(row._id)}>{row._ignored ? 'Restaurar' : 'Ignorar'}</button>
-                                <button className="icon-btn danger" type="button" onClick={() => deleteCsvImportRow(row._id)}>Eliminar</button>
+                                <button className="btn-inline secondary" type="button" onClick={() => toggleCsvImportRowEdit(row._id)}>{row._editing ? 'OK' : 'Editar'}</button>
+                                <button className="btn-inline secondary" type="button" onClick={() => toggleCsvImportRowIgnored(row._id)}>{row._ignored ? 'Restaurar' : 'Ignorar'}</button>
+                                <button className="btn-inline danger" type="button" onClick={() => deleteCsvImportRow(row._id)}>Eliminar</button>
                               </div>
                             </td>
                           </tr>
