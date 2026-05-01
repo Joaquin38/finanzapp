@@ -198,18 +198,27 @@ function resolveCsvCuotaInicial(row) {
   return Number.isInteger(value) && value > 0 ? value : 1;
 }
 
-function normalizeCsvText(value) {
-  return String(value || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+function amountsAreClose(a, b, moneda) {
+  const left = Number(a || 0);
+  const right = Number(b || 0);
+  if (!Number.isFinite(left) || !Number.isFinite(right) || left <= 0 || right <= 0) return false;
+  const tolerance = String(moneda || '').toUpperCase() === 'USD' ? 1 : 10;
+  return Math.abs(left - right) <= tolerance;
 }
 
 function hasSimilarConsumo(row, consumosExistentes, tarjetaId) {
-  return consumosExistentes.some((item) => (
+  const moneda = String(row.moneda || '').toUpperCase();
+  const montoTotal = parseAmount(row.monto_total);
+  const montoCuota = parseAmount(row.monto_cuota);
+  return consumosExistentes.find((item) => (
     Number(item.tarjeta_id) === Number(tarjetaId) &&
     String(item.fecha_compra || '').slice(0, 10) === String(row.fecha_compra || '').slice(0, 10) &&
-    normalizeCsvText(item.descripcion) === normalizeCsvText(row.descripcion) &&
-    String(item.moneda || '').toUpperCase() === String(row.moneda || '').toUpperCase() &&
-    Number(item.monto_total || 0) === Number(parseAmount(row.monto_total) || 0) &&
-    Number(item.cantidad_cuotas || 1) === Number(row.cantidad_cuotas || 1)
+    String(item.moneda || '').toUpperCase() === moneda &&
+    Number(item.cantidad_cuotas || 1) === Number(row.cantidad_cuotas || 1) &&
+    (
+      amountsAreClose(item.monto_cuota, montoCuota, moneda) ||
+      amountsAreClose(item.monto_total, montoTotal, moneda)
+    )
   ));
 }
 
@@ -245,9 +254,12 @@ function validateCsvImportRow(row, fechaCierre, selectedCiclo, tarjeta, ciclosEx
   const categoria = String(row.categoria || '').trim().toLowerCase();
   const montoCalculado = modo === 'total' ? montoTotal : montoCuota * cuotas;
   const posibleDuplicado = hasSimilarConsumo(row, consumosExistentes, tarjeta?.id);
+  if (posibleDuplicado) {
+    const mismoResumen = String(posibleDuplicado.ciclo_asignado || '') === String(assignedCycle || '');
+    return { estado: 'revisar', motivo: mismoResumen ? 'Ya cargado en este resumen' : 'Ya cargado en otro resumen', assignedCycle, pasaAlProximo, willCreateSummary, nextSummaryDefaults, posibleDuplicado };
+  }
   if (!categoria || categoria === 'sin categoria' || categoria === 'sin categoría') return { estado: 'revisar', motivo: 'Sin categoria', assignedCycle, pasaAlProximo, willCreateSummary, nextSummaryDefaults };
   if (!Number.isFinite(montoCalculado) || montoCalculado <= 0) return { estado: 'revisar', motivo: 'Monto calculado 0', assignedCycle, pasaAlProximo, willCreateSummary, nextSummaryDefaults };
-  if (posibleDuplicado) return { estado: 'revisar', motivo: 'Ya existe un consumo similar', assignedCycle, pasaAlProximo, willCreateSummary, nextSummaryDefaults, posibleDuplicado };
   return { estado: 'valida', motivo: 'Lista para importar', assignedCycle, pasaAlProximo, willCreateSummary, nextSummaryDefaults, posibleDuplicado };
 }
 
@@ -260,6 +272,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
   const [savedCierreForm, setSavedCierreForm] = useState({ fecha_cierre: '', fecha_vencimiento: '' });
   const [resumen, setResumen] = useState({ total_ars: 0, total_usd: 0, consumos: 0, cuotas_futuras: 0 });
   const [historialResumenes, setHistorialResumenes] = useState([]);
+  const [consumosRegistrados, setConsumosRegistrados] = useState([]);
   const [analisisTarjeta, setAnalisisTarjeta] = useState(null);
   const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState(null);
@@ -345,8 +358,8 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
     [consumos, historialResumenes, selectedCiclo]
   );
   const csvRowsWithValidation = useMemo(
-    () => csvImportRows.map((row) => ({ ...row, _validation: validateCsvImportRow(row, savedCierreForm.fecha_cierre, selectedCiclo, tarjetaActual, csvExistingCycles, consumos, historialResumenes) })),
-    [csvImportRows, savedCierreForm.fecha_cierre, selectedCiclo, tarjetaActual, csvExistingCycles, consumos, historialResumenes]
+    () => csvImportRows.map((row) => ({ ...row, _validation: validateCsvImportRow(row, savedCierreForm.fecha_cierre, selectedCiclo, tarjetaActual, csvExistingCycles, consumosRegistrados, historialResumenes) })),
+    [csvImportRows, savedCierreForm.fecha_cierre, selectedCiclo, tarjetaActual, csvExistingCycles, consumosRegistrados, historialResumenes]
   );
   const csvHasInvalidRows = csvRowsWithValidation.some((row) => row._validation.estado === 'invalida');
   const csvImportableRows = csvRowsWithValidation.filter((row) => !row._ignored && row._validation.estado !== 'invalida');
@@ -475,6 +488,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
     setCierreForm(nextCierreForm);
     setSavedCierreForm(nextCierreForm);
     setConsumos(data.consumos || []);
+    setConsumosRegistrados(data.consumos_registrados || data.consumos || []);
     setResumen(data.resumen || { total_ars: 0, total_usd: 0, consumos: 0, cuotas_futuras: 0 });
     setHistorialResumenes(data.historial_resumenes || []);
     setAnalisisTarjeta(data.analisis_tarjeta || null);

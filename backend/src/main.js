@@ -2656,6 +2656,7 @@ app.get('/tarjetas-credito', async (req, res) => {
       tarjetas,
       cierre: cierreActual || null,
       consumos,
+      consumos_registrados: consumosExpandidos,
       resumen,
       historial_resumenes: historialResumenes,
       analisis_tarjeta: analisisTarjeta
