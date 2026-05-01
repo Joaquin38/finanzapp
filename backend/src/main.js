@@ -1021,9 +1021,10 @@ async function obtenerOCrearCierreTarjeta(tarjeta, ciclo, usuarioId = null) {
 async function resolverResumenCompraTarjeta(tarjeta, fechaCompra, usuarioId = null) {
   const fecha = new Date(`${fechaCompra}T00:00:00`);
   const cicloCompra = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
+  const siguiente = siguienteCiclo(cicloCompra);
   const cierreCompra = await obtenerOCrearCierreTarjeta(tarjeta, cicloCompra, usuarioId);
   const fechaCierreCompra = String(cierreCompra?.fecha_cierre || '').slice(0, 10);
-  const cicloAsignado = fechaCierreCompra && fechaCompra > fechaCierreCompra ? siguienteCiclo(cicloCompra) : cicloCompra;
+  const cicloAsignado = fechaCierreCompra && fechaCompra > fechaCierreCompra ? siguiente : cicloCompra;
   const cierreAsignado = cicloAsignado === cicloCompra
     ? cierreCompra
     : await obtenerOCrearCierreTarjeta(tarjeta, cicloAsignado, usuarioId);
@@ -2632,7 +2633,7 @@ app.get('/tarjetas-credito', async (req, res) => {
           FROM cierres_tarjeta cr
           WHERE cr.tarjeta_id = $1
           ORDER BY cr.ciclo DESC
-          LIMIT 12
+          LIMIT 48
           `,
           [tarjetaConsultaId]
         )
