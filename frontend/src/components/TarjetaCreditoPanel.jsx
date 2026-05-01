@@ -2,6 +2,24 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createConsumoTarjeta, deleteConsumoTarjeta, getTarjetasCredito, updateCierreTarjeta, updateConsumoTarjeta } from '../services/api.js';
 
 const moneyFormat = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
+const csvExpectedHeaders = [
+  'fecha_compra',
+  'descripcion',
+  'categoria',
+  'moneda',
+  'cantidad_cuotas',
+  'modo_carga',
+  'monto_total',
+  'monto_cuota',
+  'titular',
+  'observaciones'
+];
+const csvTemplateFileName = 'plantilla_consumos_tarjeta_finanzapp.csv';
+const csvTemplateRows = [
+  csvExpectedHeaders.join(','),
+  '2026-05-01,Supermercado,Supermercado,ARS,1,total,25000,25000,Titular,Compra ejemplo',
+  '2026-05-02,Electrodomestico,Hogar,ARS,6,cuota,120000,20000,Titular,Compra en cuotas'
+];
 
 const initialForm = {
   fecha_compra: new Date().toISOString().slice(0, 10),
@@ -68,16 +86,18 @@ function parseAmount(value) {
 function calcularMontosPorModo(form, source) {
   const next = { ...form };
   const cuotas = Math.max(Number(next.cantidad_cuotas || 1), 1);
+  const total = parseAmount(next.monto_total);
+  const cuota = parseAmount(next.monto_cuota);
 
-  if (source === 'total') {
-    const total = parseAmount(next.monto_total);
-    if (total > 0 && cuotas > 0) next.monto_cuota = (total / cuotas).toFixed(2);
+  if (cuotas === 1) {
+    if (source === 'cuota' && cuota > 0) next.monto_total = cuota.toFixed(2);
+    else if (total > 0) next.monto_cuota = total.toFixed(2);
+    else if (cuota > 0) next.monto_total = cuota.toFixed(2);
+    return next;
   }
 
-  if (source === 'cuota') {
-    const cuota = parseAmount(next.monto_cuota);
-    if (cuota > 0 && cuotas > 0) next.monto_total = (cuota * cuotas).toFixed(2);
-  }
+  if (source === 'total' && total > 0) next.monto_cuota = (total / cuotas).toFixed(2);
+  if (source === 'cuota' && cuota > 0) next.monto_total = (cuota * cuotas).toFixed(2);
 
   return next;
 }
@@ -89,12 +109,127 @@ function addMonthsToCycle(ciclo, offset) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 }
 
+function getDateForCycleDay(ciclo, day) {
+  if (!ciclo || !day) return '';
+  const [yearText, monthText] = String(ciclo).split('-');
+  const lastDay = new Date(Number(yearText), Number(monthText), 0).getDate();
+  const safeDay = Math.min(Math.max(Number(day), 1), lastDay);
+  return `${ciclo}-${String(safeDay).padStart(2, '0')}`;
+}
+
 function resolvePreviewCycle(fechaCompra, fechaCierreReferencia) {
   if (!fechaCompra) return '';
   const cicloCompra = String(fechaCompra).slice(0, 7);
   const diaCierre = Number(String(fechaCierreReferencia || '').slice(8, 10) || 31);
   const diaCompra = Number(String(fechaCompra).slice(8, 10) || 1);
   return diaCompra > diaCierre ? addMonthsToCycle(cicloCompra, 1) : cicloCompra;
+}
+
+function resolveCsvAssignedCycle(fechaCompra, fechaCierreSeleccionada, selectedCiclo) {
+  if (!fechaCompra || !fechaCierreSeleccionada || !selectedCiclo) return '';
+  return String(fechaCompra).slice(0, 10) <= String(fechaCierreSeleccionada).slice(0, 10)
+    ? selectedCiclo
+    : addMonthsToCycle(selectedCiclo, 1);
+}
+
+function parseCsvLine(line) {
+  const values = [];
+  let current = '';
+  let quoted = false;
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const nextChar = line[index + 1];
+    if (char === '"' && quoted && nextChar === '"') {
+      current += '"';
+      index += 1;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if (char === ',' && !quoted) {
+      values.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  values.push(current.trim());
+  return values;
+}
+
+function parseCsvText(text) {
+  const lines = String(text || '').split(/\r?\n/).filter((line) => line.trim());
+  if (lines.length <= 1) throw new Error('El archivo esta vacio o no tiene filas.');
+  const headers = parseCsvLine(lines[0]).map((header) => header.replace(/^\uFEFF/, '').trim());
+  const missing = csvExpectedHeaders.filter((header) => !headers.includes(header));
+  if (missing.length) throw new Error(`Faltan headers: ${missing.join(', ')}`);
+  const rows = lines.slice(1).map((line) => {
+    const values = parseCsvLine(line);
+    return Object.fromEntries(headers.map((header, index) => [header, values[index] || '']));
+  });
+  if (!rows.length) throw new Error('El archivo no tiene consumos.');
+  return rows;
+}
+
+function downloadCsvTemplate() {
+  const blob = new Blob([`${csvTemplateRows.join('\n')}\n`], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = csvTemplateFileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function normalizeCsvText(value) {
+  return String(value || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+function hasSimilarConsumo(row, consumosExistentes, tarjetaId) {
+  return consumosExistentes.some((item) => (
+    Number(item.tarjeta_id) === Number(tarjetaId) &&
+    String(item.fecha_compra || '').slice(0, 10) === String(row.fecha_compra || '').slice(0, 10) &&
+    normalizeCsvText(item.descripcion) === normalizeCsvText(row.descripcion) &&
+    String(item.moneda || '').toUpperCase() === String(row.moneda || '').toUpperCase() &&
+    Number(item.monto_total || 0) === Number(parseAmount(row.monto_total) || 0) &&
+    Number(item.cantidad_cuotas || 1) === Number(row.cantidad_cuotas || 1)
+  ));
+}
+
+function validateCsvImportRow(row, fechaCierre, selectedCiclo, tarjeta, ciclosExistentes, consumosExistentes) {
+  if (row._ignored) return { estado: 'ignorada', motivo: 'Fila ignorada', assignedCycle: '' };
+  const fecha = String(row.fecha_compra || '').slice(0, 10);
+  const descripcion = String(row.descripcion || '').trim();
+  const moneda = String(row.moneda || '').trim().toUpperCase();
+  const cuotas = Number(row.cantidad_cuotas || 0);
+  const modo = String(row.modo_carga || '').trim().toLowerCase();
+  const montoTotal = parseAmount(row.monto_total);
+  const montoCuota = parseAmount(row.monto_cuota);
+  const assignedCycle = resolveCsvAssignedCycle(fecha, fechaCierre, selectedCiclo);
+  const nextCycle = addMonthsToCycle(selectedCiclo, 1);
+  const pasaAlProximo = assignedCycle === nextCycle;
+  const willCreateSummary = pasaAlProximo && !ciclosExistentes.has(nextCycle);
+  const nextSummaryDefaults = willCreateSummary ? {
+    fecha_cierre: getDateForCycleDay(nextCycle, tarjeta?.dia_cierre_default || 31),
+    fecha_vencimiento: getDateForCycleDay(nextCycle, tarjeta?.dia_vencimiento_default)
+  } : null;
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha) || Number.isNaN(new Date(`${fecha}T00:00:00`).getTime())) return { estado: 'invalida', motivo: 'Fecha invalida', assignedCycle };
+  if (!descripcion) return { estado: 'invalida', motivo: 'Descripcion vacia', assignedCycle };
+  if (!['ARS', 'USD'].includes(moneda)) return { estado: 'invalida', motivo: 'Moneda invalida', assignedCycle };
+  if (!Number.isFinite(cuotas) || cuotas < 1) return { estado: 'invalida', motivo: 'Cuotas invalidas', assignedCycle };
+  if (!['total', 'cuota'].includes(modo)) return { estado: 'invalida', motivo: 'Modo invalido', assignedCycle };
+  if (modo === 'total' && (!Number.isFinite(montoTotal) || montoTotal <= 0)) return { estado: 'invalida', motivo: 'Falta monto total', assignedCycle };
+  if (modo === 'cuota' && (!Number.isFinite(montoCuota) || montoCuota <= 0)) return { estado: 'invalida', motivo: 'Falta monto cuota', assignedCycle };
+  if (!assignedCycle) return { estado: 'invalida', motivo: 'Sin resumen asignado', assignedCycle, pasaAlProximo, willCreateSummary, nextSummaryDefaults };
+
+  const categoria = String(row.categoria || '').trim().toLowerCase();
+  const montoCalculado = modo === 'total' ? montoTotal : montoCuota * cuotas;
+  const posibleDuplicado = hasSimilarConsumo(row, consumosExistentes, tarjeta?.id);
+  if (!categoria || categoria === 'sin categoria' || categoria === 'sin categoría') return { estado: 'revisar', motivo: 'Sin categoria', assignedCycle, pasaAlProximo, willCreateSummary, nextSummaryDefaults };
+  if (!Number.isFinite(montoCalculado) || montoCalculado <= 0) return { estado: 'revisar', motivo: 'Monto calculado 0', assignedCycle, pasaAlProximo, willCreateSummary, nextSummaryDefaults };
+  if (posibleDuplicado) return { estado: 'revisar', motivo: 'Ya existe un consumo similar', assignedCycle, pasaAlProximo, willCreateSummary, nextSummaryDefaults, posibleDuplicado };
+  return { estado: 'valida', motivo: 'Lista para importar', assignedCycle, pasaAlProximo, willCreateSummary, nextSummaryDefaults, posibleDuplicado };
 }
 
 export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = [], formatMoney, onToast }) {
@@ -114,6 +249,11 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
   const [filters, setFilters] = useState({ ciclo: '', categoria: '', moneda: '', cuotas: '', texto: '' });
   const [calcSource, setCalcSource] = useState('total');
   const [vistaTarjeta, setVistaTarjeta] = useState('principal');
+  const [csvImportOpen, setCsvImportOpen] = useState(false);
+  const [csvImportStep, setCsvImportStep] = useState(1);
+  const [csvImportRows, setCsvImportRows] = useState([]);
+  const [csvImportError, setCsvImportError] = useState('');
+  const [csvImportFileName, setCsvImportFileName] = useState('');
   const [loading, setLoading] = useState(false);
   const [loadingAction, setLoadingAction] = useState('');
   const actionLockRef = useRef(false);
@@ -180,6 +320,137 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
   const consumoAsignadoAResumenCerrado = resumenSeleccionadoCerrado && previewCicloAsignado === selectedCiclo;
   const analisisActual = analisisTarjeta?.actual || {};
   const categoriaPrincipalAnalisis = analisisActual.categorias?.[0] || null;
+  const csvImportSteps = ['Subir CSV', 'Revisar consumos', 'Confirmar importacion'];
+  const csvExistingCycles = useMemo(
+    () => new Set([selectedCiclo, ...historialResumenes.map((item) => item.ciclo), ...consumos.map((item) => item.ciclo_asignado)].filter(Boolean)),
+    [consumos, historialResumenes, selectedCiclo]
+  );
+  const csvRowsWithValidation = useMemo(
+    () => csvImportRows.map((row) => ({ ...row, _validation: validateCsvImportRow(row, savedCierreForm.fecha_cierre, selectedCiclo, tarjetaActual, csvExistingCycles, consumos) })),
+    [csvImportRows, savedCierreForm.fecha_cierre, selectedCiclo, tarjetaActual, csvExistingCycles, consumos]
+  );
+  const csvHasInvalidRows = csvRowsWithValidation.some((row) => row._validation.estado === 'invalida');
+  const csvImportableRows = csvRowsWithValidation.filter((row) => !row._ignored && row._validation.estado !== 'invalida');
+  const csvImportStats = useMemo(() => csvRowsWithValidation.reduce(
+    (acc, row) => {
+      if (row._ignored) acc.ignored += 1;
+      else if (row._validation.estado === 'invalida') acc.invalid += 1;
+      else {
+        acc.toImport += 1;
+        const total = parseAmount(row.monto_total);
+        if (row.moneda === 'USD') acc.totalUsd += Number(total || 0);
+        else acc.totalArs += Number(total || 0);
+      }
+      return acc;
+    },
+    { toImport: 0, ignored: 0, invalid: 0, totalArs: 0, totalUsd: 0 }
+  ), [csvRowsWithValidation]);
+  const openCsvImportModal = () => {
+    setCsvImportStep(1);
+    setCsvImportRows([]);
+    setCsvImportError('');
+    setCsvImportFileName('');
+    setCsvImportOpen(true);
+  };
+  const closeCsvImportModal = () => setCsvImportOpen(false);
+  const csvCanContinue = csvImportStep === 1
+    ? csvImportRows.length > 0 && !csvImportError
+    : csvImportStep === 2
+      ? !csvHasInvalidRows
+      : true;
+  const updateCsvImportRow = (rowId, field, value) => {
+    setCsvImportRows((rows) => rows.map((row) => {
+      if (row._id !== rowId) return row;
+      const next = { ...row, [field]: value };
+      if (['cantidad_cuotas', 'modo_carga', 'monto_total', 'monto_cuota'].includes(field)) {
+        const source = field === 'monto_cuota' ? 'cuota' : field === 'monto_total' ? 'total' : next.modo_carga;
+        return calcularMontosPorModo(next, source);
+      }
+      return next;
+    }));
+  };
+  const toggleCsvImportRowEdit = (rowId) => {
+    setCsvImportRows((rows) => rows.map((row) => (row._id === rowId ? { ...row, _editing: !row._editing } : row)));
+  };
+  const toggleCsvImportRowIgnored = (rowId) => {
+    setCsvImportRows((rows) => rows.map((row) => (row._id === rowId ? { ...row, _ignored: !row._ignored, _editing: false } : row)));
+  };
+  const deleteCsvImportRow = (rowId) => {
+    setCsvImportRows((rows) => rows.filter((row) => row._id !== rowId));
+  };
+  const handleCsvFileChange = (event) => {
+    const file = event.target.files?.[0];
+    setCsvImportRows([]);
+    setCsvImportError('');
+    setCsvImportFileName(file?.name || '');
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.csv')) {
+      setCsvImportError('Selecciona un archivo .csv.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const rowIdBase = Date.now();
+        setCsvImportRows(parseCsvText(reader.result).map((row, index) => ({
+          ...calcularMontosPorModo(row, row.modo_carga === 'cuota' ? 'cuota' : 'total'),
+          _id: `${rowIdBase}-${index}`,
+          _editing: false,
+          _ignored: false
+        })));
+      } catch (error) {
+        setCsvImportError(error.message || 'No se pudo leer el CSV.');
+      }
+    };
+    reader.onerror = () => setCsvImportError('No se pudo leer el archivo.');
+    reader.readAsText(file);
+  };
+  const handleConfirmCsvImport = async () => {
+    if (actionLockRef.current || csvImportableRows.length === 0) return;
+    actionLockRef.current = true;
+    setLoading(true);
+    setLoadingAction('csv-import');
+    let imported = 0;
+    let errors = 0;
+    try {
+      const cierreIdsByCycle = new Map();
+      if (cierre?.id) cierreIdsByCycle.set(selectedCiclo, cierre.id);
+      for (const row of csvImportableRows) {
+        try {
+          const assignedCycle = row._validation.assignedCycle;
+          if (!cierreIdsByCycle.has(assignedCycle)) {
+            const data = await getTarjetasCredito(hogarId, assignedCycle, tarjetaActual?.id);
+            if (data.cierre?.id) cierreIdsByCycle.set(assignedCycle, data.cierre.id);
+          }
+          await createConsumoTarjeta({
+            tarjeta_id: Number(tarjetaActual?.id || form.tarjeta_id),
+            cierre_id: cierreIdsByCycle.get(assignedCycle),
+            ciclo_actual: selectedCiclo,
+            fecha_compra: row.fecha_compra,
+            descripcion: row.descripcion,
+            categoria: row.categoria || null,
+            moneda: row.moneda,
+            cantidad_cuotas: Number(row.cantidad_cuotas || 1),
+            monto_total: parseAmount(row.monto_total),
+            monto_cuota: parseAmount(row.monto_cuota),
+            titular: row.titular || null,
+            observaciones: row.observaciones || null
+          });
+          imported += 1;
+        } catch {
+          errors += 1;
+        }
+      }
+      closeCsvImportModal();
+      setCsvImportRows([]);
+      await cargarTarjetas(form.tarjeta_id, selectedCiclo);
+      onToast?.({ message: `Importados: ${imported}. Ignorados: ${csvImportStats.ignored}. Con error: ${errors}.` });
+    } finally {
+      actionLockRef.current = false;
+      setLoading(false);
+      setLoadingAction('');
+    }
+  };
 
   const cargarTarjetas = async (tarjetaId = form.tarjeta_id, cicloConsulta = selectedCiclo) => {
     if (!hogarId) return;
@@ -579,10 +850,15 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
             <h2>{editingId ? 'Editar consumo' : 'Nuevo consumo'}</h2>
             <p>Alta rapida de tarjeta.</p>
           </div>
-          <span className={`tarjeta-assignment-preview ${previewPasaAlSiguiente ? 'next' : ''}`} aria-live="polite">
-            {previewPasaAlSiguiente ? 'Pasa a ' : 'Resumen '}
-            <strong>{formatCycleLabel(previewCicloAsignado)}</strong>
-          </span>
+          <div className="tarjeta-form-header-actions">
+            <button className="btn-inline secondary" type="button" onClick={openCsvImportModal}>
+              Importar CSV
+            </button>
+            <span className={`tarjeta-assignment-preview ${previewPasaAlSiguiente ? 'next' : ''}`} aria-live="polite">
+              {previewPasaAlSiguiente ? 'Pasa a ' : 'Resumen '}
+              <strong>{formatCycleLabel(previewCicloAsignado)}</strong>
+            </span>
+          </div>
         </div>
         <form className="form-grid tarjeta-consumo-form" onSubmit={handleSubmit}>
           <div className="tarjeta-form-group tarjeta-form-group-purchase">
@@ -836,6 +1112,165 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
           <p className="empty-state">Sin cuotas futuras.</p>
         )}
       </section>
+      {csvImportOpen && (
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="csv-import-title">
+          <div className="modal-content tarjeta-csv-modal">
+            <div className="modal-header">
+              <div>
+                <p className="eyebrow">Tarjeta de credito</p>
+                <h2 id="csv-import-title">Importar consumos desde CSV</h2>
+              </div>
+              <button className="close-btn" type="button" onClick={closeCsvImportModal} aria-label="Cerrar">
+                x
+              </button>
+            </div>
+            <div className="tarjeta-csv-steps">
+              {csvImportSteps.map((step, index) => {
+                const stepNumber = index + 1;
+                return (
+                  <div className={stepNumber === csvImportStep ? 'active' : stepNumber < csvImportStep ? 'done' : ''} key={step}>
+                    <span>{stepNumber}</span>
+                    <strong>{step}</strong>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="tarjeta-csv-placeholder">
+              <span>Paso {csvImportStep}</span>
+              <strong>{csvImportSteps[csvImportStep - 1]}</strong>
+              {csvImportStep === 1 ? (
+                <div className="tarjeta-csv-upload">
+                  <button className="btn-inline secondary" type="button" onClick={downloadCsvTemplate}>
+                    Descargar plantilla CSV
+                  </button>
+                  <input type="file" accept=".csv,text/csv" onChange={handleCsvFileChange} />
+                  <small>{csvImportFileName || 'Formato esperado: fecha_compra,descripcion,categoria,moneda,cantidad_cuotas,modo_carga,monto_total,monto_cuota,titular,observaciones'}</small>
+                  {csvImportError && <p className="tarjeta-csv-error">{csvImportError}</p>}
+                  {!csvImportError && csvImportRows.length > 0 && (
+                    <p className="tarjeta-csv-ok">{csvImportRows.length} filas detectadas.</p>
+                  )}
+                </div>
+              ) : csvImportStep === 2 ? (
+                <div className="tarjeta-csv-table-wrap">
+                  <table className="tarjeta-table tarjeta-csv-table">
+                    <thead>
+                      <tr>
+                        <th>Estado</th>
+                        <th>Fecha</th>
+                        <th>Descripcion</th>
+                        <th>Categoria</th>
+                        <th>Moneda</th>
+                        <th>Cuotas</th>
+                        <th>Modo</th>
+                        <th>Monto total</th>
+                        <th>Monto cuota</th>
+                        <th>Resumen asignado</th>
+                        <th>Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {csvRowsWithValidation.map((row) => {
+                        const validation = row._validation;
+                        const rowStatus = row._editing && validation.estado !== 'ignorada' ? 'editando' : validation.estado;
+                        return (
+                          <tr className={`csv-row-${validation.estado}`} key={row._id}>
+                            <td>
+                              <span className="pill">{rowStatus}</span>
+                              <small>{validation.motivo}</small>
+                              {validation.posibleDuplicado && <small className="tarjeta-csv-duplicate">posible duplicado</small>}
+                            </td>
+                            <td>{row._editing ? <input type="date" value={row.fecha_compra || ''} onChange={(e) => updateCsvImportRow(row._id, 'fecha_compra', e.target.value)} /> : row.fecha_compra}</td>
+                            <td>{row._editing ? <input value={row.descripcion || ''} onChange={(e) => updateCsvImportRow(row._id, 'descripcion', e.target.value)} /> : row.descripcion}</td>
+                            <td>{row._editing ? (
+                              <select value={row.categoria || ''} onChange={(e) => updateCsvImportRow(row._id, 'categoria', e.target.value)}>
+                                <option value="">Sin categoria</option>
+                                {categoriasEgreso.map((categoria) => (
+                                  <option key={categoria.id} value={categoria.nombre}>{categoria.nombre}</option>
+                                ))}
+                              </select>
+                            ) : (row.categoria || 'Sin categoria')}</td>
+                            <td>{row._editing ? (
+                              <select value={row.moneda || 'ARS'} onChange={(e) => updateCsvImportRow(row._id, 'moneda', e.target.value)}>
+                                <option value="ARS">ARS</option>
+                                <option value="USD">USD</option>
+                              </select>
+                            ) : row.moneda}</td>
+                            <td>{row._editing ? <input type="number" min="1" step="1" value={row.cantidad_cuotas || ''} onChange={(e) => updateCsvImportRow(row._id, 'cantidad_cuotas', e.target.value)} /> : row.cantidad_cuotas}</td>
+                            <td>{row._editing ? (
+                              <select value={row.modo_carga || 'total'} onChange={(e) => updateCsvImportRow(row._id, 'modo_carga', e.target.value)}>
+                                <option value="total">total</option>
+                                <option value="cuota">cuota</option>
+                              </select>
+                            ) : row.modo_carga}</td>
+                            <td>{row._editing ? <input value={row.monto_total || ''} onChange={(e) => updateCsvImportRow(row._id, 'monto_total', e.target.value)} /> : row.monto_total}</td>
+                            <td>{row._editing ? <input value={row.monto_cuota || ''} onChange={(e) => updateCsvImportRow(row._id, 'monto_cuota', e.target.value)} /> : row.monto_cuota}</td>
+                            <td>
+                              <span className="pill">{validation.assignedCycle ? formatCycleLabel(validation.assignedCycle) : '-'}</span>
+                              {validation.pasaAlProximo && <small className="tarjeta-csv-next-badge">Pasa al proximo resumen</small>}
+                              {validation.willCreateSummary && (
+                                <small>
+                                  Se creara con cierre {formatDate(validation.nextSummaryDefaults?.fecha_cierre)}
+                                </small>
+                              )}
+                            </td>
+                            <td>
+                              <div className="acciones-inline">
+                                <button className="icon-btn" type="button" onClick={() => toggleCsvImportRowEdit(row._id)}>{row._editing ? 'OK' : 'Editar'}</button>
+                                <button className="icon-btn" type="button" onClick={() => toggleCsvImportRowIgnored(row._id)}>{row._ignored ? 'Restaurar' : 'Ignorar'}</button>
+                                <button className="icon-btn danger" type="button" onClick={() => deleteCsvImportRow(row._id)}>Eliminar</button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  {csvHasInvalidRows && (
+                    <p className="tarjeta-csv-error">Hay filas invalidas sin ignorar. Corregilas o ignoralas para continuar.</p>
+                  )}
+                  <div className="tarjeta-csv-extra-edit">
+                    {csvImportRows.map((row) => row._editing && (
+                      <div key={`${row._id}-extra`}>
+                        <strong>{row.descripcion || 'Fila sin descripcion'}</strong>
+                        <input placeholder="Titular" value={row.titular || ''} onChange={(e) => updateCsvImportRow(row._id, 'titular', e.target.value)} />
+                        <input placeholder="Observaciones" value={row.observaciones || ''} onChange={(e) => updateCsvImportRow(row._id, 'observaciones', e.target.value)} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="tarjeta-csv-confirm">
+                  <div><span>Filas a importar</span><strong>{csvImportStats.toImport}</strong></div>
+                  <div><span>Filas ignoradas</span><strong>{csvImportStats.ignored}</strong></div>
+                  <div><span>Filas invalidas</span><strong>{csvImportStats.invalid}</strong></div>
+                  <div><span>Total ARS</span><strong>{formatMoney(csvImportStats.totalArs)}</strong></div>
+                  <div><span>Total USD</span><strong>{formatUsd(csvImportStats.totalUsd)}</strong></div>
+                </div>
+              )}
+            </div>
+            <div className="confirm-actions tarjeta-csv-actions">
+              <button className="btn-inline secondary" type="button" onClick={closeCsvImportModal}>
+                Cancelar
+              </button>
+              {csvImportStep > 1 && (
+                <button className="btn-inline secondary" type="button" onClick={() => setCsvImportStep(csvImportStep === 2 ? 1 : 2)}>
+                  {csvImportStep === 2 ? 'Volver' : 'Volver a revisar'}
+                </button>
+              )}
+              {csvImportStep < csvImportSteps.length ? (
+                <button className="btn-inline" type="button" onClick={() => setCsvImportStep((step) => Math.min(csvImportSteps.length, step + 1))} disabled={!csvCanContinue}>
+                  Continuar
+                </button>
+              ) : (
+                <button className="btn-inline btn-with-spinner" type="button" onClick={handleConfirmCsvImport} disabled={loading || csvImportStats.toImport === 0}>
+                  {loadingAction === 'csv-import' && <span className="btn-spinner" aria-hidden="true" />}
+                  {loadingAction === 'csv-import' ? 'Importando...' : 'Confirmar importacion'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
         </>
       ) : vistaTarjeta === 'historial' ? (
         <>
