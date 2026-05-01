@@ -98,13 +98,13 @@ function buildCategoryAnalysis(analisisTarjeta = {}) {
       usdPct: totalUsd > 0 ? (Number(item.total_usd || 0) / totalUsd) * 100 : 0,
       consumos: Number(item.consumos || 0)
     }))
-    .sort((a, b) => (b.ars + b.usd) - (a.ars + a.usd));
+    .sort((a, b) => (b.ars - a.ars) || (b.usd - a.usd));
   const topCategorias = distribucion.slice(0, 5);
   const maxArs = Math.max(...serie.map((item) => Number(item.total_ars || 0)), 1);
   const maxUsd = Math.max(...serie.map((item) => Number(item.total_usd || 0)), 1);
-  const maxCategoria = Math.max(...topCategorias.flatMap((cat) => serie.map((item) => {
+  const maxCategoriaArs = Math.max(...topCategorias.flatMap((cat) => serie.map((item) => {
     const found = (item.categorias || []).find((entry) => entry.categoria === cat.categoria) || {};
-    return Number(found.total_ars || 0) + Number(found.total_usd || 0);
+    return Number(found.total_ars || 0);
   })), 1);
   const concentracionTop3Ars = totalArs > 0
     ? distribucion.slice(0, 3).reduce((acc, item) => acc + item.ars, 0) / totalArs * 100
@@ -112,7 +112,7 @@ function buildCategoryAnalysis(analisisTarjeta = {}) {
   const concentracionTop3Usd = totalUsd > 0
     ? distribucion.slice(0, 3).reduce((acc, item) => acc + item.usd, 0) / totalUsd * 100
     : 0;
-  return { serie, distribucion, topCategorias, maxArs, maxUsd, maxCategoria, concentracionTop3Ars, concentracionTop3Usd };
+  return { serie, distribucion, topCategorias, maxArs, maxUsd, maxCategoriaArs, concentracionTop3Ars, concentracionTop3Usd };
 }
 
 function parseAmount(value) {
@@ -1619,8 +1619,8 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
             <p className="eyebrow">Analisis</p>
             <h2>Comportamiento de consumo</h2>
             <p>
-              Punta {formatCycleLabel(analisisTarjeta?.ciclo_punta || selectedCiclo)}
-              {analisisTarjeta?.ultimo_cerrado ? ` desde ultimo cerrado ${formatCycleLabel(analisisTarjeta.ultimo_cerrado)}` : ''}
+              Resumen analizado: {formatCycleLabel(analisisTarjeta?.ciclo_punta || selectedCiclo)}
+              {analisisTarjeta?.ultimo_cerrado ? ` | ultimo cerrado: ${formatCycleLabel(analisisTarjeta.ultimo_cerrado)}` : ''}
             </p>
           </div>
           <em className={`tarjeta-analysis-status ${analisisTarjeta?.tono_nivel || 'muted'}`}>
@@ -1629,29 +1629,34 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
         </div>
         <div className="tarjeta-analysis-grid">
           <article>
-            <span>Total ARS punta</span>
+            <span>Total ARS del resumen</span>
             <strong>{formatMoney(analisisActual.total_ars || 0)}</strong>
             <small>Promedio previo {formatMoney(analisisTarjeta?.promedio_ars || 0)}</small>
           </article>
           <article>
-            <span>Variacion consumo</span>
+            <span>Variacion ARS</span>
             <strong>{formatPercent(analisisTarjeta?.variacion_total_ars)}</strong>
-            <small>Contra ciclos anteriores</small>
+            <small>Contra promedio de resumenes previos</small>
           </article>
           <article>
             <span>Suscripciones</span>
             <strong>{formatMoney(analisisActual.suscripciones_ars || 0)}</strong>
-            <small>{Math.round(analisisTarjeta?.participacion_suscripciones || 0)}% del resumen</small>
+            <small>{formatUsd(analisisActual.suscripciones_usd || 0)} | {Math.round(analisisTarjeta?.participacion_suscripciones_ars || 0)}% ARS</small>
           </article>
           <article>
             <span>Cuotas</span>
             <strong>{formatMoney(analisisActual.cuotas_ars || 0)}</strong>
-            <small>{Math.round(analisisTarjeta?.participacion_cuotas || 0)}% del resumen</small>
+            <small>{formatUsd(analisisActual.cuotas_usd || 0)} | {Math.round(analisisTarjeta?.participacion_cuotas_ars || 0)}% ARS</small>
           </article>
           <article>
-            <span>Total USD punta</span>
+            <span>Total USD del resumen</span>
             <strong>{formatUsd(analisisActual.total_usd || 0)}</strong>
             <small>Promedio previo {formatUsd(analisisTarjeta?.promedio_usd || 0)}</small>
+          </article>
+          <article>
+            <span>Variacion USD</span>
+            <strong>{formatPercent(analisisTarjeta?.variacion_total_usd)}</strong>
+            <small>Contra promedio de resumenes previos</small>
           </article>
           <article>
             <span>Categoria dominante</span>
@@ -1677,7 +1682,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
           </article>
         </div>
         <div className="tarjeta-analysis-block tarjeta-category-distribution">
-          <h3>Distribucion actual por categoria</h3>
+          <h3>Distribucion del resumen seleccionado por categoria</h3>
           <div className="tarjeta-category-bars">
             {analisisCategorias.distribucion.slice(0, 8).map((item) => (
               <div className="tarjeta-category-bar-row" key={item.categoria}>
@@ -1701,7 +1706,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
           </div>
         </div>
         <div className="tarjeta-analysis-block tarjeta-cycle-chart">
-          <h3>Evolucion por resumen</h3>
+          <h3>Evolucion por resumen: importe que impacta en cada ciclo</h3>
           <div className="tarjeta-cycle-chart-grid">
             {analisisCategorias.serie.map((item) => (
               <div className="tarjeta-cycle-column" key={item.ciclo}>
@@ -1717,7 +1722,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
           </div>
         </div>
         <div className="tarjeta-analysis-block tarjeta-category-heatmap">
-          <h3>Tendencia de categorias principales</h3>
+          <h3>Tendencia ARS de categorias principales</h3>
           <div className="tarjeta-category-heatmap-grid">
             <div className="tarjeta-category-heatmap-head">
               <span>Categoria</span>
@@ -1728,11 +1733,11 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
                 <strong>{categoria.categoria}</strong>
                 {analisisCategorias.serie.map((item) => {
                   const found = (item.categorias || []).find((entry) => entry.categoria === categoria.categoria) || {};
-                  const value = Number(found.total_ars || 0) + Number(found.total_usd || 0);
+                  const value = Number(found.total_ars || 0);
                   return (
                     <em
                       key={`${categoria.categoria}-${item.ciclo}`}
-                      style={{ opacity: Math.max(0.18, value / analisisCategorias.maxCategoria) }}
+                      style={{ opacity: Math.max(0.18, value / analisisCategorias.maxCategoriaArs) }}
                       title={`${formatCycleLabel(item.ciclo)}: ${formatMoney(found.total_ars || 0)} / ${formatUsd(found.total_usd || 0)}`}
                     />
                   );
@@ -1743,16 +1748,17 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
         </div>
         <div className="tarjeta-analysis-layout">
           <div className="tarjeta-analysis-block">
-            <h3>Tendencia</h3>
+            <h3>Tendencia ARS por resumen</h3>
             <div className="tarjeta-trend-list">
-              {(analisisTarjeta?.serie || []).map((item) => {
-                const maxValue = Math.max(...(analisisTarjeta?.serie || []).map((serieItem) => Number(serieItem.total_ars || 0)), 1);
+              {analisisCategorias.serie.map((item) => {
+                const maxValue = Math.max(...analisisCategorias.serie.map((serieItem) => Number(serieItem.total_ars || 0)), 1);
                 const width = Math.max(6, Math.round((Number(item.total_ars || 0) / maxValue) * 100));
                 return (
                   <div className="tarjeta-trend-row" key={item.ciclo}>
                     <span>{formatCycleLabel(item.ciclo)}</span>
                     <div><i style={{ width: `${width}%` }} /></div>
                     <strong>{formatMoney(item.total_ars || 0)}</strong>
+                    <small>{formatUsd(item.total_usd || 0)}</small>
                   </div>
                 );
               })}
