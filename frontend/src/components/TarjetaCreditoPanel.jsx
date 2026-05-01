@@ -811,6 +811,12 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
                             {validation.willCreateSummary && <small>Se creara con cierre {formatDate(validation.nextSummaryDefaults?.fecha_cierre)}</small>}
                           </td>
                           <td>
+                            {row._editing && (
+                              <div className="tarjeta-csv-row-extra">
+                                <input placeholder="Titular" value={row.titular || ''} onChange={(e) => updateCsvImportRow(row._id, 'titular', e.target.value)} />
+                                <input placeholder="Observaciones" value={row.observaciones || ''} onChange={(e) => updateCsvImportRow(row._id, 'observaciones', e.target.value)} />
+                              </div>
+                            )}
                             <div className="acciones-inline">
                               <button className="btn-inline secondary" type="button" onClick={() => toggleCsvImportRowEdit(row._id)}>{row._editing ? 'OK' : 'Editar'}</button>
                               <button className="btn-inline secondary" type="button" onClick={() => toggleCsvImportRowIgnored(row._id)}>{row._ignored ? 'Restaurar' : 'Ignorar'}</button>
@@ -825,15 +831,6 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
                 {csvHasInvalidRows && (
                   <p className="tarjeta-csv-error">Hay filas invalidas sin ignorar. Corregilas o ignoralas para continuar.</p>
                 )}
-                <div className="tarjeta-csv-extra-edit">
-                  {csvImportRows.map((row) => row._editing && (
-                    <div key={`${row._id}-extra`}>
-                      <strong>{row.descripcion || 'Fila sin descripcion'}</strong>
-                      <input placeholder="Titular" value={row.titular || ''} onChange={(e) => updateCsvImportRow(row._id, 'titular', e.target.value)} />
-                      <input placeholder="Observaciones" value={row.observaciones || ''} onChange={(e) => updateCsvImportRow(row._id, 'observaciones', e.target.value)} />
-                    </div>
-                  ))}
-                </div>
               </div>
             ) : (
               <div className="tarjeta-csv-confirm">
@@ -1401,6 +1398,12 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
                               )}
                             </td>
                             <td>
+                              {row._editing && (
+                                <div className="tarjeta-csv-row-extra">
+                                  <input placeholder="Titular" value={row.titular || ''} onChange={(e) => updateCsvImportRow(row._id, 'titular', e.target.value)} />
+                                  <input placeholder="Observaciones" value={row.observaciones || ''} onChange={(e) => updateCsvImportRow(row._id, 'observaciones', e.target.value)} />
+                                </div>
+                              )}
                               <div className="acciones-inline">
                                 <button className="btn-inline secondary" type="button" onClick={() => toggleCsvImportRowEdit(row._id)}>{row._editing ? 'OK' : 'Editar'}</button>
                                 <button className="btn-inline secondary" type="button" onClick={() => toggleCsvImportRowIgnored(row._id)}>{row._ignored ? 'Restaurar' : 'Ignorar'}</button>
@@ -1415,15 +1418,6 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
                   {csvHasInvalidRows && (
                     <p className="tarjeta-csv-error">Hay filas invalidas sin ignorar. Corregilas o ignoralas para continuar.</p>
                   )}
-                  <div className="tarjeta-csv-extra-edit">
-                    {csvImportRows.map((row) => row._editing && (
-                      <div key={`${row._id}-extra`}>
-                        <strong>{row.descripcion || 'Fila sin descripcion'}</strong>
-                        <input placeholder="Titular" value={row.titular || ''} onChange={(e) => updateCsvImportRow(row._id, 'titular', e.target.value)} />
-                        <input placeholder="Observaciones" value={row.observaciones || ''} onChange={(e) => updateCsvImportRow(row._id, 'observaciones', e.target.value)} />
-                      </div>
-                    ))}
-                  </div>
                 </div>
               ) : (
                 <div className="tarjeta-csv-confirm">

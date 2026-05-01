@@ -4490,8 +4490,7 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   font-size: 12px;
 }
 .tarjeta-csv-table input,
-.tarjeta-csv-table select,
-.tarjeta-csv-extra-edit input {
+.tarjeta-csv-table select {
   width: 100%;
   min-width: 0;
   padding: 7px 8px;
@@ -4532,20 +4531,10 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   background: rgba(245, 158, 11, 0.14);
   color: #b45309 !important;
 }
-.tarjeta-csv-extra-edit {
+.tarjeta-csv-row-extra {
   display: grid;
-  gap: 8px;
-  margin-top: 10px;
-}
-.tarjeta-csv-extra-edit div {
-  display: grid;
-  grid-template-columns: minmax(180px, 0.8fr) minmax(160px, 0.7fr) minmax(220px, 1fr);
-  gap: 8px;
-  align-items: center;
-  padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--surface);
+  gap: 6px;
+  margin-bottom: 8px;
 }
 @media (max-width: 1180px) {
   .tarjeta-csv-table tr {
@@ -4565,7 +4554,6 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   }
   .tarjeta-csv-steps,
   .tarjeta-csv-table tr,
-  .tarjeta-csv-extra-edit div,
   .tarjeta-csv-confirm {
     grid-template-columns: 1fr;
   }
