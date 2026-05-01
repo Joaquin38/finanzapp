@@ -290,6 +290,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
   const [loading, setLoading] = useState(false);
   const [loadingAction, setLoadingAction] = useState('');
   const actionLockRef = useRef(false);
+  const cycleLoadRef = useRef(0);
 
   const tarjetaActual = tarjetas.find((tarjeta) => Number(tarjeta.id) === Number(form.tarjeta_id)) || tarjetas[0];
   const resumenSeleccionadoCerrado = cierre?.estado === 'cerrado';
@@ -509,12 +510,14 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
 
   useEffect(() => {
     let active = true;
+    const loadId = cycleLoadRef.current + 1;
+    cycleLoadRef.current = loadId;
     setLoading(true);
     setLoadingAction('cycle-load');
     cargarTarjetas()
       .catch((err) => onToast?.({ type: 'error', message: err.message }))
       .finally(() => {
-        if (!active) return;
+        if (!active || cycleLoadRef.current !== loadId) return;
         setLoading(false);
         setLoadingAction('');
       });
@@ -524,18 +527,24 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
   }, [hogarId, selectedCiclo]);
 
   const handleTarjetaChange = (value) => {
+    const loadId = cycleLoadRef.current + 1;
+    cycleLoadRef.current = loadId;
     setForm((prev) => ({ ...prev, tarjeta_id: value }));
     setLoading(true);
     setLoadingAction('cycle-load');
     cargarTarjetas(value, selectedCiclo)
       .catch((err) => onToast?.({ type: 'error', message: err.message }))
       .finally(() => {
+        if (cycleLoadRef.current !== loadId) return;
         setLoading(false);
         setLoadingAction('');
       });
   };
 
   const handleCicloChange = (value) => {
+    if (value === selectedCiclo) return;
+    setLoading(true);
+    setLoadingAction('cycle-load');
     setSelectedCiclo(value);
     setFilters((prev) => ({ ...prev, ciclo: value }));
   };
@@ -967,6 +976,12 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
         <p className={`tarjeta-summary-state ${resumenSeleccionadoCerrado ? 'cerrado' : 'abierto'}`}>
           Resumen {formatCycleLabel(selectedCiclo)} {resumenSeleccionadoCerrado ? 'cerrado' : 'abierto'}
         </p>
+        {loadingAction === 'cycle-load' && (
+          <p className="tarjeta-inline-loading">
+            <span className="btn-spinner" aria-hidden="true" />
+            Actualizando resumen...
+          </p>
+        )}
         <div className="tarjeta-summary-navigator" aria-label="Navegar resumenes de tarjeta">
           <button type="button" className="btn-inline secondary" onClick={() => navegarResumen(-1)} disabled={loadingAction === 'cycle-load'}>
             Anterior
