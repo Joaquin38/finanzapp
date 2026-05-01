@@ -3719,6 +3719,13 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   flex-wrap: wrap;
   justify-content: flex-end;
 }
+.tarjeta-form-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
 .tarjeta-save-config {
   min-width: 230px;
 }
@@ -4295,6 +4302,184 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   color: var(--text-secondary);
   background: var(--surface-soft);
   font-weight: 700;
+}
+.tarjeta-csv-modal {
+  width: min(960px, 100%);
+}
+.tarjeta-csv-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 10px 0 14px;
+}
+.tarjeta-csv-steps div,
+.tarjeta-csv-placeholder {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+.tarjeta-csv-steps div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  color: var(--text-secondary);
+}
+.tarjeta-csv-steps span {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-weight: 900;
+}
+.tarjeta-csv-steps .active,
+.tarjeta-csv-steps .done {
+  border-color: rgba(37, 99, 235, 0.45);
+  color: var(--text-primary);
+}
+.tarjeta-csv-steps .active span,
+.tarjeta-csv-steps .done span {
+  background: #2563eb;
+  color: #ffffff;
+}
+.tarjeta-csv-placeholder {
+  display: grid;
+  gap: 8px;
+  min-height: 220px;
+  place-items: center;
+  padding: 24px;
+  text-align: center;
+}
+.tarjeta-csv-placeholder span {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+.tarjeta-csv-placeholder strong {
+  color: var(--text-primary);
+  font-size: 22px;
+}
+.tarjeta-csv-placeholder p {
+  max-width: 520px;
+  margin: 0;
+  color: var(--text-secondary);
+  font-weight: 700;
+}
+.tarjeta-csv-upload {
+  display: grid;
+  gap: 10px;
+  width: min(620px, 100%);
+}
+.tarjeta-csv-upload input {
+  width: 100%;
+}
+.tarjeta-csv-upload small {
+  color: var(--text-muted);
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+.tarjeta-csv-placeholder .tarjeta-csv-error {
+  color: #b91c1c;
+}
+.tarjeta-csv-placeholder .tarjeta-csv-ok {
+  color: #15803d;
+}
+.tarjeta-csv-actions {
+  margin-top: 14px;
+}
+.tarjeta-csv-confirm {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  width: 100%;
+}
+.tarjeta-csv-confirm div {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.tarjeta-csv-confirm span {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+.tarjeta-csv-confirm strong {
+  color: var(--text-primary);
+  font-size: 20px;
+}
+.tarjeta-csv-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+.tarjeta-csv-table {
+  min-width: 1180px;
+  text-align: left;
+}
+.tarjeta-csv-table input,
+.tarjeta-csv-table select,
+.tarjeta-csv-extra-edit input {
+  width: 100%;
+  min-width: 110px;
+  padding: 7px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text-primary);
+}
+.tarjeta-csv-table tr.csv-row-ignorada {
+  opacity: 0.55;
+}
+.tarjeta-csv-table tr.csv-row-invalida {
+  background: rgba(239, 68, 68, 0.08);
+}
+.tarjeta-csv-table tr.csv-row-revisar {
+  background: rgba(245, 158, 11, 0.08);
+}
+.tarjeta-csv-table tr.csv-row-valida {
+  background: rgba(34, 197, 94, 0.06);
+}
+.tarjeta-csv-table td small {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-weight: 800;
+}
+.tarjeta-csv-next-badge {
+  width: max-content;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.12);
+  color: #1d4ed8 !important;
+}
+.tarjeta-csv-duplicate {
+  width: max-content;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.14);
+  color: #b45309 !important;
+}
+.tarjeta-csv-extra-edit {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+.tarjeta-csv-extra-edit div {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.8fr) minmax(160px, 0.7fr) minmax(220px, 1fr);
+  gap: 8px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
 }
 .ahorro-form {
   display: grid;
