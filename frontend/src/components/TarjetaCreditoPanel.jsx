@@ -697,6 +697,166 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
     { label: 'Cuotas futuras', value: resumen.cuotas_futuras || 0, tone: 'future' }
   ];
 
+  if (csvImportOpen) {
+    return (
+      <section className="tarjeta-panel tarjeta-csv-screen">
+        <div className="panel tarjeta-csv-modal">
+          <div className="panel-header tarjeta-csv-screen-header">
+            <div>
+              <p className="eyebrow">Tarjeta de credito</p>
+              <h2 id="csv-import-title">Importar consumos desde CSV</h2>
+            </div>
+            <button className="close-btn" type="button" onClick={closeCsvImportModal} aria-label="Cerrar">
+              x
+            </button>
+          </div>
+          <div className="tarjeta-csv-steps">
+            {csvImportSteps.map((step, index) => {
+              const stepNumber = index + 1;
+              return (
+                <div className={stepNumber === csvImportStep ? 'active' : stepNumber < csvImportStep ? 'done' : ''} key={step}>
+                  <span>{stepNumber}</span>
+                  <strong>{step}</strong>
+                </div>
+              );
+            })}
+          </div>
+          <div className="tarjeta-csv-placeholder">
+            <span>Paso {csvImportStep}</span>
+            <strong>{csvImportSteps[csvImportStep - 1]}</strong>
+            {csvImportStep === 1 ? (
+              <div className="tarjeta-csv-upload">
+                <button className="btn-inline secondary" type="button" onClick={downloadCsvTemplate}>
+                  Descargar plantilla CSV
+                </button>
+                <input type="file" accept=".csv,text/csv" onChange={handleCsvFileChange} />
+                <small>{csvImportFileName || csvExpectedHeaders.join(',')}</small>
+                {csvImportError && <p className="tarjeta-csv-error">{csvImportError}</p>}
+                {!csvImportError && csvImportRows.length > 0 && (
+                  <p className="tarjeta-csv-ok">{csvImportRows.length} filas detectadas.</p>
+                )}
+              </div>
+            ) : csvImportStep === 2 ? (
+              <div className="tarjeta-csv-table-wrap">
+                <table className="tarjeta-table tarjeta-csv-table">
+                  <thead>
+                    <tr>
+                      <th>Estado</th>
+                      <th>Fecha</th>
+                      <th>Descripcion</th>
+                      <th>Categoria</th>
+                      <th>Moneda</th>
+                      <th>Cuota actual</th>
+                      <th>Cuotas</th>
+                      <th>Modo</th>
+                      <th>Monto total</th>
+                      <th>Monto cuota</th>
+                      <th>Resumen asignado</th>
+                      <th>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {csvRowsWithValidation.map((row) => {
+                      const validation = row._validation;
+                      const rowStatus = row._editing && validation.estado !== 'ignorada' ? 'editando' : validation.estado;
+                      return (
+                        <tr className={`csv-row-${validation.estado}`} key={row._id}>
+                          <td>
+                            <span className="pill">{rowStatus}</span>
+                            <small>{validation.motivo}</small>
+                            {validation.posibleDuplicado && <small className="tarjeta-csv-duplicate">posible duplicado</small>}
+                          </td>
+                          <td>{row._editing ? <input type="date" value={row.fecha_compra || ''} onChange={(e) => updateCsvImportRow(row._id, 'fecha_compra', e.target.value)} /> : row.fecha_compra}</td>
+                          <td>{row._editing ? <input value={row.descripcion || ''} onChange={(e) => updateCsvImportRow(row._id, 'descripcion', e.target.value)} /> : row.descripcion}</td>
+                          <td>{row._editing ? (
+                            <select value={row.categoria || ''} onChange={(e) => updateCsvImportRow(row._id, 'categoria', e.target.value)}>
+                              <option value="">Sin categoria</option>
+                              {categoriasEgreso.map((categoria) => (
+                                <option key={categoria.id} value={categoria.nombre}>{categoria.nombre}</option>
+                              ))}
+                            </select>
+                          ) : (row.categoria || 'Sin categoria')}</td>
+                          <td>{row._editing ? (
+                            <select value={row.moneda || 'ARS'} onChange={(e) => updateCsvImportRow(row._id, 'moneda', e.target.value)}>
+                              <option value="ARS">ARS</option>
+                              <option value="USD">USD</option>
+                            </select>
+                          ) : row.moneda}</td>
+                          <td>{row._editing ? <input type="number" min="1" step="1" value={row.cuota_actual || ''} onChange={(e) => updateCsvImportRow(row._id, 'cuota_actual', e.target.value)} placeholder="auto" /> : (row.cuota_actual || 'auto')}</td>
+                          <td>{row._editing ? <input type="number" min="1" step="1" value={row.cantidad_cuotas || ''} onChange={(e) => updateCsvImportRow(row._id, 'cantidad_cuotas', e.target.value)} /> : row.cantidad_cuotas}</td>
+                          <td>{row._editing ? (
+                            <select value={row.modo_carga || 'total'} onChange={(e) => updateCsvImportRow(row._id, 'modo_carga', e.target.value)}>
+                              <option value="total">total</option>
+                              <option value="cuota">cuota</option>
+                            </select>
+                          ) : row.modo_carga}</td>
+                          <td>{row._editing ? <input value={row.monto_total || ''} onChange={(e) => updateCsvImportRow(row._id, 'monto_total', e.target.value)} /> : row.monto_total}</td>
+                          <td>{row._editing ? <input value={row.monto_cuota || ''} onChange={(e) => updateCsvImportRow(row._id, 'monto_cuota', e.target.value)} /> : row.monto_cuota}</td>
+                          <td>
+                            <span className="pill">{validation.assignedCycle ? formatCycleLabel(validation.assignedCycle) : '-'}</span>
+                            {validation.pasaAlProximo && <small className="tarjeta-csv-next-badge">Pasa al proximo resumen</small>}
+                            {validation.willCreateSummary && <small>Se creara con cierre {formatDate(validation.nextSummaryDefaults?.fecha_cierre)}</small>}
+                          </td>
+                          <td>
+                            <div className="acciones-inline">
+                              <button className="btn-inline secondary" type="button" onClick={() => toggleCsvImportRowEdit(row._id)}>{row._editing ? 'OK' : 'Editar'}</button>
+                              <button className="btn-inline secondary" type="button" onClick={() => toggleCsvImportRowIgnored(row._id)}>{row._ignored ? 'Restaurar' : 'Ignorar'}</button>
+                              <button className="btn-inline danger" type="button" onClick={() => deleteCsvImportRow(row._id)}>Eliminar</button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                {csvHasInvalidRows && (
+                  <p className="tarjeta-csv-error">Hay filas invalidas sin ignorar. Corregilas o ignoralas para continuar.</p>
+                )}
+                <div className="tarjeta-csv-extra-edit">
+                  {csvImportRows.map((row) => row._editing && (
+                    <div key={`${row._id}-extra`}>
+                      <strong>{row.descripcion || 'Fila sin descripcion'}</strong>
+                      <input placeholder="Titular" value={row.titular || ''} onChange={(e) => updateCsvImportRow(row._id, 'titular', e.target.value)} />
+                      <input placeholder="Observaciones" value={row.observaciones || ''} onChange={(e) => updateCsvImportRow(row._id, 'observaciones', e.target.value)} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="tarjeta-csv-confirm">
+                <div><span>Filas a importar</span><strong>{csvImportStats.toImport}</strong></div>
+                <div><span>Filas ignoradas</span><strong>{csvImportStats.ignored}</strong></div>
+                <div><span>Filas invalidas</span><strong>{csvImportStats.invalid}</strong></div>
+                <div><span>Total ARS</span><strong>{formatMoney(csvImportStats.totalArs)}</strong></div>
+                <div><span>Total USD</span><strong>{formatUsd(csvImportStats.totalUsd)}</strong></div>
+              </div>
+            )}
+          </div>
+          <div className="confirm-actions tarjeta-csv-actions">
+            <button className="btn-inline secondary" type="button" onClick={closeCsvImportModal}>
+              Cancelar
+            </button>
+            {csvImportStep > 1 && (
+              <button className="btn-inline secondary" type="button" onClick={() => setCsvImportStep(csvImportStep === 2 ? 1 : 2)}>
+                {csvImportStep === 2 ? 'Volver' : 'Volver a revisar'}
+              </button>
+            )}
+            {csvImportStep < csvImportSteps.length ? (
+              <button className="btn-inline" type="button" onClick={() => setCsvImportStep((step) => Math.min(csvImportSteps.length, step + 1))} disabled={!csvCanContinue}>
+                Continuar
+              </button>
+            ) : (
+              <button className="btn-inline btn-with-spinner" type="button" onClick={handleConfirmCsvImport} disabled={loading || csvImportStats.toImport === 0}>
+                {loadingAction === 'csv-import' && <span className="btn-spinner" aria-hidden="true" />}
+                {loadingAction === 'csv-import' ? 'Importando...' : 'Confirmar importacion'}
+              </button>
+            )}
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="tarjeta-panel">
       <div className="panel tarjeta-hero">
