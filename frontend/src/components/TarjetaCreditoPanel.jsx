@@ -83,6 +83,11 @@ function formatSignedMoney(value, formatMoney) {
   return `${numeric >= 0 ? '+' : '-'}${formatMoney(Math.abs(numeric))}`;
 }
 
+function formatSignedUsd(value) {
+  const numeric = Number(value || 0);
+  return `${numeric >= 0 ? '+' : '-'}${formatUsd(Math.abs(numeric))}`;
+}
+
 function getCategoryColorSeed(category) {
   const hash = String(category || '').split('').reduce((acc, char) => ((acc * 31) + char.charCodeAt(0)) % 9973, 0);
   return hash;
@@ -123,6 +128,62 @@ function buildSmoothPath(points = []) {
     const controlX = point.x + (next.x - point.x) / 2;
     return `${path} C ${controlX} ${point.y}, ${controlX} ${next.y}, ${next.x} ${next.y}`;
   }, `M ${points[0].x} ${points[0].y}`);
+}
+
+function getImpactTone(value) {
+  const numeric = Number(value || 0);
+  return numeric > 0 ? 'warning' : numeric < 0 ? 'positive' : 'muted';
+}
+
+function describeCurrencyImpact(item, key, formatter) {
+  const actual = Number(item[`actual_${key}`] || 0);
+  const promedio = Number(item[`promedio_${key}`] || 0);
+  const diferencia = Number(item[`diferencia_${key}`] || 0);
+  if (actual === 0 && promedio > 0) return `Sin consumo este resumen. Promedio anterior: ${formatter(promedio)}`;
+  if (diferencia > 0) return `Subio ${formatter(diferencia)} respecto al promedio`;
+  if (diferencia < 0) return `Bajo ${formatter(Math.abs(diferencia))} respecto al promedio`;
+  if (actual > 0 && promedio === 0) return `Nuevo consumo este resumen: ${formatter(actual)}`;
+  return 'Sin cambio relevante';
+}
+
+function describeCategoryChange(item, formatMoney) {
+  const actual = Number(item.actual_ars || 0);
+  const promedio = Number(item.promedio_ars || 0);
+  const diferencia = Number(item.diferencia_ars || 0);
+  if (actual === 0 && promedio > 0) return `${item.categoria} no tuvo consumo este resumen`;
+  if (diferencia > 0) return `${item.categoria} subio ${formatMoney(diferencia)}`;
+  if (diferencia < 0) return `${item.categoria} bajo ${formatMoney(Math.abs(diferencia))}`;
+  return `${item.categoria} se mantuvo estable`;
+}
+
+function buildCycleEvolutionRows(serie = []) {
+  return serie.map((item, index) => {
+    const previous = index > 0 ? serie[index - 1] : null;
+    return {
+      ...item,
+      deltaArs: previous ? Number(item.total_ars || 0) - Number(previous.total_ars || 0) : null,
+      deltaUsd: previous ? Number(item.total_usd || 0) - Number(previous.total_usd || 0) : null
+    };
+  });
+}
+
+function buildMainReading(analisisTarjeta, actual, categoriaPrincipal, topChanges, formatMoney) {
+  const total = Number(actual.total_ars || 0);
+  const promedio = Number(analisisTarjeta?.promedio_ars || 0);
+  const diferencia = total - promedio;
+  const comportamiento = promedio > 0
+    ? diferencia < 0
+      ? `El resumen actual esta por debajo del promedio reciente por ${formatMoney(Math.abs(diferencia))}.`
+      : diferencia > 0
+        ? `El resumen actual supera el promedio reciente por ${formatMoney(diferencia)}.`
+        : 'El resumen actual esta en linea con el promedio reciente.'
+    : 'Aun no hay historial suficiente para comparar este resumen.';
+  const factor = topChanges?.[0]
+    ? `${describeCategoryChange(topChanges[0], formatMoney)} y es el principal factor a revisar.`
+    : categoriaPrincipal?.categoria
+      ? `${categoriaPrincipal.categoria} concentra el mayor impacto del resumen.`
+      : 'Sin una categoria dominante para explicar el resultado.';
+  return [comportamiento, factor];
 }
 
 function buildCategoryAnalysis(analisisTarjeta = {}) {
@@ -476,6 +537,24 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
   }, [analisisCategorias.serieExtendida]);
   const selectedAnalysisCategories = analysisCategorySelection.filter((category) => analysisCategoryOptions.includes(category));
   const analysisCategoryColorMap = useMemo(() => buildCategoryColorMap(analysisCategoryOptions), [analysisCategoryOptions]);
+  const categoriasComparadasAnalisis = analisisTarjeta?.categorias_comparadas || [];
+  const topCategoryChanges = useMemo(
+    () => [...categoriasComparadasAnalisis]
+      .sort((a, b) => Math.abs(Number(b.diferencia_ars || 0)) - Math.abs(Number(a.diferencia_ars || 0)))
+      .slice(0, 3),
+    [categoriasComparadasAnalisis]
+  );
+  const lecturaPrincipal = useMemo(
+    () => buildMainReading(analisisTarjeta, analisisActual, categoriaPrincipalAnalisis, topCategoryChanges, formatMoney),
+    [analisisTarjeta, analisisActual, categoriaPrincipalAnalisis, topCategoryChanges, formatMoney]
+  );
+  const cycleEvolutionRows = useMemo(() => buildCycleEvolutionRows(analisisCategorias.serie), [analisisCategorias.serie]);
+  const showCategoryTrendTable = analisisCategorias.topCategorias.some((categoria) =>
+    analisisCategorias.serie.some((item) => {
+      const found = (item.categorias || []).find((entry) => entry.categoria === categoria.categoria) || {};
+      return Number(found.total_ars || 0) > 0;
+    })
+  );
   const categoryCurveData = useMemo(
     () => buildCategoryCurveData(analisisCategorias.serieExtendida, selectedAnalysisCategories, analysisPeriodCount),
     [analisisCategorias.serieExtendida, analysisPeriodCount, selectedAnalysisCategories]
@@ -1787,6 +1866,10 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
             <small>En la punta analizada</small>
           </article>
         </div>
+        <div className="tarjeta-analysis-block tarjeta-main-reading">
+          <h3>Lectura principal</h3>
+          {lecturaPrincipal.map((line) => <p key={line}>{line}</p>)}
+        </div>
         <div className="tarjeta-analysis-block tarjeta-category-distribution">
           <h3>Distribucion del resumen seleccionado por categoria</h3>
           <div className="tarjeta-category-bars">
@@ -1921,91 +2004,91 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
         </div>
         <div className="tarjeta-analysis-block tarjeta-cycle-chart">
           <h3>Evolucion por resumen: importe que impacta en cada ciclo</h3>
-          <div className="tarjeta-cycle-chart-grid">
-            {analisisCategorias.serie.map((item) => (
-              <div className="tarjeta-cycle-column" key={item.ciclo}>
-                <div className="tarjeta-cycle-bars">
-                  <i className="ars" style={{ height: `${Math.max(6, (Number(item.total_ars || 0) / analisisCategorias.maxArs) * 100)}%` }} />
-                  <i className="usd" style={{ height: `${Math.max(6, (Number(item.total_usd || 0) / analisisCategorias.maxUsd) * 100)}%` }} />
-                </div>
-                <strong>{formatCycleLabel(item.ciclo).replace(' de ', ' ')}</strong>
-                <small>{formatMoney(item.total_ars || 0)}</small>
-                <small>{formatUsd(item.total_usd || 0)}</small>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="tarjeta-analysis-block tarjeta-category-heatmap">
-          <h3>Tendencia ARS de categorias principales</h3>
-          <div className="tarjeta-category-heatmap-grid">
-            <div className="tarjeta-category-heatmap-head">
-              <span>Categoria</span>
-              {analisisCategorias.serie.map((item) => <span key={item.ciclo}>{formatCycleLabel(item.ciclo).slice(0, 3)}</span>)}
+          <div className="tarjeta-cycle-table">
+            <div className="tarjeta-cycle-table-head">
+              <span>Ciclo</span>
+              <span>Total ARS</span>
+              <span>Total USD</span>
+              <span>Vs anterior</span>
             </div>
-            {analisisCategorias.topCategorias.map((categoria) => (
-              <div className="tarjeta-category-heatmap-row" key={categoria.categoria}>
-                <strong>{categoria.categoria}</strong>
-                {analisisCategorias.serie.map((item) => {
-                  const found = (item.categorias || []).find((entry) => entry.categoria === categoria.categoria) || {};
-                  const value = Number(found.total_ars || 0);
-                  return (
-                    <em
-                      key={`${categoria.categoria}-${item.ciclo}`}
-                      style={{ opacity: Math.max(0.18, value / analisisCategorias.maxCategoriaArs) }}
-                      title={`${formatCycleLabel(item.ciclo)}: ${formatMoney(found.total_ars || 0)} / ${formatUsd(found.total_usd || 0)}`}
-                    />
-                  );
-                })}
+            {cycleEvolutionRows.map((item) => (
+              <div className="tarjeta-cycle-table-row" key={item.ciclo}>
+                <strong>{formatCycleLabel(item.ciclo)}</strong>
+                <span>{formatMoney(item.total_ars || 0)}</span>
+                <span>{formatUsd(item.total_usd || 0)}</span>
+                {item.deltaArs == null ? (
+                  <em>Sin anterior</em>
+                ) : (
+                  <em className={getImpactTone(item.deltaArs)}>
+                    ARS {formatSignedMoney(item.deltaArs, formatMoney)} / {formatSignedUsd(item.deltaUsd)}
+                  </em>
+                )}
               </div>
             ))}
           </div>
         </div>
+        {showCategoryTrendTable && (
+          <div className="tarjeta-analysis-block tarjeta-category-heatmap">
+            <h3>Tendencia ARS de categorias principales</h3>
+            <div className="tarjeta-category-heatmap-grid">
+              <div className="tarjeta-category-heatmap-head">
+                <span>Categoria</span>
+                {analisisCategorias.serie.map((item) => <span key={item.ciclo}>{formatCycleLabel(item.ciclo).slice(0, 3)}</span>)}
+              </div>
+              {analisisCategorias.topCategorias.map((categoria) => (
+                <div className="tarjeta-category-heatmap-row" key={categoria.categoria}>
+                  <strong>{categoria.categoria}</strong>
+                  {analisisCategorias.serie.map((item) => {
+                    const found = (item.categorias || []).find((entry) => entry.categoria === categoria.categoria) || {};
+                    const value = Number(found.total_ars || 0);
+                    return (
+                      <span
+                        key={`${categoria.categoria}-${item.ciclo}`}
+                        className={value > 0 ? 'has-value' : ''}
+                        title={`${formatCycleLabel(item.ciclo)}: ${formatMoney(value)}`}
+                      >
+                        {formatMoney(value)}
+                      </span>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="tarjeta-analysis-layout">
           <div className="tarjeta-analysis-block">
-            <h3>Tendencia ARS por resumen</h3>
-            <div className="tarjeta-trend-list">
-              {analisisCategorias.serie.map((item) => {
-                const maxValue = Math.max(...analisisCategorias.serie.map((serieItem) => Number(serieItem.total_ars || 0)), 1);
-                const width = Math.max(6, Math.round((Number(item.total_ars || 0) / maxValue) * 100));
-                return (
-                  <div className="tarjeta-trend-row" key={item.ciclo}>
-                    <span>{formatCycleLabel(item.ciclo)}</span>
-                    <div><i style={{ width: `${width}%` }} /></div>
-                    <strong>{formatMoney(item.total_ars || 0)}</strong>
-                    <small>{formatUsd(item.total_usd || 0)}</small>
-                  </div>
-                );
-              })}
+            <h3>Que cambio</h3>
+            <div className="tarjeta-change-list">
+              {topCategoryChanges.map((item) => (
+                <div className={`tarjeta-change-row ${getImpactTone(item.diferencia_ars)}`} key={item.categoria}>
+                  <strong>{describeCategoryChange(item, formatMoney)}</strong>
+                  <small>Actual {formatMoney(item.actual_ars || 0)} | Promedio {formatMoney(item.promedio_ars || 0)}</small>
+                </div>
+              ))}
+              {topCategoryChanges.length === 0 && <p className="empty-state">Sin cambios comparables.</p>}
             </div>
           </div>
           <div className="tarjeta-analysis-block">
             <h3>Categorias con impacto</h3>
             <div className="tarjeta-category-impact">
-              {(analisisTarjeta?.categorias_comparadas || []).map((item) => (
+              {categoriasComparadasAnalisis.map((item) => (
                 <div className="tarjeta-category-row" key={item.categoria}>
                   <div>
                     <strong>{item.categoria}</strong>
-                    <small>ARS prom. {formatMoney(item.promedio_ars || 0)} - {formatPercent(item.variacion_ars)}</small>
-                    <small>USD prom. {formatUsd(item.promedio_usd || 0)} - {formatPercent(item.variacion_usd)}</small>
+                    <small>ARS: {describeCurrencyImpact(item, 'ars', formatMoney)}</small>
+                    <small>USD: {describeCurrencyImpact(item, 'usd', formatUsd)}</small>
                   </div>
                   <span className={item.diferencia_ars > 0 ? 'warning' : item.diferencia_ars < 0 ? 'positive' : 'muted'}>
-                    {formatSignedMoney(item.diferencia_ars || 0, formatMoney)} / {formatUsd(item.diferencia_usd || 0)}
+                    ARS {formatSignedMoney(item.diferencia_ars || 0, formatMoney)} / {formatSignedUsd(item.diferencia_usd || 0)}
                   </span>
                 </div>
               ))}
-              {(analisisTarjeta?.categorias_comparadas || []).length === 0 && (
+              {categoriasComparadasAnalisis.length === 0 && (
                 <p className="empty-state">Sin categorias comparables.</p>
               )}
             </div>
           </div>
-        </div>
-        <div className="tarjeta-insights-list">
-          {(analisisTarjeta?.insights || []).map((insight) => (
-            <p key={insight}>{insight}</p>
-          ))}
-          {(analisisTarjeta?.insights || []).length === 0 && (
-            <p>Sin datos suficientes para detectar desvios con peso.</p>
-          )}
         </div>
       </section>
         </>
