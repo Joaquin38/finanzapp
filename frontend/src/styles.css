@@ -3685,6 +3685,43 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   align-items: center;
   padding-block: 14px;
 }
+.tarjeta-hero-actions {
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+  width: min(560px, 100%);
+}
+.tarjeta-import-summary-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+  min-height: 46px;
+  padding: 8px 12px;
+  border: 1px solid rgba(37, 99, 235, 0.28);
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.1), rgba(14, 165, 233, 0.08));
+  color: #1d4ed8;
+  cursor: pointer;
+}
+.tarjeta-import-summary-btn span {
+  font-size: 13px;
+  font-weight: 900;
+}
+.tarjeta-import-summary-btn small {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+.tarjeta-import-summary-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.tarjeta-import-summary-btn:not(:disabled):hover {
+  border-color: rgba(37, 99, 235, 0.48);
+  background: rgba(37, 99, 235, 0.12);
+}
 .tarjeta-hero h2 {
   margin: 0 0 6px;
   color: var(--text-primary);
@@ -3697,7 +3734,7 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   display: inline-grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 4px;
-  width: min(520px, 100%);
+  width: 100%;
   padding: 4px;
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -5373,6 +5410,14 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
 :root[data-theme='dark'] .tarjeta-view-switch button.active {
   color: #ffffff;
 }
+:root[data-theme='dark'] .tarjeta-import-summary-btn {
+  background: rgba(37, 99, 235, 0.16);
+  border-color: rgba(96, 165, 250, 0.38);
+  color: #bfdbfe;
+}
+:root[data-theme='dark'] .tarjeta-import-summary-btn small {
+  color: var(--text-muted);
+}
 :root[data-theme='dark'] .app-toast {
   background: #10251a;
   border-color: #22543d;
@@ -5723,7 +5768,8 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
     grid-column: 1 / -1;
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .tarjeta-hero { flex-direction: column; }
+  .tarjeta-hero { flex-direction: column; align-items: stretch; }
+  .tarjeta-hero-actions { width: 100%; justify-items: stretch; }
   .tarjeta-cycle-summary { min-width: 0; }
   .ahorros-summary-grid,
   .ahorro-form { grid-template-columns: 1fr 1fr; }

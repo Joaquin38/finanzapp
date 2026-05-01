@@ -426,6 +426,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
     { toImport: 0, ignored: 0, invalid: 0, totalArs: 0, totalUsd: 0 }
   ), [csvRowsWithValidation]);
   const openCsvImportModal = () => {
+    setVistaTarjeta('principal');
     setCsvImportStep(1);
     setCsvImportRows([]);
     setCsvImportError('');
@@ -796,7 +797,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
           <div className="panel-header tarjeta-csv-screen-header">
             <div>
               <p className="eyebrow">Tarjeta de credito</p>
-              <h2 id="csv-import-title">Importar consumos desde CSV</h2>
+              <h2 id="csv-import-title">Importar resumen desde CSV</h2>
             </div>
             <button className="close-btn" type="button" onClick={closeCsvImportModal} aria-label="Cerrar" disabled={loadingAction === 'csv-import'}>
               x
@@ -979,31 +980,37 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
                 : 'Tendencias y comparativas desde el proximo resumen abierto.'}
           </p>
         </div>
-        <div className="tarjeta-view-switch" aria-label="Cambiar pantalla de tarjeta">
-          <button
-            type="button"
-            className={vistaTarjeta === 'principal' ? 'active' : ''}
-            aria-pressed={vistaTarjeta === 'principal'}
-            onClick={() => setVistaTarjeta('principal')}
-          >
-            Consumo actual
+        <div className="tarjeta-hero-actions">
+          <button className="tarjeta-import-summary-btn" type="button" onClick={openCsvImportModal} disabled={loading}>
+            <span>Importar resumen CSV</span>
+            <small>Carga masiva del resumen</small>
           </button>
-          <button
-            type="button"
-            className={vistaTarjeta === 'historial' ? 'active' : ''}
-            aria-pressed={vistaTarjeta === 'historial'}
-            onClick={() => setVistaTarjeta('historial')}
-          >
-            Historial
-          </button>
-          <button
-            type="button"
-            className={vistaTarjeta === 'analisis' ? 'active' : ''}
-            aria-pressed={vistaTarjeta === 'analisis'}
-            onClick={() => setVistaTarjeta('analisis')}
-          >
-            Analisis
-          </button>
+          <div className="tarjeta-view-switch" aria-label="Cambiar pantalla de tarjeta">
+            <button
+              type="button"
+              className={vistaTarjeta === 'principal' ? 'active' : ''}
+              aria-pressed={vistaTarjeta === 'principal'}
+              onClick={() => setVistaTarjeta('principal')}
+            >
+              Consumo actual
+            </button>
+            <button
+              type="button"
+              className={vistaTarjeta === 'historial' ? 'active' : ''}
+              aria-pressed={vistaTarjeta === 'historial'}
+              onClick={() => setVistaTarjeta('historial')}
+            >
+              Historial
+            </button>
+            <button
+              type="button"
+              className={vistaTarjeta === 'analisis' ? 'active' : ''}
+              aria-pressed={vistaTarjeta === 'analisis'}
+              onClick={() => setVistaTarjeta('analisis')}
+            >
+              Analisis
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1128,14 +1135,11 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
       <section className="panel panel-form tarjeta-form-panel tarjeta-section-card tarjeta-section-form">
         <div className="panel-header">
           <div>
-            <p className="eyebrow">Paso 2</p>
+            <p className="eyebrow">Carga manual</p>
             <h2>{editingId ? 'Editar consumo' : 'Nuevo consumo'}</h2>
-            <p>Alta rapida de tarjeta.</p>
+            <p>Alta rapida de consumo puntual.</p>
           </div>
           <div className="tarjeta-form-header-actions">
-            <button className="btn-inline secondary" type="button" onClick={openCsvImportModal}>
-              Importar CSV
-            </button>
             <span className={`tarjeta-assignment-preview ${previewPasaAlSiguiente ? 'next' : ''}`} aria-live="polite">
               {previewPasaAlSiguiente ? 'Pasa a ' : 'Resumen '}
               <strong>{formatCycleLabel(previewCicloAsignado)}</strong>
@@ -1400,7 +1404,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
             <div className="modal-header">
               <div>
                 <p className="eyebrow">Tarjeta de credito</p>
-                <h2 id="csv-import-title">Importar consumos desde CSV</h2>
+                <h2 id="csv-import-title">Importar resumen desde CSV</h2>
               </div>
               <button className="close-btn" type="button" onClick={closeCsvImportModal} aria-label="Cerrar">
                 x
