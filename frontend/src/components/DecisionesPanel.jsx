@@ -764,6 +764,111 @@ function CategoryTrendsCard({ movimientos = [], movimientosHistoricos = [], form
   );
 }
 
+function getHistoricalAverageForCategory(categoria, movimientosHistoricos = []) {
+  const totalsByCycle = getConfirmedExpenses(movimientosHistoricos)
+    .filter((mov) => isCategoryNamed(getMovementCategory(mov), categoria))
+    .reduce((acc, mov) => {
+      const cycle = String(mov.fecha || '').slice(0, 7);
+      if (!cycle) return acc;
+      acc[cycle] = (acc[cycle] || 0) + Number(mov.monto_ars || 0);
+      return acc;
+    }, {});
+  const values = Object.entries(totalsByCycle)
+    .sort(([a], [b]) => String(b).localeCompare(String(a)))
+    .slice(0, 3)
+    .map(([, value]) => Number(value || 0))
+    .filter((value) => value > 0);
+
+  return values.length > 0 ? values.reduce((acc, value) => acc + value, 0) / values.length : 0;
+}
+
+function BehaviorAlertsCard({ movimientos = [], movimientosMesAnterior = [], movimientosHistoricos = [], ciclo, formatMoney }) {
+  const { dayCurrent, daysTotal } = getCycleProgress(ciclo);
+  const progress = Math.min(Math.max(dayCurrent / Math.max(daysTotal, 1), 0), 1);
+  const currentByCategory = getConfirmedExpensesByCategory(movimientos);
+  const previousByCategory = getConfirmedExpensesByCategory(movimientosMesAnterior);
+  const alerts = Object.entries(currentByCategory)
+    .sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))
+    .slice(0, 5)
+    .map(([categoria, actual]) => {
+      const promedioHistorico = getHistoricalAverageForCategory(categoria, movimientosHistoricos);
+      const esperadoActual = promedioHistorico * progress;
+      const previous = getCategoryTotal(previousByCategory, categoria);
+      const ratio = esperadoActual > 0 ? Number(actual || 0) / esperadoActual : null;
+      const variacionMesAnterior = previous > 0 ? ((Number(actual || 0) - previous) / previous) * 100 : null;
+      const candidates = [];
+
+      if (ratio != null && ratio > 1.3) {
+        const porcentaje = Math.round((ratio - 1) * 100);
+        candidates.push({
+          categoria,
+          type: 'Sobreconsumo',
+          tone: 'over',
+          icon: '!',
+          impact: Math.abs(Number(actual || 0) - esperadoActual),
+          text: `${categoria} esta ${porcentaje}% por encima de tu patron habitual. Puede impactar el resultado del mes.`,
+          meta: `${formatMoney(actual)} vs esperado ${formatMoney(esperadoActual)}`
+        });
+      }
+
+      if (ratio != null && ratio < 0.6) {
+        const porcentaje = Math.round((1 - ratio) * 100);
+        candidates.push({
+          categoria,
+          type: 'Posible subregistro',
+          tone: 'under',
+          icon: 'i',
+          impact: Math.abs(esperadoActual - Number(actual || 0)),
+          text: `${categoria} viene ${porcentaje}% por debajo de lo esperado para esta altura del mes. Podrias tener gastos no registrados.`,
+          meta: `${formatMoney(actual)} vs esperado ${formatMoney(esperadoActual)}`
+        });
+      }
+
+      if (variacionMesAnterior != null && Math.abs(variacionMesAnterior) > 30) {
+        const porcentaje = `${variacionMesAnterior > 0 ? '+' : ''}${variacionMesAnterior.toFixed(1)}%`;
+        candidates.push({
+          categoria,
+          type: 'Cambio fuerte',
+          tone: 'change',
+          icon: '%',
+          impact: Math.abs(Number(actual || 0) - previous),
+          text: `${categoria} cambio ${porcentaje} respecto al mes anterior. Revisa si es un cambio de habito o algo puntual.`,
+          meta: `${formatMoney(actual)} vs mes anterior ${formatMoney(previous)}`
+        });
+      }
+
+      return candidates.sort((a, b) => b.impact - a.impact)[0] || null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.impact - a.impact)
+    .slice(0, 3);
+
+  return (
+    <article className="card decision-card decision-comparison-card decision-behavior-alerts">
+      <DecisionCardHeader
+        title="Alertas de comportamiento"
+        help="Detecta desvios por categoria usando avance del ciclo e historial reciente. No muestra alertas si no hay cambios relevantes."
+      />
+      {alerts.length > 0 ? (
+        <div className="decision-alert-list">
+          {alerts.map((alert) => (
+            <div className={`decision-alert-row alert-${alert.tone}`} key={`${alert.type}-${alert.categoria}`}>
+              <span className="decision-alert-icon" aria-hidden="true">{alert.icon}</span>
+              <div>
+                <strong>{alert.type}</strong>
+                <p>{alert.text}</p>
+                <small>{alert.meta}</small>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <strong>Tu comportamiento de gasto esta dentro de lo esperado.</strong>
+      )}
+    </article>
+  );
+}
+
 function getConfirmedExpensesByCategory(movimientos, predicate = () => true) {
   return getConfirmedExpenses(movimientos).filter(predicate).reduce((acc, mov) => {
     const category = getMovementCategory(mov) || 'Sin categoria';
@@ -1097,6 +1202,13 @@ export default function DecisionesPanel({
 
       <DecisionSection title="Donde mirar">
         <div className="decision-section-grid decision-watch-grid">
+          <BehaviorAlertsCard
+            movimientos={movimientos}
+            movimientosMesAnterior={movimientosMesAnterior}
+            movimientosHistoricos={movimientosHistoricos}
+            ciclo={ciclo}
+            formatMoney={formatMoney}
+          />
           <RelevantDeviationsCard
             movimientos={movimientos}
             movimientosMesAnterior={movimientosMesAnterior}

@@ -142,7 +142,6 @@ export default function App() {
   const [openModal, setOpenModal] = useState(false);
   const [gastoRapidoAbierto, setGastoRapidoAbierto] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
-  const [insightsExpanded, setInsightsExpanded] = useState(false);
   const accountMenuRef = useRef(null);
   const [modoModal, setModoModal] = useState('crear');
   const [movimientoEditando, setMovimientoEditando] = useState(null);
@@ -1068,68 +1067,6 @@ export default function App() {
     [movimientosConsolidados]
   );
 
-  const insightsCiclo = useMemo(() => {
-    const balanceActual = Number(resumenFinanciero.balanceActual || 0);
-    const balanceProyectado = Number(resumenFinanciero.balanceProyectado || 0);
-    const diferenciaBalance = balanceProyectado - balanceActual;
-    const categoriaMayorGasto = categoriaMayorGastoConfirmado;
-    const montoPendiente = Number(resumenOperativo.montoPendienteEgresos || 0);
-    const diferenciaAbs = Math.abs(diferenciaBalance);
-    const diferenciaTexto =
-      diferenciaBalance > 0
-        ? `Podés cerrar el ciclo ${formatMoneyText(diferenciaAbs)} arriba si confirmás lo pendiente.`
-        : diferenciaBalance < 0
-          ? `El proyectado ya quedó ${formatMoneyText(diferenciaAbs)} por debajo del real. Revisá desvíos.`
-          : 'El balance real ya coincide con el proyectado.';
-
-    return [
-      montoPendiente > 0
-        ? `Te quedan ${formatMoneyText(montoPendiente)} pendientes de pago en el ciclo.`
-        : 'No tenés egresos pendientes en el ciclo.',
-      diferenciaTexto,
-      categoriaMayorGasto
-        ? `${categoriaMayorGasto.categoria} lidera el gasto confirmado con ${formatMoneyText(categoriaMayorGasto.total)}.`
-        : 'Todavía no hay una categoría líder en gastos confirmados.'
-    ];
-  }, [categoriaMayorGastoConfirmado, resumenFinanciero, resumenOperativo]);
-
-  const insightsDashboard = useMemo(() => {
-    const balanceActual = Number(resumenFinanciero.balanceActual || 0);
-    const balanceProyectado = Number(resumenFinanciero.balanceProyectado || 0);
-    const diferenciaBalance = balanceProyectado - balanceActual;
-    const categoriaMayorGasto = categoriaMayorGastoConfirmado;
-    const montoPendiente = Number(resumenOperativo.montoPendienteEgresos || 0);
-    const insights = [];
-
-    if (montoPendiente > 0) {
-      insights.push(
-        `Paga o reprograma ${formatMoneyText(montoPendiente)} pendientes: si se confirman, el balance final queda en ${formatMoneyText(balanceProyectado)}.`
-      );
-    } else {
-      insights.push(`Sin egresos pendientes: podes cerrar el ciclo con balance real de ${formatMoneyText(balanceActual)}.`);
-    }
-
-    if (diferenciaBalance < 0) {
-      insights.push(
-        `El proyectado empeora el balance en ${formatMoneyText(Math.abs(diferenciaBalance))}. Revisa gastos pendientes antes de cerrar.`
-      );
-    } else if (diferenciaBalance > 0) {
-      insights.push(
-        `Confirmar lo restante mejora el balance final en ${formatMoneyText(diferenciaBalance)}. Valida ingresos pendientes primero.`
-      );
-    } else {
-      insights.push('Balance real y proyectado coinciden: no hay impacto adicional pendiente.');
-    }
-
-    if (categoriaMayorGasto) {
-      insights.push(
-        `Revisa ${categoriaMayorGasto.categoria}: concentra ${formatMoneyText(categoriaMayorGasto.total)} confirmados y puede mover el cierre.`
-      );
-    }
-
-    return insights.slice(0, 3);
-  }, [categoriaMayorGastoConfirmado, resumenFinanciero, resumenOperativo]);
-
   const alertaDashboard = useMemo(() => {
     const ingresos = Number(resumenFinanciero.ingresosConfirmados || 0);
     const egresos = Number(resumenFinanciero.egresosConfirmados || 0);
@@ -1152,14 +1089,6 @@ export default function App() {
 
     return null;
   }, [resumenFinanciero]);
-
-  const debeAbrirInsights = alertaDashboard?.tono === 'danger' || Number(resumenFinanciero.balanceActual || 0) < 0;
-
-  useEffect(() => {
-    if (debeAbrirInsights) {
-      setInsightsExpanded(true);
-    }
-  }, [debeAbrirInsights]);
 
   const resumenMensualReportes = useMemo(
     () => ({
@@ -1432,36 +1361,6 @@ export default function App() {
                   <span>{alertaDashboard.mensaje}</span>
                 </section>
               )}
-              <section className={`panel cycle-insights ${insightsExpanded ? 'is-expanded' : 'is-collapsed'}`}>
-                <div className="panel-header cycle-insights-header">
-                  <div className="cycle-insights-heading">
-                    <h2>Insights del ciclo</h2>
-                    {!insightsExpanded && (
-                      <p className="cycle-insight-preview">
-                        {insightsDashboard[0] || 'No hay insights relevantes para este ciclo.'}
-                      </p>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    className="cycle-insights-toggle"
-                    onClick={() => setInsightsExpanded((current) => !current)}
-                    aria-expanded={insightsExpanded}
-                  >
-                    {insightsExpanded ? 'Ver menos' : 'Ver mas'}
-                    <span aria-hidden="true">{insightsExpanded ? '−' : '+'}</span>
-                  </button>
-                </div>
-                <div className="cycle-insights-collapse" aria-hidden={!insightsExpanded}>
-                  <div className="cycle-insights-list">
-                    {insightsDashboard.map((insight, index) => (
-                      <p key={insight} className={`cycle-insight-item insight-${['info', 'warning', 'success'][index] || 'info'}`}>
-                        {insight}
-                      </p>
-                    ))}
-                  </div>
-                </div>
-              </section>
               <MovimientosTable
                 movimientos={movimientosFiltradosYOrdenados}
                 categoriasDisponibles={categoriasDisponiblesGrilla}
