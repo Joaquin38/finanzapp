@@ -257,6 +257,18 @@ function isPendingExpense(mov) {
   return isExpenseMovement(mov) && !isConfirmedExpense(mov);
 }
 
+function isIncomeMovement(mov) {
+  return mov.tipo_movimiento === 'ingreso';
+}
+
+function isConfirmedIncome(mov) {
+  return isIncomeMovement(mov) && ['registrado', 'cobrado'].includes(mov.estado_consolidado);
+}
+
+function isProjectedIncome(mov) {
+  return isIncomeMovement(mov) && !isConfirmedIncome(mov);
+}
+
 function getMovementCategory(mov) {
   return mov.categoria || mov.categoria_nombre || mov.nombre_categoria || '';
 }
@@ -461,8 +473,11 @@ function calculateRealisticProjection({ movimientos, movimientosMesAnterior = []
   const recurrenteTotal = byKind.recurrente_variable.confirmed + byKind.recurrente_variable.pending;
   const extraordinarioTotal = byKind.extraordinario.confirmed;
   const egresoEstimado = fijoTotal + recurrenteTotal + variableProjection + extraordinarioTotal;
-  const ingresosDelCiclo = Number(resumen?.ingresos || 0);
-  const balanceEstimado = ingresosDelCiclo - egresoEstimado;
+  const ingresosConfirmados = movimientos.filter(isConfirmedIncome).reduce((acc, mov) => acc + Number(mov.monto_ars || 0), 0);
+  const ingresosProyectados = movimientos.filter(isProjectedIncome).reduce((acc, mov) => acc + Number(mov.monto_ars || 0), 0);
+  const ingresosDelCiclo = Math.max(Number(resumen?.ingresos || 0), ingresosConfirmados);
+  const ingresoEstimado = Math.max(ingresosConfirmados + ingresosProyectados, ingresosDelCiclo);
+  const balanceEstimado = ingresoEstimado - egresoEstimado;
   const egresosPendientes = movimientos.filter(isPendingExpense).reduce((acc, mov) => acc + Number(mov.monto_ars || 0), 0);
   const variablesEsperadosRestantes = Math.max(variableProjection - byKind.variable.confirmed, 0);
   const confianza = hasVariableHistory && byKind.variable.confirmed > 0
@@ -480,6 +495,9 @@ function calculateRealisticProjection({ movimientos, movimientosMesAnterior = []
     egresoEstimado,
     balanceEstimado,
     ingresosDelCiclo,
+    ingresoEstimado,
+    ingresosConfirmados,
+    ingresosProyectados,
     egresosPendientes,
     variablesEsperadosRestantes,
     safeProgress,
@@ -489,9 +507,9 @@ function calculateRealisticProjection({ movimientos, movimientosMesAnterior = []
 }
 
 function buildDecisionContext({ resumen, realisticProjection }) {
-  const ingresos = Number(resumen?.ingresos || 0);
+  const ingresos = Number(realisticProjection?.ingresoEstimado || resumen?.ingresos || 0);
   const balanceReal = Number(resumen?.balance_actual || 0);
-  const balanceProyectado = Number(resumen?.balance_proyectado || 0);
+  const balanceProyectado = Number(realisticProjection?.balanceEstimado ?? resumen?.balance_proyectado ?? 0);
   const colchonMinimo = Math.max(
     ingresos * 0.1,
     Number(realisticProjection?.egresosPendientes || 0),
@@ -551,9 +569,11 @@ function ProjectionByPaceCard({ movimientos, movimientosMesAnterior = [], resume
   const fallbackProjection = (egresosConfirmados / dayCurrent) * daysTotal;
   const rawProjection = hasHistoricalPattern ? projectedByPattern : fallbackProjection;
   const egresoProyectado = egresosConfirmados > 0 ? Math.min(rawProjection, egresosConfirmados * 2) : 0;
-  const ingresosDelCiclo = Number(resumen?.ingresos || 0);
-  const balanceEstimado = ingresosDelCiclo - egresoProyectado;
-  const margenRatio = ingresosDelCiclo > 0 ? balanceEstimado / ingresosDelCiclo : 0;
+  const ingresosConfirmados = movimientos.filter(isConfirmedIncome).reduce((acc, mov) => acc + Number(mov.monto_ars || 0), 0);
+  const ingresosProyectados = movimientos.filter(isProjectedIncome).reduce((acc, mov) => acc + Number(mov.monto_ars || 0), 0);
+  const ingresoEstimado = Math.max(ingresosConfirmados + ingresosProyectados, Number(resumen?.ingresos || 0));
+  const balanceEstimado = ingresoEstimado - egresoProyectado;
+  const margenRatio = ingresoEstimado > 0 ? balanceEstimado / ingresoEstimado : 0;
   const estado = balanceEstimado < 0 ? 'Riesgo de deficit' : margenRatio <= 0.1 ? 'Mes ajustado' : 'Margen positivo';
   const tone = balanceEstimado < 0 ? 'danger' : margenRatio <= 0.1 ? 'muted' : 'positive';
   const recommendation =
@@ -603,11 +623,14 @@ function ProjectionByFunctionalTypeCard({ movimientos, movimientosMesAnterior = 
     egresoEstimado,
     balanceEstimado,
     ingresosDelCiclo,
+    ingresoEstimado,
+    ingresosConfirmados,
+    ingresosProyectados,
     safeProgress,
     hasVariableHistory,
     confianza
   } = realisticProjection || calculateRealisticProjection({ movimientos, movimientosMesAnterior, resumen, ciclo });
-  const margenRatio = ingresosDelCiclo > 0 ? balanceEstimado / ingresosDelCiclo : 0;
+  const margenRatio = ingresoEstimado > 0 ? balanceEstimado / ingresoEstimado : 0;
   const estado = balanceEstimado < 0 ? 'Riesgo de deficit' : margenRatio <= 0.1 ? 'Mes ajustado' : 'Margen positivo';
   const tone = balanceEstimado < 0 ? 'danger' : margenRatio <= 0.1 ? 'muted' : 'positive';
   const recommendation =
@@ -628,8 +651,13 @@ function ProjectionByFunctionalTypeCard({ movimientos, movimientosMesAnterior = 
         <em className={`decision-status ${tone}`}>{estado}</em>
         <em className={`decision-status decision-confidence ${confianza}`}>Confianza {confianza}</em>
       </div>
-      <small>Proyeccion ajustada por tipo de gasto</small>
+      <small>Proyeccion ajustada por ingresos y egresos del ciclo</small>
       <div className="decision-comparison-grid">
+        <div className="decision-comparison-row">
+          <span>Ingreso estimado al cierre</span>
+          <strong>{formatMoney(ingresoEstimado)}</strong>
+          <small>{formatMoney(ingresosConfirmados)} confirmados + {formatMoney(ingresosProyectados)} proyectados</small>
+        </div>
         <div className="decision-comparison-row">
           <span>Egreso estimado al cierre</span>
           <strong>{formatMoney(egresoEstimado)}</strong>
@@ -638,7 +666,7 @@ function ProjectionByFunctionalTypeCard({ movimientos, movimientosMesAnterior = 
         <div className="decision-comparison-row">
           <span>Balance estimado al cierre</span>
           <strong>{formatMoney(balanceEstimado)}</strong>
-          <small>No modifica el balance proyectado del dashboard</small>
+          <small>Incluye ingresos proyectados y egresos estimados</small>
         </div>
         <div className="decision-comparison-row">
           <span>Variable proyectado</span>
@@ -647,6 +675,8 @@ function ProjectionByFunctionalTypeCard({ movimientos, movimientosMesAnterior = 
         </div>
       </div>
       <div className="decision-composition-grid">
+        <span>Ingreso confirmado <strong>{formatMoney(ingresosConfirmados)}</strong></span>
+        <span>Ingreso proyectado <strong>{formatMoney(ingresosProyectados)}</strong></span>
         <span>Fijo <strong>{formatMoney(fijoTotal)}</strong></span>
         <span>Recurrente variable <strong>{formatMoney(recurrenteTotal)}</strong></span>
         <span>Variable proyectado <strong>{formatMoney(variableProjection)}</strong></span>
@@ -1073,10 +1103,10 @@ function SavingOpportunityCard({ realisticProjection, decisionContext, ciclo, fo
   );
 }
 
-function ExecutiveSummary({ resumen, operativo, categorias, decisionContext }) {
-  const ingresos = Number(resumen?.ingresos || 0);
+function ExecutiveSummary({ resumen, operativo, categorias, decisionContext, realisticProjection, formatMoney }) {
+  const ingresos = Number(realisticProjection?.ingresoEstimado || resumen?.ingresos || 0);
   const egresos = Number(resumen?.egresos || 0);
-  const balanceProyectado = Number(resumen?.balance_proyectado || 0);
+  const balanceProyectado = Number(realisticProjection?.balanceEstimado ?? resumen?.balance_proyectado ?? 0);
   const pendientes = Number(operativo?.montoPendienteEgresos || 0);
   const totalCategorias = categorias.reduce((acc, item) => acc + Number(item.total || 0), 0);
   const topCategoriaPercent = totalCategorias > 0 ? (Number(categorias[0]?.total || 0) / totalCategorias) * 100 : 0;
@@ -1084,10 +1114,10 @@ function ExecutiveSummary({ resumen, operativo, categorias, decisionContext }) {
   const estado =
     balanceProyectado < 0 ? 'Riesgo de deficit' : ingresos > 0 && balanceProyectado <= ingresos * 0.1 ? 'Mes ajustado' : 'Mes con margen';
   const riesgo =
-    ratioEgresos > 90
-      ? 'Egresos muy altos respecto a ingresos'
-      : pendientes > 0
+    pendientes > 0
         ? 'Todavia hay pagos pendientes'
+        : ratioEgresos > 90
+          ? 'Egresos altos respecto a ingresos'
         : topCategoriaPercent > 30
           ? 'Alta concentracion en una categoria'
           : 'Sin alertas relevantes';
@@ -1104,6 +1134,7 @@ function ExecutiveSummary({ resumen, operativo, categorias, decisionContext }) {
       <p><span>Estado del mes</span><strong>{estado}</strong></p>
       <p><span>Riesgo principal</span><strong>{riesgo}</strong></p>
       <p><span>Accion sugerida</span><strong>{accion}</strong></p>
+      <p><span>Balance estimado</span><strong>{formatMoney(balanceProyectado)}</strong></p>
     </div>
   );
 }
@@ -1126,6 +1157,7 @@ export default function DecisionesPanel({
   const porcentajePagado = Number(operativo?.porcentajeEgresosPagados || 0);
   const realisticProjection = calculateRealisticProjection({ movimientos, movimientosMesAnterior, resumen, ciclo });
   const decisionContext = buildDecisionContext({ resumen, realisticProjection });
+  const balanceEsperado = Number(realisticProjection?.balanceEstimado ?? balanceProyectado);
 
   const cards = [
     {
@@ -1137,8 +1169,8 @@ export default function DecisionesPanel({
     },
     {
       title: 'Impacto pendiente',
-      metric: formatMoney(balanceProyectado - balanceActual),
-      text: 'Diferencia entre balance actual y proyectado.',
+      metric: formatMoney(balanceEsperado - balanceActual),
+      text: 'Diferencia entre balance actual y cierre estimado.',
       recommendation: pendiente > 0 ? 'Revisar pendientes antes de cerrar.' : 'Sin impacto pendiente relevante.',
       tone: 'expense'
     },
@@ -1164,7 +1196,14 @@ export default function DecisionesPanel({
         <h2>Decisiones del mes</h2>
         <p>Analisis y sugerencias basadas en tu comportamiento</p>
       </div>
-      <ExecutiveSummary resumen={resumen} operativo={operativo} categorias={categorias} decisionContext={decisionContext} />
+      <ExecutiveSummary
+        resumen={resumen}
+        operativo={operativo}
+        categorias={categorias}
+        decisionContext={decisionContext}
+        realisticProjection={realisticProjection}
+        formatMoney={formatMoney}
+      />
       <DecisionSection title="Decision principal">
         <div className="decision-section-grid decision-main-grid">
           <ProjectionByFunctionalTypeCard
