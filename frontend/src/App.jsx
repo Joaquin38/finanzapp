@@ -64,6 +64,17 @@ function formatMoneyText(value) {
   return `$${Number(value || 0).toLocaleString('es-AR', MONEY_FORMAT)}`;
 }
 
+function getLocalIsoDate(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function getLocalIsoCycle(date = new Date()) {
+  return getLocalIsoDate(date).slice(0, 7);
+}
+
 function getStoredTheme() {
   try {
     const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
@@ -152,7 +163,7 @@ export default function App() {
   const [deleteTargetId, setDeleteTargetId] = useState(null);
   const [seccionActiva, setSeccionActiva] = useState('dashboard');
   const [mostrarEliminados, setMostrarEliminados] = useState(false);
-  const [cicloSeleccionado, setCicloSeleccionado] = useState(new Date().toISOString().slice(0, 7));
+  const [cicloSeleccionado, setCicloSeleccionado] = useState(getLocalIsoCycle());
   const [fijoEditModal, setFijoEditModal] = useState(null);
   const [fijoEditForm, setFijoEditForm] = useState({
     gasto_fijo_id: null,
@@ -818,7 +829,7 @@ export default function App() {
   };
 
   const getFechaGastoRapido = () => {
-    const hoy = new Date().toISOString().slice(0, 10);
+    const hoy = getLocalIsoDate();
     if (hoy.startsWith(cicloSeleccionado)) return hoy;
     return `${cicloSeleccionado}-01`;
   };
@@ -916,7 +927,7 @@ export default function App() {
     const anio = Number(anioTexto);
     const mes = Number(mesTexto);
     if (!Number.isInteger(anio) || !Number.isInteger(mes) || mes < 1 || mes > 12) {
-      return new Date().toISOString().slice(0, 10);
+      return getLocalIsoDate();
     }
     const ultimoDia = new Date(anio, mes, 0).getDate();
     return `${ciclo}-${String(ultimoDia).padStart(2, '0')}`;
@@ -927,7 +938,7 @@ export default function App() {
     const anio = Number(anioTexto);
     const mes = Number(mesTexto);
     if (!Number.isInteger(anio) || !Number.isInteger(mes) || mes < 1 || mes > 12) {
-      return new Date().toISOString().slice(0, 7);
+      return getLocalIsoCycle();
     }
     const fecha = new Date(anio, mes, 1);
     return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
@@ -938,7 +949,7 @@ export default function App() {
     const anio = Number(anioTexto);
     const mes = Number(mesTexto) - 2;
     if (!Number.isInteger(anio) || !Number.isInteger(mes)) {
-      return new Date().toISOString().slice(0, 7);
+      return getLocalIsoCycle();
     }
     const fecha = new Date(anio, mes, 1);
     return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
