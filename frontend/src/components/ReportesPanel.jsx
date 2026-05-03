@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { getCycleContext } from '../utils/cycle.js';
 
 const AGRUPAR_CATEGORIAS_CHICAS = true;
 const UMBRAL_OTROS_PORCENTAJE = 4;
@@ -42,6 +43,12 @@ function calculateVariation(actual, previous) {
     return NaN;
   }
   return ((current - base) / Math.abs(base)) * 100;
+}
+
+function formatPartialVariationText(item) {
+  if (!Number.isFinite(item.value)) return 'Sin referencia';
+  const direction = item.value > 0 ? 'subieron' : item.value < 0 ? 'bajaron' : 'sin cambios';
+  return `${direction} ${Math.abs(item.value).toFixed(1)}%`;
 }
 
 function calculateExpenseIncomeRatio(expenses, income) {
@@ -88,6 +95,16 @@ function prepararCategoriasReportes(categorias = [], { agruparChicas = false, um
 
   const total = ordenadas.reduce((acc, item) => acc + Number(item.total || 0), 0);
   if (total <= 0) return ordenadas;
+  if (ordenadas.length > 6) {
+    const top = ordenadas.slice(0, 6);
+    const resto = ordenadas.slice(6);
+    const totalOtros = resto.reduce((acc, item) => acc + Number(item.total || 0), 0);
+    const movimientosOtros = resto.reduce((acc, item) => acc + Number(item.cantidad || item.movimientos || item.cantidadMovimientos || item.consumos || 0), 0);
+    return [
+      ...top,
+      { categoria: 'Otros', total: totalOtros, agrupada: true, cantidadCategorias: resto.length, cantidad: movimientosOtros }
+    ];
+  }
 
   const categoriasGrandes = [];
   const categoriasChicas = [];
@@ -116,8 +133,12 @@ export default function ReportesPanel({
   ciclo,
   resumenMensual,
   categoriasReportes = [],
-  evolucionMensual = []
+  evolucionMensual = [],
+  cycleContext = null,
+  analysisConfidence = null
 }) {
+  const cicloInfo = cycleContext || getCycleContext(ciclo);
+  const cicloEnCurso = cicloInfo.cicloEnCurso;
   const [categoriaActiva, setCategoriaActiva] = useState('');
   const [mesActivoTendencia, setMesActivoTendencia] = useState(null);
   const reporteSeleccionado = REPORTES_BASE.find((item) => item.key === reporteActivo) || REPORTES_BASE[0];
@@ -257,6 +278,10 @@ export default function ReportesPanel({
             ? 'subieron'
             : 'bajaron';
 
+      if (cicloEnCurso) {
+        return `${item.label} confirmados ${formatPartialVariationText(item)} vs el ciclo anterior cerrado.`;
+      }
+
       return `Los ${item.key} ${direccion} ${Math.abs(item.value).toFixed(1)}%`;
     });
 
@@ -283,6 +308,12 @@ export default function ReportesPanel({
       <div className="reportes-layout">
         <section className="reportes-main">
           <span className="pill muted">Ciclo: {ciclo}</span>
+          {cicloEnCurso && <span className="pill muted reportes-cycle-badge">Ciclo abierto: datos parciales</span>}
+          {reporteSeleccionado.key === 'tendencias' && analysisConfidence && (
+            <span className={`pill muted reportes-cycle-badge analysis-confidence-badge confidence-${analysisConfidence.nivel}`}>
+              {analysisConfidence.label}
+            </span>
+          )}
           <h3>{reporteSeleccionado.title}</h3>
           <p>{reporteSeleccionado.description}</p>
 
@@ -336,13 +367,16 @@ export default function ReportesPanel({
 
               <div className={`reportes-ratio-card ${ratioTone}`}>
                 <span>Porcentaje egresos / ingresos</span>
-                <strong>{ratioEgresosIngresos == null ? 'N/A' : `${ratioEgresosIngresos.toFixed(1)}%`}</strong>
+                <strong>{ratioEgresosIngresos == null ? 'Sin ingresos confirmados' : `${ratioEgresosIngresos.toFixed(1)}%`}</strong>
+                {ratioEgresosIngresos == null && (
+                  <small>Sin ingresos confirmados todavia. Esta metrica se calculara cuando haya ingresos registrados.</small>
+                )}
               </div>
             </>
           ) : reporteSeleccionado.key === 'categorias' ? (
-            <div className="reportes-category-layout">
-              <div className="reportes-pie-card">
-                {pieSegments.length > 0 ? (
+            pieSegments.length > 0 ? (
+              <div className="reportes-category-layout">
+                <div className="reportes-pie-card">
                   <>
                     <div className="reportes-pie-wrap">
                       <svg viewBox="0 0 300 300" className="reportes-pie-chart" aria-label="Grafico de gastos por categoria">
@@ -365,38 +399,45 @@ export default function ReportesPanel({
                     </div>
                     <p className="reportes-pie-total">Total confirmado: {formatMoney(totalCategorias)}</p>
                   </>
-                ) : (
-                  <div className="reportes-empty-state">
-                    <strong>Sin egresos confirmados</strong>
-                    <p>No hay datos confirmados de egresos en este ciclo para graficar por categoria.</p>
-                  </div>
-                )}
-              </div>
-
-              {pieSegments.length > 0 && (
-                <div className="reportes-category-list">
-                  {pieSegments.map((segment) => (
-                    <article
-                      key={segment.categoria}
-                      className={`reportes-category-item ${categoriaActiva === segment.categoria ? 'is-active' : ''} ${
-                        categoriaActiva && categoriaActiva !== segment.categoria ? 'is-muted' : ''
-                      }`}
-                      onMouseEnter={() => setCategoriaActiva(segment.categoria)}
-                      onMouseLeave={() => setCategoriaActiva('')}
-                    >
-                      <div className="reportes-category-main">
-                        <span className="reportes-category-dot" style={{ backgroundColor: segment.color }} />
-                        <strong>{segment.categoria}</strong>
-                      </div>
-                      <div className="reportes-category-values">
-                        <span>{formatMoney(segment.total)}</span>
-                        <small>{segment.percentage.toFixed(1)}%</small>
-                      </div>
-                    </article>
-                  ))}
                 </div>
-              )}
-            </div>
+                <div className="reportes-category-list">
+                  <div className="reportes-category-list-head">
+                    <span>Categoria</span>
+                    <span>Monto</span>
+                    <span>%</span>
+                    <span>Mov.</span>
+                  </div>
+                  {pieSegments.map((segment) => {
+                    const movimientos = Number(segment.cantidad || segment.movimientos || segment.cantidadMovimientos || segment.consumos || 0);
+                    return (
+                      <article
+                        key={segment.categoria}
+                        className={`reportes-category-item ${categoriaActiva === segment.categoria ? 'is-active' : ''} ${
+                          categoriaActiva && categoriaActiva !== segment.categoria ? 'is-muted' : ''
+                        }`}
+                        onMouseEnter={() => setCategoriaActiva(segment.categoria)}
+                        onMouseLeave={() => setCategoriaActiva('')}
+                      >
+                        <div className="reportes-category-main">
+                          <span className="reportes-category-dot" style={{ backgroundColor: segment.color }} />
+                          <strong>{segment.categoria}</strong>
+                        </div>
+                        <div className="reportes-category-values">
+                          <span>{formatMoney(segment.total)}</span>
+                          <small>{segment.percentage.toFixed(1)}%</small>
+                          <small>{movimientos > 0 ? movimientos : '-'}</small>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="reportes-empty-state reportes-empty-state-compact">
+                <strong>Sin egresos confirmados por categoria</strong>
+                <p>No hay datos suficientes para mostrar distribucion. Cuando registres egresos confirmados, este reporte va a mostrar composicion y concentracion.</p>
+              </div>
+            )
           ) : evolucionMensual.length > 0 ? (
             <div className="reportes-trends-layout">
               <div className="reportes-trend-card">
@@ -555,21 +596,27 @@ export default function ReportesPanel({
               {variacionesTendencia.length > 0 && (
                 <div className="reportes-trend-variation-card">
                   <strong>Variacion vs mes anterior</strong>
+                  {analysisConfidence?.isLow && <small>Comparacion orientativa. {analysisConfidence.note}</small>}
                   <div className="reportes-trend-variation-grid">
                     {variacionesTendencia.map((item) => (
                       <article key={item.key} className="reportes-trend-variation-item">
-                        <span>{item.label}</span>
+                        <span>{cicloEnCurso ? `${item.label} confirmados` : item.label}</span>
                         <strong
                           className={
-                            Number.isFinite(item.value)
+                            cicloEnCurso
+                              ? ''
+                              : Number.isFinite(item.value)
                               ? item.value >= 0
                                 ? 'positive-text'
                                 : 'negative-text'
                               : ''
                           }
                         >
-                          {formatVariation(item.value)}
+                          {cicloEnCurso
+                            ? formatPartialVariationText(item)
+                            : formatVariation(item.value)}
                         </strong>
+                        {cicloEnCurso && <small>vs el ciclo anterior cerrado. Datos confirmados/parciales.</small>}
                       </article>
                     ))}
                   </div>

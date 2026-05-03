@@ -136,6 +136,15 @@ function finDeCiclo(ciclo) {
   return new Date(anio, mes, 0);
 }
 
+function formatCycleLabelBackend(ciclo) {
+  if (!cicloEsValido(ciclo)) return String(ciclo || '');
+  const label = new Date(`${ciclo}-01T00:00:00`).toLocaleDateString('es-AR', {
+    month: 'long',
+    year: 'numeric'
+  });
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
 function cicloAnterior(ciclo) {
   if (!cicloEsValido(ciclo)) return null;
   const [anioTexto, mesTexto] = String(ciclo).split('-');
@@ -594,6 +603,18 @@ async function asegurarColumnasEstadoMovimientos() {
   await pool.query(`
     ALTER TABLE movimientos
     ADD COLUMN IF NOT EXISTS referencia_ciclo_cierre VARCHAR(7)
+  `);
+  await pool.query(`
+    ALTER TABLE movimientos
+    ADD COLUMN IF NOT EXISTS origen VARCHAR(40)
+  `);
+  await pool.query(`
+    ALTER TABLE movimientos
+    ADD COLUMN IF NOT EXISTS referencia_tarjeta_id BIGINT REFERENCES tarjetas_credito(id)
+  `);
+  await pool.query(`
+    ALTER TABLE movimientos
+    ADD COLUMN IF NOT EXISTS referencia_cierre_tarjeta_id BIGINT REFERENCES cierres_tarjeta(id)
   `);
   await pool.query(`
     ALTER TABLE movimientos
@@ -3221,6 +3242,119 @@ app.patch('/tarjetas-credito/cierres/:id', async (req, res) => {
     return res.status(200).json({ item: rows[0] });
   } catch (error) {
     return res.status(500).json({ error: 'Error actualizando resumen de tarjeta', detalle: error.message });
+  }
+});
+
+app.post('/tarjetas-credito/cierres/:id/generar-movimiento', async (req, res) => {
+  const cierreId = Number(req.params.id);
+  const auditoriaUsuarioId = usuarioAuditoriaId(req);
+  if (!cierreId) return res.status(400).json({ error: 'id invalido' });
+
+  try {
+    await asegurarTarjetasCredito({ recalcular: false });
+    await asegurarColumnasEstadoMovimientos();
+
+    const { rows: cierreRows } = await pool.query(
+      `
+      SELECT cr.id, cr.tarjeta_id, cr.ciclo, cr.fecha_cierre, cr.fecha_vencimiento, cr.estado,
+             tc.hogar_id, tc.nombre AS tarjeta_nombre
+      FROM cierres_tarjeta cr
+      JOIN tarjetas_credito tc ON tc.id = cr.tarjeta_id
+      WHERE cr.id = $1
+      `,
+      [cierreId]
+    );
+    const cierre = cierreRows[0];
+    if (!cierre) return res.status(404).json({ error: 'Resumen no encontrado' });
+    if (!puedeOperarHogar(req.usuario, Number(cierre.hogar_id))) return res.status(403).json({ error: 'No tenes permisos para operar este hogar' });
+    if (cierre.estado !== 'cerrado') return res.status(409).json({ error: 'Solo se puede generar el egreso con el resumen cerrado' });
+
+    const { rows: consumosBase } = await pool.query(
+      `
+      SELECT id, tarjeta_id, cierre_id, ciclo_asignado, fecha_compra, descripcion, categoria, moneda,
+             monto_total, cantidad_cuotas, monto_cuota, cuota_inicial, repite_mes_siguiente
+      FROM consumos_tarjeta
+      WHERE tarjeta_id = $1
+      `,
+      [cierre.tarjeta_id]
+    );
+    const resumen = resumirCicloTarjeta(cierre.ciclo, expandirConsumosTarjeta(consumosBase));
+    const totalArs = Number(resumen.total_ars || 0);
+    if (!esNumeroPositivo(totalArs)) return res.status(400).json({ error: 'El resumen no tiene total ARS para generar el egreso' });
+
+    const { rows: tipoRows } = await pool.query("SELECT id FROM tipos_movimiento WHERE codigo = 'egreso' LIMIT 1");
+    const tipoEgresoId = Number(tipoRows[0]?.id || 0);
+    const { rows: categoriaRows } = await pool.query(
+      `
+      SELECT c.id
+      FROM categorias c
+      JOIN tipos_movimiento tm ON tm.id = c.tipo_movimiento_id
+      WHERE c.hogar_id = $1 AND tm.codigo = 'egreso' AND LOWER(c.nombre) = 'tarjeta'
+      LIMIT 1
+      `,
+      [cierre.hogar_id]
+    );
+    const categoriaTarjetaId = Number(categoriaRows[0]?.id || 0);
+    if (!tipoEgresoId || !categoriaTarjetaId) return res.status(400).json({ error: 'No se encontro la categoria Tarjeta para egresos' });
+
+    const descripcion = `TC ${cierre.tarjeta_nombre} - ${formatCycleLabelBackend(cierre.ciclo)}`;
+    const fechaMovimiento = fechaIso(cierre.fecha_vencimiento || cierre.fecha_cierre);
+    const { rows: duplicadoRows } = await pool.query(
+      `
+      SELECT id, descripcion, monto_ars, fecha
+      FROM movimientos
+      WHERE hogar_id = $1
+        AND activo = true
+        AND categoria_id = $2
+        AND ABS(monto_ars - $3) <= 0.01
+        AND (
+          referencia_ciclo_cierre = $4
+          OR (referencia_ciclo_cierre IS NULL AND TO_CHAR(fecha, 'YYYY-MM') = $4)
+        )
+      `,
+      [cierre.hogar_id, categoriaTarjetaId, totalArs, cierre.ciclo]
+    );
+    const descripcionNormalizada = normalizarTexto(descripcion);
+    const duplicado = duplicadoRows.find((item) => {
+      const actual = normalizarTexto(item.descripcion);
+      return actual === descripcionNormalizada || actual.includes(descripcionNormalizada) || descripcionNormalizada.includes(actual);
+    });
+    if (duplicado) {
+      return res.status(409).json({
+        error: 'Ya existe un movimiento similar para este resumen.',
+        duplicate: true,
+        movimiento: duplicado
+      });
+    }
+
+    const { rows } = await pool.query(
+      `
+      INSERT INTO movimientos (
+        hogar_id, cuenta_id, tipo_movimiento_id, categoria_id, fecha, descripcion,
+        moneda_original, monto_original, monto_ars, usa_ahorro, estado_egreso, estado_ingreso,
+        clasificacion_movimiento, referencia_ciclo_cierre, origen, referencia_tarjeta_id,
+        referencia_cierre_tarjeta_id, creado_por_usuario_id, actualizado_por_usuario_id
+      )
+      VALUES ($1,NULL,$2,$3,$4,$5,'ARS',$6,$6,false,'pendiente',NULL,'normal',$7,'tarjeta_credito',$8,$9,$10,$10)
+      RETURNING id, fecha, descripcion, monto_ars
+      `,
+      [
+        cierre.hogar_id,
+        tipoEgresoId,
+        categoriaTarjetaId,
+        fechaMovimiento,
+        descripcion,
+        totalArs,
+        cierre.ciclo,
+        cierre.tarjeta_id,
+        cierre.id,
+        auditoriaUsuarioId
+      ]
+    );
+
+    return res.status(201).json({ item: rows[0] });
+  } catch (error) {
+    return res.status(500).json({ error: 'Error generando movimiento del resumen', detalle: error.message });
   }
 });
 

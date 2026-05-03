@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { createConsumoTarjeta, deleteConsumoTarjeta, getTarjetasCredito, importConsumosTarjeta, updateCierreTarjeta, updateConsumoTarjeta } from '../services/api.js';
+import { getAnalysisConfidence } from '../utils/analysisConfidence.js';
+import { createConsumoTarjeta, deleteConsumoTarjeta, generarMovimientoResumenTarjeta, getTarjetasCredito, importConsumosTarjeta, updateCierreTarjeta, updateConsumoTarjeta } from '../services/api.js';
 
 const moneyFormat = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
 const csvExpectedHeaders = [
@@ -171,19 +172,39 @@ function buildMainReading(analisisTarjeta, actual, categoriaPrincipal, topChange
   const total = Number(actual.total_ars || 0);
   const promedio = Number(analisisTarjeta?.promedio_ars || 0);
   const diferencia = total - promedio;
+  const missing = (topChanges || []).filter((item) => Number(item.actual_ars || 0) === 0 && Number(item.promedio_ars || 0) > 0);
+  const rising = (topChanges || []).find((item) => Number(item.diferencia_ars || 0) > 0);
   const comportamiento = promedio > 0
     ? diferencia < 0
-      ? `El resumen actual esta por debajo del promedio reciente por ${formatMoney(Math.abs(diferencia))}.`
+      ? `El resumen esta por debajo del promedio reciente por ${formatMoney(Math.abs(diferencia))}.`
       : diferencia > 0
-        ? `El resumen actual supera el promedio reciente por ${formatMoney(diferencia)}.`
-        : 'El resumen actual esta en linea con el promedio reciente.'
+        ? `El resumen supera el promedio reciente por ${formatMoney(diferencia)}.`
+        : 'El resumen esta en linea con el promedio reciente.'
     : 'Aun no hay historial suficiente para comparar este resumen.';
-  const factor = topChanges?.[0]
-    ? `${describeCategoryChange(topChanges[0], formatMoney)} y es el principal factor a revisar.`
+  const factor = missing.length >= 2
+    ? `La baja se explica principalmente por ausencia de ${missing.slice(0, 2).map((item) => item.categoria).join(' y ')}.`
+    : rising
+      ? `${rising.categoria} es el factor que mas empuja el resultado.`
+      : missing.length === 1
+        ? `${missing[0].categoria} no aparece este resumen y explica parte de la diferencia.`
+        : topChanges?.[0]
+          ? `${describeCategoryChange(topChanges[0], formatMoney)} es el factor mas relevante.`
     : categoriaPrincipal?.categoria
       ? `${categoriaPrincipal.categoria} concentra el mayor impacto del resumen.`
       : 'Sin una categoria dominante para explicar el resultado.';
   return [comportamiento, factor];
+}
+
+function getAnalysisStatus(analisisTarjeta, isClosed) {
+  if (!isClosed) return { label: 'Resumen parcial', tone: 'muted' };
+  const promedio = Number(analisisTarjeta?.promedio_ars || analisisTarjeta?.promedio_usd || 0);
+  const actual = Number(analisisTarjeta?.promedio_ars || 0) > 0
+    ? Number(analisisTarjeta?.actual?.total_ars || 0)
+    : Number(analisisTarjeta?.actual?.total_usd || 0);
+  if (promedio <= 0) return { label: 'Resumen dentro del patron', tone: 'muted' };
+  if (actual > promedio * 1.2) return { label: 'Resumen sobre el promedio', tone: 'warning' };
+  if (actual < promedio * 0.85) return { label: 'Resumen por debajo del promedio', tone: 'positive' };
+  return { label: 'Resumen dentro del patron', tone: 'muted' };
 }
 
 function buildCategoryAnalysis(analisisTarjeta = {}) {
@@ -427,7 +448,7 @@ function getCsvResumenImpact(row) {
   return Number(montoTotal || montoCuota || 0);
 }
 
-export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = [], formatMoney, onToast }) {
+export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = [], formatMoney, onToast, onMovimientosChange, onVerMovimientoGenerado }) {
   const [tarjetas, setTarjetas] = useState([]);
   const [consumos, setConsumos] = useState([]);
   const [cierre, setCierre] = useState(null);
@@ -448,12 +469,15 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
   const [analysisCategorySelection, setAnalysisCategorySelection] = useState([]);
   const [analysisPeriodCount, setAnalysisPeriodCount] = useState(6);
   const [analysisCurveCurrency, setAnalysisCurveCurrency] = useState('ARS');
+  const [showAllCategoryImpacts, setShowAllCategoryImpacts] = useState(false);
   const [csvImportOpen, setCsvImportOpen] = useState(false);
   const [csvImportStep, setCsvImportStep] = useState(1);
   const [csvImportRows, setCsvImportRows] = useState([]);
   const [csvImportError, setCsvImportError] = useState('');
   const [csvImportFileName, setCsvImportFileName] = useState('');
   const [csvImportProgress, setCsvImportProgress] = useState({ processed: 0, total: 0 });
+  const [movimientoResumenAviso, setMovimientoResumenAviso] = useState(null);
+  const [movimientoResumenGenerado, setMovimientoResumenGenerado] = useState(null);
   const [loading, setLoading] = useState(false);
   const [loadingAction, setLoadingAction] = useState('');
   const actionLockRef = useRef(false);
@@ -503,19 +527,39 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
 
     consumos.forEach((item) => {
       if (String(item.ciclo_asignado).localeCompare(String(selectedCiclo)) <= 0) return;
+      if (Number(item.cantidad_cuotas || 1) <= 1) return;
+      if (Number(item.cuota_numero || item.cuota_inicial || 1) > Number(item.cantidad_cuotas || 1)) return;
       if (!byCycle.has(item.ciclo_asignado)) {
         byCycle.set(item.ciclo_asignado, { ciclo: item.ciclo_asignado, totalArs: 0, totalUsd: 0, consumos: new Set() });
       }
       const bucket = byCycle.get(item.ciclo_asignado);
       if (item.moneda === 'USD') bucket.totalUsd += Number(item.monto_resumen || item.monto_cuota || 0);
       else bucket.totalArs += Number(item.monto_resumen || item.monto_cuota || 0);
-      bucket.consumos.add(item.id);
+      bucket.consumos.add(item.compra_id || item.id);
     });
 
     return Array.from(byCycle.values())
       .map((item) => ({ ...item, cantidadConsumos: item.consumos.size }))
       .sort((a, b) => String(a.ciclo).localeCompare(String(b.ciclo)));
   }, [consumos, selectedCiclo]);
+  const cuotasFuturasResumen = useMemo(() => {
+    const totalArs = cuotasFuturas.reduce((sum, item) => sum + Number(item.totalArs || 0), 0);
+    const totalUsd = cuotasFuturas.reduce((sum, item) => sum + Number(item.totalUsd || 0), 0);
+    const consumosPendientes = new Set();
+    consumos.forEach((item) => {
+      if (String(item.ciclo_asignado).localeCompare(String(selectedCiclo)) <= 0) return;
+      if (Number(item.cantidad_cuotas || 1) <= 1) return;
+      consumosPendientes.add(item.compra_id || item.id);
+    });
+    const mesMasPesado = cuotasFuturas.reduce((best, item) => {
+      if (!best) return item;
+      const itemPeso = Number(item.totalArs || 0) || Number(item.totalUsd || 0);
+      const bestPeso = Number(best.totalArs || 0) || Number(best.totalUsd || 0);
+      return itemPeso > bestPeso ? item : best;
+    }, null);
+    const hastaCiclo = cuotasFuturas.length > 0 ? cuotasFuturas[cuotasFuturas.length - 1].ciclo : '';
+    return { totalArs, totalUsd, mesMasPesado, hastaCiclo, consumosPendientes: consumosPendientes.size };
+  }, [consumos, cuotasFuturas, selectedCiclo]);
   const previewCicloAsignado = useMemo(() => {
     return resolvePreviewCycle(form.fecha_compra, savedCierreForm.fecha_cierre) || selectedCiclo;
   }, [form.fecha_compra, savedCierreForm.fecha_cierre, selectedCiclo]);
@@ -550,7 +594,22 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
     () => buildMainReading(analisisTarjeta, analisisActual, categoriaPrincipalAnalisis, topCategoryChanges, formatMoney),
     [analisisTarjeta, analisisActual, categoriaPrincipalAnalisis, topCategoryChanges, formatMoney]
   );
+  const analysisStatus = useMemo(
+    () => getAnalysisStatus(analisisTarjeta, resumenSeleccionadoCerrado),
+    [analisisTarjeta, resumenSeleccionadoCerrado]
+  );
+  const categoriasImpactoVisibles = showAllCategoryImpacts ? categoriasComparadasAnalisis : categoriasComparadasAnalisis.slice(0, 3);
   const cycleEvolutionRows = useMemo(() => buildCycleEvolutionRows(analisisCategorias.serie), [analisisCategorias.serie]);
+  const tarjetaAnalysisConfidence = useMemo(
+    () =>
+      getAnalysisConfidence({
+        series: analisisCategorias.serie,
+        currentCycle: analisisTarjeta?.ciclo_punta || selectedCiclo,
+        cycleContext: { cicloEnCurso: !resumenSeleccionadoCerrado },
+        valueKeys: ['total_ars', 'total_usd']
+      }),
+    [analisisCategorias.serie, analisisTarjeta?.ciclo_punta, selectedCiclo, resumenSeleccionadoCerrado]
+  );
   const showCategoryTrendTable = analisisCategorias.topCategorias.some((categoria) =>
     analisisCategorias.serie.some((item) => {
       const found = (item.categorias || []).find((entry) => entry.categoria === categoria.categoria) || {};
@@ -577,6 +636,9 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
       return valid.length > 0 ? valid : analysisCategoryOptions.slice(0, Math.min(3, analysisCategoryOptions.length));
     });
   }, [analysisCategoryOptions]);
+  useEffect(() => {
+    setShowAllCategoryImpacts(false);
+  }, [selectedCiclo]);
   const csvHasInvalidRows = csvRowsWithValidation.some((row) => row._validation.estado === 'invalida');
   const csvImportableRows = csvRowsWithValidation.filter((row) => !row._ignored && row._validation.estado !== 'invalida');
   const csvImportStats = useMemo(() => csvRowsWithValidation.reduce(
@@ -930,6 +992,33 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
     }
   };
 
+  const handleGenerarMovimientoResumen = async (cierreObjetivo = cierre) => {
+    if (!cierreObjetivo?.id || cierreObjetivo.estado !== 'cerrado') return;
+    if (actionLockRef.current) return;
+    actionLockRef.current = true;
+    setLoading(true);
+    setLoadingAction(`movimiento-resumen-${cierreObjetivo.id}`);
+    setMovimientoResumenAviso(null);
+    setMovimientoResumenGenerado(null);
+    try {
+      const data = await generarMovimientoResumenTarjeta(cierreObjetivo.id);
+      if (data.duplicate) {
+        setMovimientoResumenAviso({ cierreId: cierreObjetivo.id, message: data.error || 'Ya existe un movimiento similar para este resumen.' });
+        onToast?.({ type: 'error', message: 'Ya existe un movimiento similar para este resumen.' });
+        return;
+      }
+      setMovimientoResumenGenerado(data.item ? { ...data.item, cierreId: cierreObjetivo.id } : null);
+      await onMovimientosChange?.();
+      onToast?.({ message: 'Egreso generado en Movimientos.' });
+    } catch (err) {
+      onToast?.({ type: 'error', message: err.message || 'No se pudo generar el movimiento.' });
+    } finally {
+      actionLockRef.current = false;
+      setLoading(false);
+      setLoadingAction('');
+    }
+  };
+
   const handleVerResumen = (cicloResumen) => {
     if (!cicloResumen) return;
     setDetailItem(null);
@@ -1161,10 +1250,6 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
           </p>
         </div>
         <div className="tarjeta-hero-actions">
-          <button className="tarjeta-import-summary-btn" type="button" onClick={openCsvImportModal} disabled={loading}>
-            <span>Importar resumen CSV</span>
-            <small>Carga masiva del resumen</small>
-          </button>
           <div className="tarjeta-view-switch" aria-label="Cambiar pantalla de tarjeta">
             <button
               type="button"
@@ -1296,18 +1381,37 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
       </div>
 
       {resumenSeleccionadoCerrado && (
-        <section className="panel tarjeta-closed-summary">
-          <div>
-            <span>Total ARS cerrado</span>
-            <strong>{formatMoney(resumen.total_ars)}</strong>
+        <section className="panel tarjeta-closed-summary tarjeta-closed-summary-action">
+          <div className="tarjeta-closed-summary-grid">
+            <div>
+              <span>Total ARS cerrado</span>
+              <strong>{formatMoney(resumen.total_ars)}</strong>
+            </div>
+            <div>
+              <span>Total USD cerrado</span>
+              <strong>USD {Number(resumen.total_usd || 0).toLocaleString('es-AR', moneyFormat)}</strong>
+            </div>
+            <div>
+              <span>Consumos incluidos</span>
+              <strong>{resumen.consumos || 0}</strong>
+            </div>
           </div>
-          <div>
-            <span>Total USD cerrado</span>
-            <strong>USD {Number(resumen.total_usd || 0).toLocaleString('es-AR', moneyFormat)}</strong>
-          </div>
-          <div>
-            <span>Consumos incluidos</span>
-            <strong>{resumen.consumos || 0}</strong>
+          <div className="tarjeta-summary-movement-actions">
+            {movimientoResumenAviso?.cierreId === cierre?.id && <p className="tarjeta-summary-warning">Ya existe un movimiento similar para este resumen.</p>}
+            {movimientoResumenGenerado?.cierreId === cierre?.id && (
+              <button type="button" className="btn-inline secondary" onClick={() => onVerMovimientoGenerado?.(movimientoResumenGenerado)}>
+                Ver movimiento generado
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn-inline btn-with-spinner"
+              onClick={() => handleGenerarMovimientoResumen(cierre)}
+              disabled={loading || !cierre?.id || Number(resumen.total_ars || 0) <= 0}
+            >
+              {loadingAction === `movimiento-resumen-${cierre?.id}` && <span className="btn-spinner" aria-hidden="true" />}
+              {loadingAction === `movimiento-resumen-${cierre?.id}` ? 'Generando...' : 'Generar egreso en Movimientos'}
+            </button>
           </div>
         </section>
       )}
@@ -1325,6 +1429,15 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
               <strong>{formatCycleLabel(previewCicloAsignado)}</strong>
             </span>
           </div>
+        </div>
+        <div className="tarjeta-load-actions" aria-label="Acciones de carga de tarjeta">
+          <button type="button" className="btn-inline tarjeta-load-primary" onClick={() => consumoDescripcionRef.current?.focus()}>
+            + Nuevo consumo
+          </button>
+          <button className="tarjeta-import-summary-btn" type="button" onClick={openCsvImportModal} disabled={loading}>
+            <span>Importar CSV</span>
+            <small>Carga masiva del resumen</small>
+          </button>
         </div>
         <form className="form-grid tarjeta-consumo-form" onSubmit={handleSubmit}>
           <div className="tarjeta-form-group tarjeta-form-group-purchase">
@@ -1564,16 +1677,45 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
           </div>
         </div>
         {cuotasFuturas.length > 0 ? (
-          <div className="tarjeta-future-grid">
-            {cuotasFuturas.map((item) => (
-              <article className="tarjeta-future-card" key={item.ciclo}>
-                <span>{formatCycleLabel(item.ciclo)}</span>
-                <strong>{formatMoney(item.totalArs)} ARS</strong>
-                <strong>USD {Number(item.totalUsd || 0).toLocaleString('es-AR', moneyFormat)}</strong>
-                <small>{item.cantidadConsumos} consumos incluidos</small>
+          <>
+            <div className="tarjeta-future-summary">
+              <article>
+                <span>Compromiso futuro ARS</span>
+                <strong>{formatMoney(cuotasFuturasResumen.totalArs)}</strong>
               </article>
-            ))}
-          </div>
+              <article>
+                <span>Compromiso futuro USD</span>
+                <strong>{formatUsd(cuotasFuturasResumen.totalUsd)}</strong>
+              </article>
+              <article>
+                <span>Mes mas pesado</span>
+                <strong>{formatCycleLabel(cuotasFuturasResumen.mesMasPesado?.ciclo)}</strong>
+                <small>
+                  {formatMoney(cuotasFuturasResumen.mesMasPesado?.totalArs || 0)}
+                  {' / '}
+                  {formatUsd(cuotasFuturasResumen.mesMasPesado?.totalUsd || 0)}
+                </small>
+              </article>
+              <article>
+                <span>Arrastre vigente hasta</span>
+                <strong>{formatCycleLabel(cuotasFuturasResumen.hastaCiclo)}</strong>
+              </article>
+              <article>
+                <span>Consumos con cuotas pendientes</span>
+                <strong>{cuotasFuturasResumen.consumosPendientes}</strong>
+              </article>
+            </div>
+            <div className="tarjeta-future-grid">
+              {cuotasFuturas.map((item) => (
+                <article className="tarjeta-future-card" key={item.ciclo}>
+                  <span>{formatCycleLabel(item.ciclo)}</span>
+                  <strong>{formatMoney(item.totalArs)} ARS</strong>
+                  <strong>USD {Number(item.totalUsd || 0).toLocaleString('es-AR', moneyFormat)}</strong>
+                  <small>{item.cantidadConsumos} consumos incluidos</small>
+                </article>
+              ))}
+            </div>
+          </>
         ) : (
           <p className="empty-state">Sin cuotas futuras.</p>
         )}
@@ -1789,7 +1931,19 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
                         {loadingAction === 'historial-cierre' && <span className="btn-spinner" aria-hidden="true" />}
                         {loadingAction === 'historial-cierre' ? '...' : item.estado === 'cerrado' ? 'Reabrir' : 'Cerrar'}
                       </button>
+                      {item.estado === 'cerrado' && (
+                        <button type="button" className="btn-inline secondary btn-with-spinner" onClick={() => handleGenerarMovimientoResumen(item)} disabled={loading || Number(item.total_ars || 0) <= 0}>
+                          {loadingAction === `movimiento-resumen-${item.id}` && <span className="btn-spinner" aria-hidden="true" />}
+                          {loadingAction === `movimiento-resumen-${item.id}` ? '...' : 'Generar egreso'}
+                        </button>
+                      )}
+                      {movimientoResumenGenerado?.cierreId === item.id && (
+                        <button type="button" className="btn-inline secondary" onClick={() => onVerMovimientoGenerado?.(movimientoResumenGenerado)}>
+                          Ver movimiento
+                        </button>
+                      )}
                     </div>
+                    {movimientoResumenAviso?.cierreId === item.id && <small className="tarjeta-summary-warning">Ya existe un movimiento similar.</small>}
                   </td>
                 </tr>
               ))}
@@ -1809,14 +1963,18 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
         <div className="panel-header">
           <div>
             <p className="eyebrow">Analisis</p>
-            <h2>Comportamiento de consumo</h2>
-            <p>
+            <h2>Analisis del resumen actual</h2>
+            <p>Composicion, tendencia y comparacion contra resumenes anteriores.</p>
+            <small className="tarjeta-analysis-context">
               Resumen analizado: {formatCycleLabel(analisisTarjeta?.ciclo_punta || selectedCiclo)}
               {analisisTarjeta?.ultimo_cerrado ? ` | ultimo cerrado: ${formatCycleLabel(analisisTarjeta.ultimo_cerrado)}` : ''}
-            </p>
+            </small>
           </div>
-          <em className={`tarjeta-analysis-status ${analisisTarjeta?.tono_nivel || 'muted'}`}>
-            {analisisTarjeta?.nivel || 'Sin datos'}
+          <em className={`tarjeta-analysis-status ${analysisStatus.tone}`}>
+            {analysisStatus.label}
+          </em>
+          <em className={`tarjeta-analysis-status confidence-${tarjetaAnalysisConfidence.nivel}`}>
+            {tarjetaAnalysisConfidence.label}
           </em>
         </div>
         <div className="tarjeta-analysis-grid">
@@ -1875,6 +2033,9 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
         </div>
         <div className="tarjeta-analysis-block tarjeta-main-reading">
           <h3>Lectura principal</h3>
+          {tarjetaAnalysisConfidence.isLow && (
+            <p>Comparacion orientativa. {tarjetaAnalysisConfidence.note}</p>
+          )}
           {lecturaPrincipal.map((line) => <p key={line}>{line}</p>)}
         </div>
         <div className="tarjeta-analysis-block tarjeta-category-distribution">
@@ -2079,7 +2240,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
           <div className="tarjeta-analysis-block">
             <h3>Categorias con impacto</h3>
             <div className="tarjeta-category-impact">
-              {categoriasComparadasAnalisis.map((item) => (
+              {categoriasImpactoVisibles.map((item) => (
                 <div className="tarjeta-category-row" key={item.categoria}>
                   <div>
                     <strong>{item.categoria}</strong>
@@ -2095,6 +2256,11 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
                 <p className="empty-state">Sin categorias comparables.</p>
               )}
             </div>
+            {categoriasComparadasAnalisis.length > 3 && (
+              <button type="button" className="btn-inline secondary tarjeta-impact-more" onClick={() => setShowAllCategoryImpacts((value) => !value)}>
+                {showAllCategoryImpacts ? 'Ver menos' : 'Ver mas'}
+              </button>
+            )}
           </div>
         </div>
       </section>

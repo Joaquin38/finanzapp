@@ -1,10 +1,10 @@
-export default function CotizacionesPanel({ cotizaciones, onRefrescar }) {
+export default function CotizacionesPanel({ cotizaciones, onRefrescar, compact = false }) {
   const cotizacionOficial = cotizaciones[0] || null;
   const valorOficial = Number(cotizacionOficial?.venta || 0);
   const valorAstropay = valorOficial > 0 ? valorOficial * 1.045 : 0;
 
   return (
-    <section className="panel cotizaciones-panel">
+    <section className={`panel cotizaciones-panel ${compact ? 'cotizaciones-panel-compact' : ''}`}>
       <div className="cotizaciones-header">
         <div className="panel-header">
           <h2>Cotizacion del dolar</h2>

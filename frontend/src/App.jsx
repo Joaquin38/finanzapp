@@ -55,6 +55,9 @@ import {
   derivarResumenOperativo,
   getEstadoMovimientoConsolidado
 } from './utils/financials.js';
+import { getCycleContext } from './utils/cycle.js';
+import { calcularNivelControlCiclo } from './utils/cycleControl.js';
+import { getAnalysisConfidence } from './utils/analysisConfidence.js';
 
 const THEME_STORAGE_KEY = 'finanzapp_theme';
 const DASHBOARD_AMOUNTS_HIDDEN_STORAGE_KEY = 'finanzapp_dashboard_amounts_hidden';
@@ -922,6 +925,33 @@ export default function App() {
     setOpenModal(true);
   };
 
+  const handleVerMovimientoGeneradoTarjeta = (movimiento) => {
+    const cicloMovimiento = String(movimiento?.fecha || '').slice(0, 7);
+    if (cicloMovimiento) setCicloSeleccionado(cicloMovimiento);
+    setSeccionActiva('movimientos');
+  };
+
+  const fabContext = (() => {
+    if (!canOperateHome) return null;
+    if (seccionActiva === 'dashboard') {
+      return {
+        label: 'Gasto rapido',
+        aria: 'Cargar gasto rapido',
+        className: 'quick-expense-fab fab-dashboard',
+        onClick: () => setGastoRapidoAbierto(true)
+      };
+    }
+    if (seccionActiva === 'movimientos') {
+      return {
+        label: 'Nuevo movimiento',
+        aria: 'Cargar nuevo movimiento',
+        className: 'quick-expense-fab fab-movimientos',
+        onClick: abrirModalCrear
+      };
+    }
+    return null;
+  })();
+
   const getFechaFinDeCiclo = (ciclo) => {
     const [anioTexto, mesTexto] = String(ciclo || '').split('-');
     const anio = Number(anioTexto);
@@ -978,6 +1008,10 @@ export default function App() {
       return label.charAt(0).toUpperCase() + label.slice(1);
     },
     [cicloSeleccionado]
+  );
+  const cycleContext = useMemo(
+    () => getCycleContext(cicloSeleccionado, estadoCierreCiclo.cerrado),
+    [cicloSeleccionado, estadoCierreCiclo.cerrado]
   );
   const movimientosConsolidados = useMemo(
     () =>
@@ -1055,6 +1089,17 @@ export default function App() {
 
     return items;
   }, [movimientosConsolidados, filtrosGrilla, ordenGrilla, estadoOverrides]);
+  const ultimosMovimientosDashboard = useMemo(
+    () =>
+      [...movimientosConsolidados]
+        .sort((a, b) => {
+          const av = a.esProyectado ? a.fecha : a.creado_en || a.fecha || '';
+          const bv = b.esProyectado ? b.fecha : b.creado_en || b.fecha || '';
+          return String(bv).localeCompare(String(av));
+        })
+        .slice(0, 8),
+    [movimientosConsolidados]
+  );
 
   const categoriasDisponiblesGrilla = useMemo(() => {
     const categoriasFiltradas = filtrosGrilla.tipoMovimiento
@@ -1086,6 +1131,16 @@ export default function App() {
   );
 
   const resumenOperativo = useMemo(() => derivarResumenOperativo(movimientosConsolidados), [movimientosConsolidados]);
+  const nivelControlCiclo = useMemo(
+    () =>
+      calcularNivelControlCiclo({
+        resumenFinanciero,
+        resumenOperativo,
+        cycleContext,
+        movimientos: movimientosConsolidados
+      }),
+    [resumenFinanciero, resumenOperativo, cycleContext, movimientosConsolidados]
+  );
   const categoriaMayorGastoConfirmado = useMemo(
     () => agruparEgresosConfirmadosPorCategoria(movimientosConsolidados)[0],
     [movimientosConsolidados]
@@ -1210,6 +1265,16 @@ export default function App() {
         ciclo: cicloSeleccionado
       }),
     [cicloSeleccionado, cotizaciones, gastosFijos, gastosFijosHistoricosPorCiclo, movimientosHistoricos]
+  );
+  const analysisConfidence = useMemo(
+    () =>
+      getAnalysisConfidence({
+        series: reporteEvolucionMensual,
+        cycleContext,
+        currentCycle: cicloSeleccionado,
+        valueKeys: ['ingresos', 'egresos']
+      }),
+    [reporteEvolucionMensual, cycleContext, cicloSeleccionado]
   );
 
   const cycleControlPanel = (
@@ -1368,15 +1433,72 @@ export default function App() {
         )}
 
         {seccionActiva === 'dashboard' && (
-          <ResumenCards
-            resumen={resumenCalculado}
-            amountsHidden={dashboardAmountsHidden}
-            onToggleAmountsHidden={() => setDashboardAmountsHidden((current) => !current)}
-          />
+          <div className="dashboard-executive-grid">
+            <ResumenCards
+              resumen={resumenCalculado}
+              nivelControl={nivelControlCiclo}
+              amountsHidden={dashboardAmountsHidden}
+              onToggleAmountsHidden={() => setDashboardAmountsHidden((current) => !current)}
+            />
+            <CotizacionesPanel cotizaciones={cotizaciones} onRefrescar={cargarDatos} compact />
+          </div>
         )}
 
         <div className="contenido-dashboard">
-          {(seccionActiva === 'dashboard' || seccionActiva === 'movimientos') && (
+          {seccionActiva === 'dashboard' && (
+            <>
+              <section className="panel operational-summary">
+                <div className="operational-item">
+                  <span className="operational-label">Total de egresos pendientes</span>
+                  <strong>{formatMoneyText(resumenOperativo.montoPendienteEgresos)}</strong>
+                </div>
+                <div className="operational-item">
+                  <span className="operational-label">Egresos pagados del ciclo</span>
+                  <strong>{Number(resumenOperativo.porcentajeEgresosPagados || 0)}%</strong>
+                </div>
+                <div className="operational-item operational-item-wide">
+                  <span className="operational-label">Cantidad de pendientes</span>
+                  <strong>{resumenOperativo.pendientes}</strong>
+                </div>
+              </section>
+              {alertaDashboard && (
+                <section className={`dashboard-alert ${alertaDashboard.tono}`}>
+                  <strong>{alertaDashboard.tono === 'danger' ? 'Umbral critico' : 'Umbral preventivo'}</strong>
+                  <span>{alertaDashboard.mensaje}</span>
+                </section>
+              )}
+              <MovimientosTable
+                title="Ultimos movimientos del ciclo"
+                movimientos={ultimosMovimientosDashboard}
+                categoriasDisponibles={categoriasDisponiblesGrilla}
+                onEditar={handleEditar}
+                onEliminar={handleEliminar}
+                onNuevo={abrirModalCrear}
+                onVerTodos={() => setSeccionActiva('movimientos')}
+                canCreate={canOperateHome}
+                canEdit={canManageHome}
+                canDelete={canManageHome}
+                canManageFixedValues={canAccessFixedValues}
+                canToggleEstado={canOperateHome}
+                mostrarEliminados={mostrarEliminados}
+                onToggleEliminados={setMostrarEliminados}
+                onEditarFijo={handleEditarFijoEnGrilla}
+                onEliminarFijo={handleEliminarFijoEnGrilla}
+                filtros={filtrosGrilla}
+                onFiltrosChange={setFiltrosGrilla}
+                orden={ordenGrilla}
+                onOrdenChange={setOrdenGrilla}
+                getEstadoMovimiento={getEstadoMovimiento}
+                onToggleEstadoPago={toggleEstadoMovimiento}
+                actionLoading={loading || dataLoading}
+                loading={dataLoading}
+                showFilters={false}
+                showDeletedToggle={false}
+              />
+            </>
+          )}
+
+          {seccionActiva === 'movimientos' && (
             <>
               <section className="panel operational-summary">
                 <div className="operational-item">
@@ -1425,7 +1547,7 @@ export default function App() {
             </>
           )}
 
-          {(seccionActiva === 'dashboard' || seccionActiva === 'cotizacion') && (
+          {seccionActiva === 'cotizacion' && (
             <CotizacionesPanel cotizaciones={cotizaciones} onRefrescar={cargarDatos} />
           )}
 
@@ -1464,6 +1586,8 @@ export default function App() {
               categorias={categorias}
               formatMoney={formatMoneyText}
               onToast={addToast}
+              onMovimientosChange={cargarDatos}
+              onVerMovimientoGenerado={handleVerMovimientoGeneradoTarjeta}
             />
           )}
 
@@ -1478,6 +1602,9 @@ export default function App() {
               movimientosMesAnterior={movimientosConsolidadosCicloAnterior}
               movimientosHistoricos={movimientosConsolidadosHistorialDecisiones}
               ciclo={cicloSeleccionado}
+              cycleContext={cycleContext}
+              nivelControl={nivelControlCiclo}
+              analysisConfidence={analysisConfidence}
               formatMoney={formatMoneyText}
             />
           )}
@@ -1490,6 +1617,8 @@ export default function App() {
               resumenMensual={resumenMensualReportes}
               categoriasReportes={reporteCategorias}
               evolucionMensual={reporteEvolucionMensual}
+              cycleContext={cycleContext}
+              analysisConfidence={analysisConfidence}
             />
           )}
 
@@ -1520,15 +1649,15 @@ export default function App() {
         </div>
       </div>
 
-      {canOperateHome && (
+      {fabContext && (
         <button
           type="button"
-          className="quick-expense-fab"
-          onClick={() => setGastoRapidoAbierto(true)}
-          aria-label="Cargar gasto rapido"
+          className={fabContext.className}
+          onClick={fabContext.onClick}
+          aria-label={fabContext.aria}
         >
           <span aria-hidden="true">+</span>
-          Gasto rapido
+          <strong>{fabContext.label}</strong>
         </button>
       )}
 

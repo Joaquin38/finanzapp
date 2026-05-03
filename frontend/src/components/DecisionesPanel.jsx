@@ -1,3 +1,10 @@
+import { getCycleContext } from '../utils/cycle.js';
+
+function ConfidenceBadge({ confidence }) {
+  if (!confidence) return null;
+  return <em className={`decision-status decision-confidence ${confidence.nivel}`}>{confidence.label}</em>;
+}
+
 function DecisionCard({ title, metric, text, recommendation, tone = 'balance' }) {
   return (
     <article className={`card decision-card card-${tone}`}>
@@ -31,6 +38,20 @@ function DecisionSection({ title, className = '', children }) {
       <h3 className="decision-section-title">{title}</h3>
       {children}
     </section>
+  );
+}
+
+function DecisionAccordion({ title, headerSummary, defaultOpen = false, children }) {
+  return (
+    <details className="decision-accordion" open={defaultOpen}>
+      <summary>
+        <span>{title}</span>
+        <small>{headerSummary}</small>
+      </summary>
+      <div className="decision-accordion-body">
+        {children}
+      </div>
+    </details>
   );
 }
 
@@ -81,21 +102,34 @@ function formatVariation(variacion) {
   return `${variacion > 0 ? '+' : ''}${variacion.toFixed(1)}%`;
 }
 
-function ComparisonRow({ label, tipo, actual, anterior, formatMoney }) {
+function formatPartialReference(actual, anterior, formatMoney) {
+  if (Number(anterior || 0) > 0) return `${Math.round((Number(actual || 0) / Number(anterior || 0)) * 100)}% del mes anterior`;
+  return formatMoney(actual);
+}
+
+function ComparisonRow({ label, tipo, actual, anterior, formatMoney, cycleContext }) {
   const variacion = getVariation(actual, anterior);
-  const tone = getVariationTone(tipo, variacion);
+  const isPartial = cycleContext?.cicloEnCurso;
+  const tone = isPartial ? 'muted' : getVariationTone(tipo, variacion);
+  const partialLabel = tipo === 'ingresos' ? 'Ingresos confirmados al momento' : `${label} al momento`;
 
   return (
     <div className="decision-comparison-row">
       <span>{label}</span>
       <strong>{formatMoney(actual)}</strong>
-      <small>Anterior: {formatMoney(anterior)}</small>
-      <em className={`decision-variation ${tone}`}>{formatVariation(variacion)}</em>
+      <small>{isPartial ? 'Anterior completo' : 'Anterior'}: {formatMoney(anterior)}</small>
+      <em className={`decision-variation ${tone}`}>
+        {isPartial ? `${partialLabel}: ${formatPartialReference(actual, anterior, formatMoney)}. Ciclo en curso.` : formatVariation(variacion)}
+      </em>
     </div>
   );
 }
 
-function getComparisonRecommendation(actual, anterior) {
+function getComparisonRecommendation(actual, anterior, cycleContext) {
+  if (cycleContext?.cicloEnCurso) {
+    return 'Lectura parcial: faltan movimientos por confirmar antes de comparar el ciclo completo.';
+  }
+
   const sinHistorial = !anterior || ['ingresos', 'egresos', 'balance'].every((key) => Number(anterior[key] || 0) === 0);
   if (sinHistorial) return 'Todavia no hay suficiente historial para comparar.';
 
@@ -117,10 +151,11 @@ function getComparisonRecommendation(actual, anterior) {
   return 'Sin desvios fuertes frente al mes anterior.';
 }
 
-function ComparisonCard({ serieMensual, movimientos = [], movimientosMesAnterior = [], formatMoney }) {
+function ComparisonCard({ serieMensual, movimientos = [], movimientosMesAnterior = [], formatMoney, cycleContext, analysisConfidence }) {
   const actual = serieMensual?.[serieMensual.length - 1] || { ingresos: 0, egresos: 0, balance: 0 };
   const anterior = serieMensual?.[serieMensual.length - 2] || { ingresos: 0, egresos: 0, balance: 0 };
-  const recommendation = getComparisonRecommendation(actual, anterior);
+  const recommendation = getComparisonRecommendation(actual, anterior, cycleContext);
+  const isPartial = cycleContext?.cicloEnCurso;
   const currentByCategory = getConfirmedExpensesByCategory(movimientos);
   const previousByCategory = getConfirmedExpensesByCategory(movimientosMesAnterior);
   const impactRanking = Array.from(new Set([...Object.keys(currentByCategory), ...Object.keys(previousByCategory)]))
@@ -142,6 +177,8 @@ function ComparisonCard({ serieMensual, movimientos = [], movimientosMesAnterior
         showDetail
         help="Muestra que cambio respecto al mes anterior y que categorias movieron mas el resultado. Sirve para decidir donde ajustar o validar si el mes viene mejor o peor."
       />
+      <ConfidenceBadge confidence={analysisConfidence} />
+      {isPartial && <span className="pill muted decision-cycle-badge">Ciclo en curso</span>}
       <div className="decision-comparison-block">
         <span className="decision-block-title">Resumen general</span>
         <div className="decision-comparison-grid decision-summary-grid">
@@ -151,6 +188,7 @@ function ComparisonCard({ serieMensual, movimientos = [], movimientosMesAnterior
             actual={Number(actual.ingresos || 0)}
             anterior={Number(anterior.ingresos || 0)}
             formatMoney={formatMoney}
+            cycleContext={cycleContext}
           />
           <ComparisonRow
             label="Egresos"
@@ -158,6 +196,7 @@ function ComparisonCard({ serieMensual, movimientos = [], movimientosMesAnterior
             actual={Number(actual.egresos || 0)}
             anterior={Number(anterior.egresos || 0)}
             formatMoney={formatMoney}
+            cycleContext={cycleContext}
           />
           <ComparisonRow
             label="Balance"
@@ -165,6 +204,7 @@ function ComparisonCard({ serieMensual, movimientos = [], movimientosMesAnterior
             actual={Number(actual.balance || 0)}
             anterior={Number(anterior.balance || 0)}
             formatMoney={formatMoney}
+            cycleContext={cycleContext}
           />
         </div>
       </div>
@@ -174,7 +214,9 @@ function ComparisonCard({ serieMensual, movimientos = [], movimientosMesAnterior
           <div className="decision-impact-list">
             {impactRanking.map((item, index) => {
               const diffAbs = Math.abs(item.diferencia);
-              const variationText = item.variacion == null ? 'Sin referencia anterior' : formatVariation(item.variacion);
+              const variationText = isPartial && item.diferencia < 0
+                ? 'Lectura parcial'
+                : item.variacion == null ? 'Sin referencia anterior' : formatVariation(item.variacion);
               const badge =
                 item.anterior <= 0
                   ? 'sin referencia'
@@ -184,15 +226,17 @@ function ComparisonCard({ serieMensual, movimientos = [], movimientosMesAnterior
                       ? 'subio'
                       : 'sin cambio';
               const statusText =
-                item.anterior <= 0
-                  ? 'Sin referencia anterior'
-                  : item.diferencia < 0
-                    ? 'Bajo respecto al mes anterior'
-                    : item.variacion != null && item.variacion > 20
-                      ? 'Subio significativamente'
-                      : item.variacion != null && item.variacion >= 10
-                        ? 'Subio respecto al mes anterior'
-                        : 'Se mantuvo cerca del mes anterior';
+                isPartial && item.diferencia < 0
+                  ? 'esta por debajo del patron esperado para esta altura del ciclo'
+                  : item.anterior <= 0
+                    ? 'Sin referencia anterior'
+                    : item.diferencia < 0
+                      ? 'Bajo respecto al mes anterior'
+                      : item.variacion != null && item.variacion > 20
+                        ? 'Subio significativamente'
+                        : item.variacion != null && item.variacion >= 10
+                          ? 'Subio respecto al mes anterior'
+                          : 'Se mantuvo cerca del mes anterior';
               return (
                 <div className="decision-impact-row" key={item.categoria}>
                   <div className="decision-impact-head">
@@ -213,23 +257,17 @@ function ComparisonCard({ serieMensual, movimientos = [], movimientosMesAnterior
           </div>
         </div>
       )}
-      <strong>{recommendation}</strong>
+      <strong>{analysisConfidence?.isLow ? `Comparacion orientativa. ${analysisConfidence.note}` : recommendation}</strong>
     </article>
   );
 }
 
-function getCycleProgress(ciclo) {
-  const [yearText, monthText] = String(ciclo || '').split('-');
-  const year = Number(yearText);
-  const monthIndex = Number(monthText) - 1;
-  const today = new Date();
-  const sameCycle = today.getFullYear() === year && today.getMonth() === monthIndex;
-  const daysTotal = new Date(year, monthIndex + 1, 0).getDate();
-  const dayCurrent = sameCycle ? today.getDate() : daysTotal;
+function getCycleProgress(ciclo, cycleContext) {
+  const context = cycleContext || getCycleContext(ciclo);
 
   return {
-    dayCurrent: Math.min(Math.max(dayCurrent || 1, 1), daysTotal || 1),
-    daysTotal: daysTotal || 1
+    dayCurrent: Math.min(Math.max(context.diasTranscurridos || 1, 1), context.diasTotalesCiclo || 1),
+    daysTotal: context.diasTotalesCiclo || 1
   };
 }
 
@@ -747,7 +785,8 @@ function getCategoryMonthlyTotals(movimientos = []) {
   }, {});
 }
 
-function CategoryTrendsCard({ movimientos = [], movimientosHistoricos = [], formatMoney }) {
+function CategoryTrendsCard({ movimientos = [], movimientosHistoricos = [], formatMoney, cycleContext, analysisConfidence }) {
+  const isPartial = cycleContext?.cicloEnCurso;
   const currentByCategory = getConfirmedExpensesByCategory(movimientos);
   const historicalByCategory = getCategoryMonthlyTotals(movimientosHistoricos);
   const trends = Object.entries(currentByCategory)
@@ -764,7 +803,7 @@ function CategoryTrendsCard({ movimientos = [], movimientosHistoricos = [], form
         : 0;
       const desviacion = promedio > 0 ? ((Number(actual || 0) - promedio) / promedio) * 100 : null;
       const estado =
-        desviacion == null ? 'sin referencia' : desviacion > 10 ? 'subiendo' : desviacion < -10 ? 'bajando' : 'estable';
+        desviacion == null ? 'sin referencia' : desviacion > 10 ? 'subiendo' : desviacion < -10 ? (isPartial ? 'parcial' : 'bajando') : 'estable';
 
       return { categoria, actual, promedio, desviacion, estado };
     });
@@ -775,6 +814,8 @@ function CategoryTrendsCard({ movimientos = [], movimientosHistoricos = [], form
         title="Tendencias por categoria"
         help="Compara cada categoria contra su promedio de los ultimos ciclos. Ayuda a distinguir gastos normales de tendencias que empiezan a crecer."
       />
+      <ConfidenceBadge confidence={analysisConfidence} />
+      {isPartial && <span className="pill muted decision-cycle-badge">Ciclo en curso</span>}
       {trends.length > 0 ? (
         <div className="decision-trend-list">
           {trends.map((item) => (
@@ -783,7 +824,7 @@ function CategoryTrendsCard({ movimientos = [], movimientosHistoricos = [], form
               <em className={`decision-trend-badge trend-${item.estado.replace(' ', '-')}`}>{item.estado === 'sin referencia' ? 'sin referencia' : item.estado}</em>
               <strong>{formatMoney(item.actual)}</strong>
               <small>{item.promedio > 0 ? formatMoney(item.promedio) : 'Sin historial suficiente'}</small>
-              <b>{item.desviacion == null ? '-' : formatVariation(item.desviacion)}</b>
+              <b>{analysisConfidence?.isLow ? 'Comparacion orientativa' : isPartial && item.desviacion < 0 ? 'Por debajo del patron esperado' : item.desviacion == null ? '-' : formatVariation(item.desviacion)}</b>
             </div>
           ))}
         </div>
@@ -812,9 +853,17 @@ function getHistoricalAverageForCategory(categoria, movimientosHistoricos = []) 
   return values.length > 0 ? values.reduce((acc, value) => acc + value, 0) / values.length : 0;
 }
 
-function BehaviorAlertsCard({ movimientos = [], movimientosMesAnterior = [], movimientosHistoricos = [], ciclo, formatMoney }) {
-  const { dayCurrent, daysTotal } = getCycleProgress(ciclo);
+function BehaviorAlertsCard({ movimientos = [], movimientosMesAnterior = [], movimientosHistoricos = [], ciclo, formatMoney, cycleContext }) {
+  const { dayCurrent, daysTotal } = getCycleProgress(ciclo, cycleContext);
+  const isPartial = cycleContext?.cicloEnCurso;
   const progress = Math.min(Math.max(dayCurrent / Math.max(daysTotal, 1), 0), 1);
+  const severityOrder = { Critica: 0, Atencion: 1, Observacion: 2 };
+  const getSeverity = (tone, impact, expected) => {
+    if (tone === 'over' && impact > Math.max(expected * 0.5, 50000)) return 'Critica';
+    if (tone === 'under') return 'Atencion';
+    if (tone === 'over') return 'Atencion';
+    return 'Observacion';
+  };
   const currentByCategory = getConfirmedExpensesByCategory(movimientos);
   const previousByCategory = getConfirmedExpensesByCategory(movimientosMesAnterior);
   const alerts = Object.entries(currentByCategory)
@@ -829,48 +878,55 @@ function BehaviorAlertsCard({ movimientos = [], movimientosMesAnterior = [], mov
       const candidates = [];
 
       if (ratio != null && ratio > 1.3) {
-        const porcentaje = Math.round((ratio - 1) * 100);
+        const impact = Math.abs(Number(actual || 0) - esperadoActual);
         candidates.push({
           categoria,
           type: 'Sobreconsumo',
           tone: 'over',
           icon: '!',
-          impact: Math.abs(Number(actual || 0) - esperadoActual),
-          text: `${categoria} esta ${porcentaje}% por encima de tu patron habitual. Puede impactar el resultado del mes.`,
+          severity: getSeverity('over', impact, esperadoActual),
+          impact,
+          text: `${categoria} esta por encima del patron esperado. Revisá si fue un gasto puntual o si conviene frenar el ritmo.`,
           meta: `${formatMoney(actual)} vs esperado ${formatMoney(esperadoActual)}`
         });
       }
 
       if (ratio != null && ratio < 0.6) {
-        const porcentaje = Math.round((1 - ratio) * 100);
+        const impact = Math.abs(esperadoActual - Number(actual || 0));
         candidates.push({
           categoria,
           type: 'Posible subregistro',
           tone: 'under',
           icon: 'i',
-          impact: Math.abs(esperadoActual - Number(actual || 0)),
-          text: `${categoria} viene ${porcentaje}% por debajo de lo esperado para esta altura del mes. Podrias tener gastos no registrados.`,
+          severity: getSeverity('under', impact, esperadoActual),
+          impact,
+          text: `${categoria} esta por debajo de lo esperado para esta altura del ciclo. Revisá si faltan consumos por registrar.`,
           meta: `${formatMoney(actual)} vs esperado ${formatMoney(esperadoActual)}`
         });
       }
 
-      if (variacionMesAnterior != null && Math.abs(variacionMesAnterior) > 30) {
-        const porcentaje = `${variacionMesAnterior > 0 ? '+' : ''}${variacionMesAnterior.toFixed(1)}%`;
+      if (variacionMesAnterior != null && Math.abs(variacionMesAnterior) > 30 && !(isPartial && progress < 0.5)) {
+        const impact = Math.abs(Number(actual || 0) - previous);
         candidates.push({
           categoria,
-          type: 'Cambio fuerte',
+          type: isPartial && variacionMesAnterior < 0 ? 'Lectura parcial' : 'Cambio fuerte',
           tone: 'change',
           icon: '%',
-          impact: Math.abs(Number(actual || 0) - previous),
-          text: `${categoria} cambio ${porcentaje} respecto al mes anterior. Revisa si es un cambio de habito o algo puntual.`,
-          meta: `${formatMoney(actual)} vs mes anterior ${formatMoney(previous)}`
+          severity: getSeverity('change', impact, previous),
+          impact,
+          text: isPartial && variacionMesAnterior < 0
+            ? `${categoria} esta por debajo de lo esperado para esta altura del ciclo. Revisá si faltan consumos por registrar.`
+            : `${categoria} se movio distinto al mes anterior. Revisá si responde a un gasto puntual o a un nuevo patrón.`,
+          meta: isPartial && variacionMesAnterior < 0
+            ? `${formatMoney(actual)} confirmado al momento. Ciclo en curso.`
+            : `${formatMoney(actual)} vs mes anterior ${formatMoney(previous)}`
         });
       }
 
       return candidates.sort((a, b) => b.impact - a.impact)[0] || null;
     })
     .filter(Boolean)
-    .sort((a, b) => b.impact - a.impact)
+    .sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity] || b.impact - a.impact)
     .slice(0, 3);
 
   return (
@@ -879,13 +935,14 @@ function BehaviorAlertsCard({ movimientos = [], movimientosMesAnterior = [], mov
         title="Alertas de comportamiento"
         help="Detecta desvios por categoria usando avance del ciclo e historial reciente. No muestra alertas si no hay cambios relevantes."
       />
+      {isPartial && <span className="pill muted decision-cycle-badge">Ciclo en curso</span>}
       {alerts.length > 0 ? (
         <div className="decision-alert-list">
           {alerts.map((alert) => (
             <div className={`decision-alert-row alert-${alert.tone}`} key={`${alert.type}-${alert.categoria}`}>
               <span className="decision-alert-icon" aria-hidden="true">{alert.icon}</span>
               <div>
-                <strong>{alert.type}</strong>
+                <strong>{alert.severity}: {alert.type}</strong>
                 <p>{alert.text}</p>
                 <small>{alert.meta}</small>
               </div>
@@ -893,7 +950,7 @@ function BehaviorAlertsCard({ movimientos = [], movimientosMesAnterior = [], mov
           ))}
         </div>
       ) : (
-        <strong>Tu comportamiento de gasto esta dentro de lo esperado.</strong>
+        <strong>Sin alertas relevantes por ahora.</strong>
       )}
     </article>
   );
@@ -1103,7 +1160,7 @@ function SavingOpportunityCard({ realisticProjection, decisionContext, ciclo, fo
   );
 }
 
-function ExecutiveSummary({ resumen, operativo, categorias, decisionContext, realisticProjection, formatMoney }) {
+function ExecutiveSummary({ resumen, operativo, categorias, decisionContext, realisticProjection, nivelControl, formatMoney }) {
   const ingresos = Number(realisticProjection?.ingresoEstimado || resumen?.ingresos || 0);
   const egresos = Number(resumen?.egresos || 0);
   const balanceProyectado = Number(realisticProjection?.balanceEstimado ?? resumen?.balance_proyectado ?? 0);
@@ -1131,6 +1188,7 @@ function ExecutiveSummary({ resumen, operativo, categorias, decisionContext, rea
 
   return (
     <div className="decision-executive-summary">
+      {nivelControl && <p><span>Nivel de control</span><strong>{nivelControl.nivelControl}: {nivelControl.texto}</strong></p>}
       <p><span>Estado del mes</span><strong>{estado}</strong></p>
       <p><span>Riesgo principal</span><strong>{riesgo}</strong></p>
       <p><span>Accion sugerida</span><strong>{accion}</strong></p>
@@ -1149,8 +1207,12 @@ export default function DecisionesPanel({
   movimientosMesAnterior = [],
   movimientosHistoricos = [],
   ciclo = '',
+  cycleContext = null,
+  nivelControl = null,
+  analysisConfidence = null,
   formatMoney
 }) {
+  const cicloInfo = cycleContext || getCycleContext(ciclo);
   const balanceActual = Number(resumen?.balance_actual || 0);
   const balanceProyectado = Number(resumen?.balance_proyectado || 0);
   const pendiente = Number(operativo?.montoPendienteEgresos || 0);
@@ -1158,6 +1220,46 @@ export default function DecisionesPanel({
   const realisticProjection = calculateRealisticProjection({ movimientos, movimientosMesAnterior, resumen, ciclo });
   const decisionContext = buildDecisionContext({ resumen, realisticProjection });
   const balanceEsperado = Number(realisticProjection?.balanceEstimado ?? balanceProyectado);
+  const currentByCategory = getConfirmedExpensesByCategory(movimientos);
+  const previousByCategory = getConfirmedExpensesByCategory(movimientosMesAnterior);
+  const categoryNames = Array.from(new Set([...Object.keys(currentByCategory), ...Object.keys(previousByCategory)]));
+  const cycleProgressRatio = Math.min(Math.max((cicloInfo?.avanceCicloPorcentaje || 100) / 100, 0), 1);
+  const categoriesBelowPattern = categoryNames.filter((category) => {
+    const average = getHistoricalAverageForCategory(category, movimientosHistoricos);
+    if (average <= 0) return false;
+    const expected = average * cycleProgressRatio;
+    return Number(currentByCategory[category] || 0) < expected * 0.75;
+  }).length;
+  const weeklyTotals = [0, 0, 0, 0];
+  getConfirmedExpenses(movimientos).forEach((mov) => {
+    weeklyTotals[getWeekIndex(mov.fecha)] += Number(mov.monto_ars || 0);
+  });
+  const weeklyTotal = weeklyTotals.reduce((sum, value) => sum + value, 0);
+  const topWeekIndex = weeklyTotals.reduce((best, value, index) => value > weeklyTotals[best] ? index : best, 0);
+  const topWeekPercent = weeklyTotal > 0 ? Math.round((weeklyTotals[topWeekIndex] / weeklyTotal) * 100) : 0;
+  const topCategoriesTotal = categorias
+    .slice(0, 3)
+    .reduce((sum, item) => sum + Number(item.total || 0), 0);
+  const totalCategories = categorias.reduce((sum, item) => sum + Number(item.total || 0), 0);
+  const topCategoriesPercent = totalCategories > 0 ? Math.round((topCategoriesTotal / totalCategories) * 100) : 0;
+  const lastMonth = serieMensual[serieMensual.length - 1];
+  const previousMonth = serieMensual[serieMensual.length - 2];
+  const comparisonHasSignal = previousMonth && Math.abs(Number(lastMonth?.egresos || 0) - Number(previousMonth?.egresos || 0)) > 0;
+  const comparisonSummary = analysisConfidence?.isLow
+    ? 'Comparacion: orientativa por historial limitado'
+    : cicloInfo?.cicloEnCurso ? 'Comparacion: egresos parciales del ciclo' : 'Comparacion: cierre vs mes anterior';
+  const trendsSummary = categoriesBelowPattern > 0
+    ? `${analysisConfidence?.isLow ? 'Tendencias orientativas' : 'Tendencias'}: ${categoriesBelowPattern} categorias por debajo del patron`
+    : 'Tendencias: sin desvios fuertes';
+  const weeklySummary = weeklyTotal > 0
+    ? `Distribucion semanal: gasto concentrado en semana ${topWeekIndex + 1}`
+    : 'Distribucion semanal: sin egresos confirmados';
+  const criticalSummary = topCategoriesPercent > 0
+    ? `Categorias criticas: top 3 concentran ${topCategoriesPercent}%`
+    : 'Categorias criticas: sin datos confirmados';
+  const controlSummary = nivelControl
+    ? `Control operativo: nivel ${nivelControl.nivelControl}`
+    : 'Control operativo: indicadores base';
 
   const cards = [
     {
@@ -1202,6 +1304,7 @@ export default function DecisionesPanel({
         categorias={categorias}
         decisionContext={decisionContext}
         realisticProjection={realisticProjection}
+        nivelControl={nivelControl}
         formatMoney={formatMoney}
       />
       <DecisionSection title="Decision principal">
@@ -1223,23 +1326,7 @@ export default function DecisionesPanel({
         </div>
       </DecisionSection>
 
-      <DecisionSection title="Que cambio este mes">
-        <div className="decision-section-grid decision-change-grid">
-          <ComparisonCard
-            serieMensual={serieMensual}
-            movimientos={movimientos}
-            movimientosMesAnterior={movimientosMesAnterior}
-            formatMoney={formatMoney}
-          />
-          <CategoryTrendsCard
-            movimientos={movimientos}
-            movimientosHistoricos={movimientosHistoricos}
-            formatMoney={formatMoney}
-          />
-        </div>
-      </DecisionSection>
-
-      <DecisionSection title="Donde mirar">
+      <DecisionSection title="Alertas de comportamiento">
         <div className="decision-section-grid decision-watch-grid">
           <BehaviorAlertsCard
             movimientos={movimientos}
@@ -1247,7 +1334,60 @@ export default function DecisionesPanel({
             movimientosHistoricos={movimientosHistoricos}
             ciclo={ciclo}
             formatMoney={formatMoney}
+            cycleContext={cicloInfo}
+            analysisConfidence={analysisConfidence}
           />
+        </div>
+      </DecisionSection>
+
+      <DecisionAccordion
+        title="Comparacion vs mes anterior"
+        headerSummary={comparisonSummary}
+        defaultOpen={Boolean(comparisonHasSignal && !cicloInfo?.cicloEnCurso)}
+      >
+        <div className="decision-section-grid decision-change-grid">
+          <ComparisonCard
+            serieMensual={serieMensual}
+            movimientos={movimientos}
+            movimientosMesAnterior={movimientosMesAnterior}
+            formatMoney={formatMoney}
+            cycleContext={cicloInfo}
+            analysisConfidence={analysisConfidence}
+          />
+        </div>
+      </DecisionAccordion>
+
+      <DecisionAccordion
+        title="Tendencias por categoria"
+        headerSummary={trendsSummary}
+        defaultOpen={categoriesBelowPattern > 0}
+      >
+        <div className="decision-section-grid decision-change-grid">
+          <CategoryTrendsCard
+            movimientos={movimientos}
+            movimientosHistoricos={movimientosHistoricos}
+            formatMoney={formatMoney}
+            cycleContext={cicloInfo}
+          />
+        </div>
+      </DecisionAccordion>
+
+      <DecisionAccordion
+        title="Distribucion semanal"
+        headerSummary={weeklySummary}
+        defaultOpen={topWeekPercent >= 40}
+      >
+        <div className="decision-section-grid decision-watch-grid">
+          <WeeklyDistributionCard movimientos={movimientos} formatMoney={formatMoney} />
+        </div>
+      </DecisionAccordion>
+
+      <DecisionAccordion
+        title="Categorias criticas"
+        headerSummary={criticalSummary}
+        defaultOpen={topCategoriesPercent >= 50}
+      >
+        <div className="decision-section-grid decision-watch-grid">
           <RelevantDeviationsCard
             movimientos={movimientos}
             movimientosMesAnterior={movimientosMesAnterior}
@@ -1256,17 +1396,20 @@ export default function DecisionesPanel({
             formatMoney={formatMoney}
           />
           <CriticalCategoriesCard categorias={categorias} formatMoney={formatMoney} />
-          <WeeklyDistributionCard movimientos={movimientos} formatMoney={formatMoney} />
         </div>
-      </DecisionSection>
+      </DecisionAccordion>
 
-      <DecisionSection title="Control operativo">
+      <DecisionAccordion
+        title="Control operativo"
+        headerSummary={controlSummary}
+        defaultOpen={nivelControl?.nivelControl === 'Bajo'}
+      >
         <div className="decision-section-grid decision-ops-grid">
           {cards.map((card) => (
             <DecisionCard key={card.title} {...card} />
           ))}
         </div>
-      </DecisionSection>
+      </DecisionAccordion>
     </section>
   );
 }

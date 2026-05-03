@@ -34,9 +34,11 @@ function formatMoney(value) {
 export default function MovimientosTable({
   movimientos,
   categoriasDisponibles = [],
+  title = 'Movimientos del ciclo',
   onEditar,
   onEliminar,
   onNuevo,
+  onVerTodos,
   mostrarEliminados,
   onToggleEliminados,
   onEditarFijo,
@@ -53,7 +55,9 @@ export default function MovimientosTable({
   canManageFixedValues = true,
   canToggleEstado = true,
   actionLoading = false,
-  loading = false
+  loading = false,
+  showFilters = true,
+  showDeletedToggle = true
 }) {
   const resolverEstado = getEstadoMovimiento || ((mov) => (mov.esProyectado ? 'proyectado' : mov.activo ? 'pagado' : 'pendiente'));
   const etiquetaEstado = (mov) => {
@@ -97,6 +101,53 @@ export default function MovimientosTable({
       return { campo, direccion: 'asc', manual: true };
     });
   };
+  const accionEstadoLabel = (mov) =>
+    mov.tipo_movimiento === 'egreso'
+      ? resolverEstado(mov) === 'pagado'
+        ? 'Marcar pendiente'
+        : 'Marcar pagado'
+      : resolverEstado(mov) === 'registrado'
+      ? 'Volver a proyectado'
+      : mov.tipo_movimiento === 'ingreso'
+      ? 'Marcar cobrado'
+      : 'Marcar registrado';
+  const renderAccionesMobile = (mov) => (
+    <div className="movement-mobile-actions-list">
+      {canToggleEstado && ['egreso', 'ingreso', 'ahorro'].includes(mov.tipo_movimiento) && (
+        <button
+          type="button"
+          className={`btn-inline ${['pagado', 'registrado'].includes(resolverEstado(mov)) ? 'success' : ''}`}
+          title={accionEstadoLabel(mov)}
+          onClick={() => onToggleEstadoPago?.(mov)}
+          disabled={actionLoading}
+        >
+          {accionEstadoLabel(mov)}
+        </button>
+      )}
+      {(mov.esProyectado ? canManageFixedValues : canEdit) && (
+        <button
+          type="button"
+          className="btn-inline secondary"
+          title="Editar"
+          disabled={!mov.activo || actionLoading}
+          onClick={() => (mov.esProyectado ? onEditarFijo?.(mov) : onEditar(mov))}
+        >
+          Editar
+        </button>
+      )}
+      {(mov.esProyectado ? canManageFixedValues : canDelete) && (
+        <button
+          type="button"
+          className="btn-inline danger"
+          title="Eliminar"
+          disabled={!mov.activo || actionLoading}
+          onClick={() => (mov.esProyectado ? onEliminarFijo?.(mov) : onEliminar(mov.id))}
+        >
+          Eliminar
+        </button>
+      )}
+    </div>
+  );
 
   return (
     <section className={`panel panel-table ${loading ? 'is-loading' : ''}`}>
@@ -108,7 +159,7 @@ export default function MovimientosTable({
       )}
       <div className="panel-header table-header">
         <div>
-          <h2>Movimientos del ciclo</h2>
+          <h2>{title}</h2>
           <span className="pill muted">{loading ? 'Cargando...' : `${movimientos.length} registros`}</span>
         </div>
         <div className="table-actions">
@@ -117,13 +168,21 @@ export default function MovimientosTable({
               + Nuevo movimiento
             </button>
           )}
-          <label className="toggle-eliminados">
-            <input type="checkbox" checked={mostrarEliminados} onChange={(e) => onToggleEliminados(e.target.checked)} />
-            Ver eliminados
-          </label>
+          {onVerTodos && (
+            <button type="button" className="btn-inline secondary" onClick={onVerTodos}>
+              Ver todos
+            </button>
+          )}
+          {showDeletedToggle && (
+            <label className="toggle-eliminados">
+              <input type="checkbox" checked={mostrarEliminados} onChange={(e) => onToggleEliminados(e.target.checked)} />
+              Ver eliminados
+            </label>
+          )}
         </div>
       </div>
-      <div className="table-filters">
+      {showFilters && (
+        <div className="table-filters">
         <label className="table-search-filter">
           Buscar descripcion
           <input
@@ -172,7 +231,8 @@ export default function MovimientosTable({
             ))}
           </select>
         </label>
-      </div>
+        </div>
+      )}
       <div className="table-wrapper">
         <table>
           <thead>
@@ -282,6 +342,45 @@ export default function MovimientosTable({
             )}
           </tbody>
         </table>
+      </div>
+      <div className="movements-mobile-list">
+        {movimientos.map((mov) => {
+          const auditoria = auditoriaMovimiento(mov);
+          return (
+            <article key={mov.id} className={`movement-mobile-card ${mov.esProyectado ? 'row-proyectado' : ''}`}>
+              <div className="movement-mobile-top">
+                <span className="movement-mobile-date">{formatFecha(mov.fecha)}</span>
+                <strong className="movement-mobile-amount">{formatMoney(mov.monto_ars)}</strong>
+              </div>
+              <div className="movement-mobile-main">
+                <strong>{mov.categoria || '-'}</strong>
+                <span>{mov.descripcion || '-'}</span>
+              </div>
+              <div className="movement-mobile-badges">
+                <span className={`badge badge-${mov.tipo_movimiento}`}>{mov.tipo_movimiento}</span>
+                <span className={`badge ${mov.esProyectado ? 'badge-fijo' : 'badge-origen'}`}>{etiquetaOrigen(mov)}</span>
+                {mov.clasificacion_movimiento && mov.clasificacion_movimiento !== 'normal' && (
+                  <span className={`badge ${claseBadgeEspecial(mov)}`}>{etiquetaEspecial(mov)}</span>
+                )}
+                <span className={`badge badge-estado-${resolverEstado(mov)}`}>{etiquetaEstado(mov)}</span>
+                {mov.usa_ahorro && <span className="badge badge-ahorro-meta">usa ahorro</span>}
+                {mov.esProyectado && mov.ajuste_en_ciclo && <span className="badge badge-ajuste">ajustado</span>}
+              </div>
+              <details className="movement-card-menu">
+                <summary aria-label="Acciones">...</summary>
+                <div className="movement-card-menu-panel">
+                  {auditoria && (
+                    <span className="movement-card-detail">
+                      Registrado por {auditoria.usuario} - {auditoria.fecha}
+                    </span>
+                  )}
+                  {renderAccionesMobile(mov)}
+                </div>
+              </details>
+            </article>
+          );
+        })}
+        {movimientos.length === 0 && <div className="movement-mobile-empty">Todavia no hay movimientos cargados.</div>}
       </div>
     </section>
   );

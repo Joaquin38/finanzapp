@@ -763,6 +763,22 @@ export async function updateCierreTarjeta(cierreId, payload) {
   }
 }
 
+export async function generarMovimientoResumenTarjeta(cierreId) {
+  try {
+    const response = await fetch(`${API_URL}/tarjetas-credito/cierres/${cierreId}/generar-movimiento`, {
+      method: 'POST',
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' })
+    });
+
+    const detail = await response.json().catch(() => ({}));
+    if (response.status === 409 && detail.duplicate) return { duplicate: true, movimiento: detail.movimiento, error: detail.error };
+    if (!response.ok) throw new Error(detail.error || 'No se pudo generar el movimiento');
+    return detail;
+  } catch (error) {
+    throw new Error(normalizeFetchError(error));
+  }
+}
+
 export async function updateGastoFijo(id, payload) {
   try {
     const response = await fetch(`${API_URL}/gastos-fijos/${id}`, {

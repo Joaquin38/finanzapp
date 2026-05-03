@@ -13,7 +13,7 @@ function FormattedAmount({ value, hidden }) {
   );
 }
 
-export default function ResumenCards({ resumen, amountsHidden = false, onToggleAmountsHidden }) {
+export default function ResumenCards({ resumen, nivelControl, amountsHidden = false, onToggleAmountsHidden }) {
   const { ingresos = 0, egresos = 0, balance_actual = 0, balance_proyectado = 0 } = resumen || {};
   const toggleLabel = amountsHidden ? 'Mostrar' : 'Ocultar';
   const toggleText = amountsHidden ? 'Mostrar montos' : 'Ocultar montos';
@@ -70,6 +70,14 @@ export default function ResumenCards({ resumen, amountsHidden = false, onToggleA
             <FormattedAmount value={balance_proyectado} hidden={amountsHidden} />
           </p>
         </article>
+
+        {nivelControl && (
+          <article className={`card card-control card-control-${String(nivelControl.nivelControl || '').toLowerCase()}`}>
+            <h3>Nivel de control</h3>
+            <small>{nivelControl.texto}</small>
+            <p>{nivelControl.nivelControl}</p>
+          </article>
+        )}
       </div>
     </section>
   );
