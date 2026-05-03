@@ -182,7 +182,7 @@ export default function App() {
     busqueda: ''
   });
   const [ordenGrilla, setOrdenGrilla] = useState({
-    campo: 'fecha',
+    campo: 'registro',
     direccion: 'desc',
     manual: true
   });
@@ -1043,6 +1043,7 @@ export default function App() {
     const factor = direccion === 'asc' ? 1 : -1;
     items.sort((a, b) => {
       const normalize = (item) => {
+        if (campo === 'registro') return item.esProyectado ? item.fecha : item.creado_en || item.fecha || '';
         if (campo === 'estado') return item.estado_consolidado || getEstadoMovimiento(item);
         return item[campo] ?? '';
       };
