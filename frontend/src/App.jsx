@@ -221,8 +221,8 @@ export default function App() {
     const anio = Number(anioTexto);
     const mes = Number(mesTexto) - 1;
 
-    return Array.from({ length: 6 }, (_, index) => {
-      const fecha = new Date(anio, mes - 5 + index, 1);
+    return Array.from({ length: 12 }, (_, index) => {
+      const fecha = new Date(anio, mes - 11 + index, 1);
       return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
     });
   }, [cicloSeleccionado]);
@@ -380,7 +380,7 @@ export default function App() {
       const [anioTexto, mesTexto] = cicloSeleccionado.split('-');
       const anio = Number(anioTexto);
       const mes = Number(mesTexto) - 1;
-      const inicioRango = new Date(anio, mes - 5, 1);
+      const inicioRango = new Date(anio, mes - 11, 1);
       const finRango = new Date(anio, mes + 1, 0);
       const desdeHistorico = `${inicioRango.getFullYear()}-${String(inicioRango.getMonth() + 1).padStart(2, '0')}-01`;
       const hastaHistorico = `${finRango.getFullYear()}-${String(finRango.getMonth() + 1).padStart(2, '0')}-${String(finRango.getDate()).padStart(2, '0')}`;
@@ -1052,6 +1052,22 @@ export default function App() {
       });
     }).flat();
   }, [cicloSeleccionado, cotizaciones, gastosFijosHistoricosPorCiclo, movimientosHistoricos]);
+  const movimientosPorCicloReportes = useMemo(
+    () =>
+      ciclosTendencia.map((key) => ({
+        ciclo: key,
+        movimientos: construirMovimientosConsolidadosDelCiclo({
+          movimientos: key === cicloSeleccionado
+            ? movimientos
+            : movimientosHistoricos.filter((mov) => String(mov.fecha || '').startsWith(key)),
+          gastosFijos: key === cicloSeleccionado ? gastosFijos : gastosFijosHistoricosPorCiclo[key] || [],
+          cotizaciones,
+          ciclo: key,
+          estadoOverrides: key === cicloSeleccionado ? estadoOverrides : {}
+        })
+      })),
+    [cicloSeleccionado, ciclosTendencia, cotizaciones, gastosFijos, gastosFijosHistoricosPorCiclo, movimientos, movimientosHistoricos, estadoOverrides]
+  );
 
   const movimientosFiltradosYOrdenados = useMemo(() => {
     let items = [...movimientosConsolidados];
@@ -1624,6 +1640,7 @@ export default function App() {
               resumenMensual={resumenMensualReportes}
               categoriasReportes={reporteCategorias}
               evolucionMensual={reporteEvolucionMensual}
+              movimientosPorCiclo={movimientosPorCicloReportes}
               cycleContext={cycleContext}
               analysisConfidence={analysisConfidence}
             />

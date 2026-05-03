@@ -22,8 +22,16 @@ const REPORTES_BASE = [
     label: 'Tendencias',
     title: 'Tendencias y comparativas',
     description: 'Base para mostrar variaciones entre ciclos, desvíos y patrones relevantes.'
+  },
+  {
+    key: 'patrones',
+    label: 'Patron categorias',
+    title: 'Patron por categoria',
+    description: 'Evolucion de movimientos confirmados por categoria y proyeccion del ciclo abierto.'
   }
 ];
+
+const CATEGORY_CURVE_COLORS = ['#2563eb', '#dc2626', '#16a34a', '#f59e0b', '#7c3aed', '#0891b2'];
 
 function formatMoney(value) {
   return `$${Number(value || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -89,6 +97,37 @@ function buildSmoothPath(points = []) {
   return path;
 }
 
+function formatCycleLabel(ciclo) {
+  if (!ciclo) return '-';
+  return new Date(`${ciclo}-01T00:00:00`).toLocaleDateString('es-AR', { month: 'short', year: '2-digit' }).replace('.', '');
+}
+
+function isConfirmedMovement(mov) {
+  if (mov?.clasificacion_movimiento && mov.clasificacion_movimiento !== 'normal') return false;
+  if (mov?.tipo_movimiento === 'egreso') return mov.estado_consolidado === 'pagado';
+  if (['ingreso', 'ahorro'].includes(mov?.tipo_movimiento)) return ['registrado', 'cobrado'].includes(mov.estado_consolidado);
+  return false;
+}
+
+function isProjectedMovement(mov) {
+  if (mov?.clasificacion_movimiento && mov.clasificacion_movimiento !== 'normal') return false;
+  return ['ingreso', 'egreso', 'ahorro'].includes(mov?.tipo_movimiento);
+}
+
+function buildMovementPatternSeries(movimientosPorCiclo = [], cicloActual = '') {
+  return movimientosPorCiclo.map(({ ciclo, movimientos = [] }) => {
+    const confirmed = {};
+    const projected = {};
+    movimientos.forEach((mov) => {
+      const category = mov.categoria || 'Sin categoria';
+      const amount = Number(mov.monto_ars || 0);
+      if (isConfirmedMovement(mov)) confirmed[category] = (confirmed[category] || 0) + amount;
+      if (ciclo === cicloActual && isProjectedMovement(mov)) projected[category] = (projected[category] || 0) + amount;
+    });
+    return { ciclo, label: formatCycleLabel(ciclo), confirmed, projected: ciclo === cicloActual ? projected : null };
+  });
+}
+
 function prepararCategoriasReportes(categorias = [], { agruparChicas = false, umbralPorcentaje = 0 } = {}) {
   const ordenadas = [...categorias].sort((a, b) => Number(b.total || 0) - Number(a.total || 0));
   if (!agruparChicas || ordenadas.length === 0) return ordenadas;
@@ -134,6 +173,7 @@ export default function ReportesPanel({
   resumenMensual,
   categoriasReportes = [],
   evolucionMensual = [],
+  movimientosPorCiclo = [],
   cycleContext = null,
   analysisConfidence = null
 }) {
@@ -141,7 +181,57 @@ export default function ReportesPanel({
   const cicloEnCurso = cicloInfo.cicloEnCurso;
   const [categoriaActiva, setCategoriaActiva] = useState('');
   const [mesActivoTendencia, setMesActivoTendencia] = useState(null);
+  const [patternPeriodCount, setPatternPeriodCount] = useState(6);
+  const [patternCategorySelection, setPatternCategorySelection] = useState([]);
   const reporteSeleccionado = REPORTES_BASE.find((item) => item.key === reporteActivo) || REPORTES_BASE[0];
+  const patternSeries = buildMovementPatternSeries(movimientosPorCiclo, ciclo);
+  const patternCategoryOptions = Array.from(
+    patternSeries.reduce((acc, cycle) => {
+      Object.entries(cycle.confirmed).forEach(([category, value]) => {
+        acc.set(category, (acc.get(category) || 0) + Number(value || 0));
+      });
+      Object.entries(cycle.projected || {}).forEach(([category, value]) => {
+        acc.set(category, (acc.get(category) || 0) + Number(value || 0));
+      });
+      return acc;
+    }, new Map())
+  )
+    .sort((a, b) => b[1] - a[1])
+    .map(([category]) => category);
+  const activePatternCategories = patternCategorySelection.filter((category) => patternCategoryOptions.includes(category));
+  const selectedPatternCategories = activePatternCategories.length > 0
+    ? activePatternCategories.slice(0, 6)
+    : patternCategoryOptions.slice(0, Math.min(3, patternCategoryOptions.length));
+  const visiblePatternSeries = patternSeries.slice(Math.max(0, patternSeries.length - patternPeriodCount));
+  const patternValues = visiblePatternSeries.flatMap((cycle) =>
+    selectedPatternCategories.flatMap((category) => [
+      Number(cycle.confirmed[category] || 0),
+      Number(cycle.projected?.[category] || 0)
+    ])
+  );
+  const patternMaxValue = Math.max(...patternValues, 1);
+  const patternChart = {
+    width: 920,
+    height: 270,
+    left: 76,
+    right: 32,
+    top: 28,
+    bottom: 44
+  };
+  const patternInnerWidth = patternChart.width - patternChart.left - patternChart.right;
+  const patternInnerHeight = patternChart.height - patternChart.top - patternChart.bottom;
+  const getPatternX = (index) => patternChart.left + (index * (patternInnerWidth / Math.max(visiblePatternSeries.length - 1, 1)));
+  const getPatternY = (value) => patternChart.top + ((patternMaxValue - Number(value || 0)) / patternMaxValue) * patternInnerHeight;
+  const patternTicks = [1, 0.66, 0.33, 0].map((ratio) => patternMaxValue * ratio);
+  const togglePatternCategory = (category) => {
+    setPatternCategorySelection((current) => {
+      const valid = current.filter((item) => patternCategoryOptions.includes(item));
+      if (valid.includes(category)) return valid.length > 1 ? valid.filter((item) => item !== category) : valid;
+      return valid.length >= 6 ? valid : [...valid, category];
+    });
+  };
+  const getPatternCategoryColor = (category) =>
+    CATEGORY_CURVE_COLORS[Math.max(selectedPatternCategories.indexOf(category), 0) % CATEGORY_CURVE_COLORS.length];
   const categoriasOrdenadas = prepararCategoriasReportes(categoriasReportes, {
     agruparChicas: AGRUPAR_CATEGORIAS_CHICAS,
     umbralPorcentaje: UMBRAL_OTROS_PORCENTAJE
@@ -436,6 +526,117 @@ export default function ReportesPanel({
               <div className="reportes-empty-state reportes-empty-state-compact">
                 <strong>Sin egresos confirmados por categoria</strong>
                 <p>No hay datos suficientes para mostrar distribucion. Cuando registres egresos confirmados, este reporte va a mostrar composicion y concentracion.</p>
+              </div>
+            )
+          ) : reporteSeleccionado.key === 'patrones' ? (
+            patternCategoryOptions.length > 0 ? (
+              <div className="reportes-pattern-layout">
+                <div className="reportes-pattern-controls">
+                  <label>
+                    Periodos
+                    <input
+                      type="range"
+                      min="6"
+                      max="12"
+                      value={patternPeriodCount}
+                      onChange={(event) => setPatternPeriodCount(Number(event.target.value))}
+                    />
+                    <strong>{patternPeriodCount}</strong>
+                  </label>
+                  <small>Linea continua: confirmado. Trazo punteado: proyectado del ciclo abierto.</small>
+                </div>
+                <div className="reportes-pattern-picker">
+                  {patternCategoryOptions.map((category) => {
+                    const active = selectedPatternCategories.includes(category);
+                    const disabled = !active && selectedPatternCategories.length >= 6;
+                    return (
+                      <button
+                        key={category}
+                        type="button"
+                        className={active ? 'active' : ''}
+                        disabled={disabled}
+                        style={{ '--pattern-color': active ? getPatternCategoryColor(category) : 'var(--reportes-label)' }}
+                        onClick={() => togglePatternCategory(category)}
+                      >
+                        <i aria-hidden="true" />
+                        {category}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="reportes-pattern-chart-card">
+                  <svg viewBox={`0 0 ${patternChart.width} ${patternChart.height}`} className="reportes-pattern-chart" role="img" aria-label="Patron de movimientos por categoria">
+                    {patternTicks.map((value, index) => {
+                      const y = getPatternY(value);
+                      return (
+                        <g key={`${value}-${index}`}>
+                          <line x1={patternChart.left} x2={patternChart.width - patternChart.right} y1={y} y2={y} className="reportes-trend-grid-line" />
+                          <text x={patternChart.left - 10} y={y + 4} textAnchor="end" className="reportes-trend-axis-label">
+                            {formatMoney(value)}
+                          </text>
+                        </g>
+                      );
+                    })}
+                    {visiblePatternSeries.map((cycle, index) => {
+                      const x = getPatternX(index);
+                      return (
+                        <g key={cycle.ciclo}>
+                          <line x1={x} x2={x} y1={patternChart.top} y2={patternChart.height - patternChart.bottom} className="reportes-pattern-period-line" />
+                          <text x={x} y={patternChart.height - 12} textAnchor="middle" className="reportes-trend-axis-label">
+                            {cycle.label}
+                          </text>
+                        </g>
+                      );
+                    })}
+                    {selectedPatternCategories.map((category) => {
+                      const color = getPatternCategoryColor(category);
+                      const points = visiblePatternSeries.map((cycle, index) => ({
+                        x: getPatternX(index),
+                        y: getPatternY(cycle.confirmed[category] || 0),
+                        value: Number(cycle.confirmed[category] || 0),
+                        ciclo: cycle.ciclo
+                      }));
+                      const projectedIndex = visiblePatternSeries.findIndex((cycle) => cycle.ciclo === ciclo && cycle.projected);
+                      const projectedValue = projectedIndex >= 0 ? Number(visiblePatternSeries[projectedIndex].projected?.[category] || 0) : 0;
+                      const projectedPoints = projectedIndex > 0 && cicloEnCurso
+                        ? [
+                            points[projectedIndex - 1],
+                            { x: getPatternX(projectedIndex), y: getPatternY(projectedValue), value: projectedValue, ciclo }
+                          ]
+                        : [];
+                      return (
+                        <g key={category}>
+                          <path d={buildSmoothPath(points)} fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                          {projectedPoints.length > 0 && (
+                            <path d={buildSmoothPath(projectedPoints)} fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeDasharray="6 6" opacity="0.9" />
+                          )}
+                          {points.map((point) => (
+                            <circle key={`${category}-${point.ciclo}`} cx={point.x} cy={point.y} r="3.5" fill={color}>
+                              <title>{category} - {formatCycleLabel(point.ciclo)} confirmado: {formatMoney(point.value)}</title>
+                            </circle>
+                          ))}
+                          {projectedPoints.length > 0 && (
+                            <circle cx={projectedPoints[1].x} cy={projectedPoints[1].y} r="4.5" fill="var(--surface)" stroke={color} strokeWidth="2">
+                              <title>{category} - proyectado ciclo en curso: {formatMoney(projectedPoints[1].value)}</title>
+                            </circle>
+                          )}
+                        </g>
+                      );
+                    })}
+                  </svg>
+                </div>
+                <div className="reportes-pattern-legend">
+                  {selectedPatternCategories.map((category) => (
+                    <span key={category} style={{ '--pattern-color': getPatternCategoryColor(category) }}>
+                      {category}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="reportes-empty-state">
+                <strong>Sin categorias para analizar</strong>
+                <p>Cuando haya movimientos confirmados, vas a poder comparar patrones por categoria entre ciclos.</p>
               </div>
             )
           ) : evolucionMensual.length > 0 ? (
