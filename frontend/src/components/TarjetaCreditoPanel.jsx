@@ -458,6 +458,8 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
   const [loadingAction, setLoadingAction] = useState('');
   const actionLockRef = useRef(false);
   const cycleLoadRef = useRef(0);
+  const consumoFormPanelRef = useRef(null);
+  const consumoDescripcionRef = useRef(null);
 
   const tarjetaActual = tarjetas.find((tarjeta) => Number(tarjeta.id) === Number(form.tarjeta_id)) || tarjetas[0];
   const resumenSeleccionadoCerrado = cierre?.estado === 'cerrado';
@@ -876,6 +878,11 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
       observaciones: consumo.observaciones || ''
     });
     setCalcSource('total');
+    setVistaTarjeta('principal');
+    window.requestAnimationFrame(() => {
+      consumoFormPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      window.requestAnimationFrame(() => consumoDescripcionRef.current?.focus({ preventScroll: true }));
+    });
   };
 
   const handleCancelEdit = () => {
@@ -1305,7 +1312,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
         </section>
       )}
 
-      <section className="panel panel-form tarjeta-form-panel tarjeta-section-card tarjeta-section-form">
+      <section className="panel panel-form tarjeta-form-panel tarjeta-section-card tarjeta-section-form" ref={consumoFormPanelRef}>
         <div className="panel-header">
           <div>
             <p className="eyebrow">Carga manual</p>
@@ -1328,7 +1335,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
             </label>
             <label className="field-strong tarjeta-field-wide">
               Comercio / descripcion
-              <input value={form.descripcion} onChange={(e) => handleChange('descripcion', e.target.value)} placeholder="Ej: Mercado, farmacia" required />
+              <input ref={consumoDescripcionRef} value={form.descripcion} onChange={(e) => handleChange('descripcion', e.target.value)} placeholder="Ej: Mercado, farmacia" required />
             </label>
             <label>
               Categoria
