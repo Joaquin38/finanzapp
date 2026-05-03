@@ -1451,6 +1451,7 @@ export default function App() {
                     <span className="operational-label">Nivel de control</span>
                     <strong>{nivelControlCiclo.nivelControl}</strong>
                     <small>{nivelControlCiclo.texto}</small>
+                    <small className="metric-helper">{nivelControlCiclo.detalle}</small>
                   </article>
                 )}
                 <div className="operational-item">

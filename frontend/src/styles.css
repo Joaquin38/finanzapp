@@ -1297,6 +1297,7 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
   grid-template-columns: 1fr;
   gap: 14px;
   align-items: stretch;
+  margin-bottom: 18px;
 }
 .dashboard-executive-grid .dashboard-cards-block {
   min-width: 0;
@@ -1315,7 +1316,7 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  min-height: 96px;
+  min-height: 112px;
   padding: 14px 16px 16px;
   border-color: var(--dashboard-card-border);
   background: var(--dashboard-card-bg);
@@ -2070,15 +2071,14 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
   box-shadow:
     0 20px 38px rgba(124, 58, 237, 0.18),
     0 0 0 1px rgba(124, 58, 237, 0.06);
-  transform: translateY(-3px);
 }
 .card-balance-featured::after {
   content: '';
   position: absolute;
-  right: -32px;
-  bottom: -42px;
-  width: 120px;
-  height: 120px;
+  right: -38px;
+  bottom: -48px;
+  width: 112px;
+  height: 112px;
   border-radius: 999px;
   background: rgba(37, 99, 235, 0.08);
   pointer-events: none;
@@ -2090,7 +2090,7 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
 .card-balance-featured p {
   position: relative;
   z-index: 1;
-  font-size: 36px;
+  font-size: 30px;
   font-weight: 800;
   letter-spacing: -0.03em;
 }
@@ -2232,15 +2232,16 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
 .dashboard-secondary-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 10px;
+  gap: 12px;
+  align-items: stretch;
 }
 .operational-item {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  min-height: 108px;
-  padding: 12px;
-  border-radius: 10px;
+  min-height: 118px;
+  padding: 14px;
+  border-radius: 12px;
   background: #f8fafc;
   border: 1px solid #e2e8f0;
   box-shadow: var(--shadow-soft);
@@ -2255,6 +2256,10 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
   font-size: 12px;
   font-weight: 700;
   line-height: 1.3;
+}
+.operational-item .metric-helper {
+  margin-top: auto;
+  color: var(--text-secondary);
 }
 .operational-label {
   font-size: 12px;
@@ -3796,9 +3801,9 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
 .cotizaciones-panel-compact {
   display: grid;
   gap: 8px;
-  min-height: 108px;
-  padding: 12px;
-  border-radius: 10px;
+  min-height: 118px;
+  padding: 14px;
+  border-radius: 12px;
 }
 .cotizaciones-panel-compact .cotizaciones-header {
   align-items: flex-start;
