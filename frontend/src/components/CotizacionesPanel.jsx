@@ -2,6 +2,7 @@ export default function CotizacionesPanel({ cotizaciones, onRefrescar, compact =
   const cotizacionOficial = cotizaciones[0] || null;
   const valorOficial = Number(cotizacionOficial?.venta || 0);
   const valorAstropay = valorOficial > 0 ? valorOficial * 1.045 : 0;
+  const formatDolar = (value) => `$${Number(value || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   return (
     <section className={`panel cotizaciones-panel ${compact ? 'cotizaciones-panel-compact' : ''}`}>
@@ -23,13 +24,13 @@ export default function CotizacionesPanel({ cotizaciones, onRefrescar, compact =
             <article key={`${cotizacionOficial.fuente}-${cotizacionOficial.fecha}`} className="cotizacion-item cotizacion-item-primary">
               <span className="cotizacion-kicker">Cotizacion del dia</span>
               <h4>Dolar oficial</h4>
-              <p className="cotizacion-price">${valorOficial.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+              <p className="cotizacion-price">{formatDolar(valorOficial)}</p>
             </article>
 
             <article className="cotizacion-item cotizacion-item-accent">
               <span className="cotizacion-kicker">Valor aproximado</span>
               <h4>Dolar Astropay</h4>
-              <p className="cotizacion-price">${valorAstropay.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+              <p className="cotizacion-price">{formatDolar(valorAstropay)}</p>
             </article>
           </>
         )}

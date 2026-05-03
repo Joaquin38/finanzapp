@@ -3800,43 +3800,55 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
 .cotizaciones-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 14px; }
 .cotizaciones-panel-compact {
   display: grid;
-  gap: 8px;
+  gap: 10px;
   min-height: 118px;
   padding: 14px;
   border-radius: 12px;
 }
 .cotizaciones-panel-compact .cotizaciones-header {
-  align-items: flex-start;
+  align-items: center;
   gap: 8px;
+}
+.cotizaciones-panel-compact .panel-header {
+  min-width: 0;
 }
 .cotizaciones-panel-compact .panel-header h2 {
   margin: 0;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.05em;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 .cotizaciones-panel-compact .cotizacion-refresh-btn {
-  width: 30px;
-  height: 30px;
+  width: 26px;
+  min-width: 26px;
+  height: 26px;
+  opacity: 0.72;
 }
 .cotizaciones-panel-compact .cotizacion-refresh-btn svg {
-  width: 15px;
-  height: 15px;
+  width: 13px;
+  height: 13px;
 }
 .cotizaciones-panel-compact .cotizaciones-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: 1fr;
+  gap: 6px;
   margin-top: 0;
 }
 .cotizaciones-panel-compact .cotizacion-item {
-  gap: 3px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
   min-width: 0;
-  padding: 8px;
-  border-radius: 9px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 .cotizaciones-panel-compact .cotizacion-price {
+  flex: 0 0 auto;
   font-size: 18px;
   line-height: 1.1;
 }
@@ -3844,7 +3856,10 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   display: none;
 }
 .cotizaciones-panel-compact .cotizacion-item h4 {
+  min-width: 0;
+  color: var(--text-secondary);
   font-size: 12px;
+  white-space: nowrap;
 }
 .cotizacion-item {
   background: #f8fafc;
