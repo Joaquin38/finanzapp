@@ -1241,12 +1241,20 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
 }
 
 .dashboard-cards-block {
-  margin: 12px 0 20px;
+  margin: 8px 0 0;
 }
 .dashboard-cards-toolbar {
   display: flex;
-  justify-content: flex-end;
-  margin-bottom: 8px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.dashboard-cards-toolbar > span {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 .amount-privacy-toggle {
   display: inline-flex;
@@ -1283,15 +1291,14 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
   letter-spacing: 0.02em;
   white-space: nowrap;
 }
-.cards-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 0; }
+.cards-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 0; }
 .dashboard-executive-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+  grid-template-columns: 1fr;
   gap: 14px;
   align-items: stretch;
 }
-.dashboard-executive-grid .dashboard-cards-block,
-.dashboard-executive-grid .cotizaciones-panel {
+.dashboard-executive-grid .dashboard-cards-block {
   min-width: 0;
 }
 .card, .panel {
@@ -1308,8 +1315,8 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  min-height: 116px;
-  padding: 18px 18px 20px;
+  min-height: 96px;
+  padding: 14px 16px 16px;
   border-color: var(--dashboard-card-border);
   background: var(--dashboard-card-bg);
 }
@@ -1326,7 +1333,7 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
 .dashboard-cards-block .card small {
   position: relative;
   z-index: 1;
-  min-height: 38px;
+  min-height: 30px;
   margin-bottom: 4px;
   color: var(--dashboard-card-title);
   font-weight: 700;
@@ -1338,7 +1345,7 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
   position: relative;
   z-index: 1;
   color: var(--dashboard-card-value);
-  font-size: 32px;
+  font-size: 27px;
   font-weight: 800;
   letter-spacing: -0.03em;
   line-height: 1.08;
@@ -2222,18 +2229,32 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
   padding: 12px 14px;
   background: rgba(255, 255, 255, 0.78);
 }
+.dashboard-secondary-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
 .operational-item {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 8px 10px;
+  min-height: 108px;
+  padding: 12px;
   border-radius: 10px;
   background: #f8fafc;
   border: 1px solid #e2e8f0;
+  box-shadow: var(--shadow-soft);
 }
 .operational-item strong {
   font-size: 20px;
   color: #0f172a;
+  line-height: 1.1;
+}
+.operational-item small {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
 }
 .operational-label {
   font-size: 12px;
@@ -2243,6 +2264,15 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
 }
 .operational-item-wide strong {
   color: #9a3412;
+}
+.dashboard-control-metric {
+  border-left: 5px solid #2563eb;
+}
+.dashboard-control-metric.card-control-medio {
+  border-left-color: #f59e0b;
+}
+.dashboard-control-metric.card-control-bajo {
+  border-left-color: #ef4444;
 }
 .dashboard-alert {
   display: flex;
@@ -3764,23 +3794,52 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
 }
 .cotizaciones-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 14px; }
 .cotizaciones-panel-compact {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  gap: 8px;
+  min-height: 108px;
+  padding: 12px;
+  border-radius: 10px;
+}
+.cotizaciones-panel-compact .cotizaciones-header {
+  align-items: flex-start;
+  gap: 8px;
 }
 .cotizaciones-panel-compact .panel-header h2 {
-  font-size: 16px;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.cotizaciones-panel-compact .cotizacion-refresh-btn {
+  width: 30px;
+  height: 30px;
+}
+.cotizaciones-panel-compact .cotizacion-refresh-btn svg {
+  width: 15px;
+  height: 15px;
 }
 .cotizaciones-panel-compact .cotizaciones-grid {
-  grid-template-columns: 1fr;
-  gap: 10px;
-  margin-top: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 0;
 }
 .cotizaciones-panel-compact .cotizacion-item {
-  padding: 13px;
-  border-radius: 12px;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px;
+  border-radius: 9px;
 }
 .cotizaciones-panel-compact .cotizacion-price {
-  font-size: 24px;
+  font-size: 18px;
+  line-height: 1.1;
+}
+.cotizaciones-panel-compact .cotizacion-kicker {
+  display: none;
+}
+.cotizaciones-panel-compact .cotizacion-item h4 {
+  font-size: 12px;
 }
 .cotizacion-item {
   background: #f8fafc;
@@ -6278,6 +6337,8 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   .contenido-principal { padding: 14px 12px 88px; max-width: none; }
   .cards-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dashboard-executive-grid { grid-template-columns: 1fr; }
+  .dashboard-secondary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dashboard-secondary-grid .cotizaciones-panel-compact { grid-column: span 2; }
   .cotizaciones-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tarjeta-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tarjeta-closed-summary,
@@ -6469,10 +6530,7 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   .header-cycle-selector { border-left: 0; padding-left: 0; }
   .header-submeta { justify-content: flex-start; flex-direction: column; gap: 2px; }
   .session-logout { width: 100%; }
-  .dashboard-cards-toolbar {
-    justify-content: flex-start;
-    margin-bottom: 10px;
-  }
+  .dashboard-cards-toolbar { margin-bottom: 10px; }
   .amount-privacy-toggle {
     justify-content: flex-start;
     gap: 10px;
@@ -6503,6 +6561,12 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   }
   .dashboard-executive-grid {
     grid-template-columns: 1fr;
+  }
+  .dashboard-secondary-grid {
+    grid-template-columns: 1fr;
+  }
+  .dashboard-secondary-grid .cotizaciones-panel-compact {
+    grid-column: auto;
   }
   .decisiones-grid,
   .decision-comparison-grid,
@@ -6645,6 +6709,10 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
   .operational-summary {
     grid-template-columns: 1fr;
     padding: 10px 12px;
+  }
+  .operational-item,
+  .cotizaciones-panel-compact {
+    min-height: 92px;
   }
   .operational-item strong {
     font-size: 18px;

@@ -13,7 +13,7 @@ function FormattedAmount({ value, hidden }) {
   );
 }
 
-export default function ResumenCards({ resumen, nivelControl, amountsHidden = false, onToggleAmountsHidden }) {
+export default function ResumenCards({ resumen, amountsHidden = false, onToggleAmountsHidden }) {
   const { ingresos = 0, egresos = 0, balance_actual = 0, balance_proyectado = 0 } = resumen || {};
   const toggleLabel = amountsHidden ? 'Mostrar' : 'Ocultar';
   const toggleText = amountsHidden ? 'Mostrar montos' : 'Ocultar montos';
@@ -21,6 +21,7 @@ export default function ResumenCards({ resumen, nivelControl, amountsHidden = fa
   return (
     <section className="dashboard-cards-block">
       <div className="dashboard-cards-toolbar">
+        <span>Resumen del ciclo</span>
         <button
           type="button"
           className="amount-privacy-toggle"
@@ -57,7 +58,7 @@ export default function ResumenCards({ resumen, nivelControl, amountsHidden = fa
 
         <article className="card card-balance card-balance-featured">
           <h3>Balance actual</h3>
-          <small>Ingresos registrados - egresos pagados</small>
+          <small>Saldo inicial + ingresos registrados - egresos pagados</small>
           <p className={balance_actual >= 0 ? 'positivo' : 'negativo'}>
             <FormattedAmount value={balance_actual} hidden={amountsHidden} />
           </p>
@@ -70,14 +71,6 @@ export default function ResumenCards({ resumen, nivelControl, amountsHidden = fa
             <FormattedAmount value={balance_proyectado} hidden={amountsHidden} />
           </p>
         </article>
-
-        {nivelControl && (
-          <article className={`card card-control card-control-${String(nivelControl.nivelControl || '').toLowerCase()}`}>
-            <h3>Nivel de control</h3>
-            <small>{nivelControl.texto}</small>
-            <p>{nivelControl.nivelControl}</p>
-          </article>
-        )}
       </div>
     </section>
   );

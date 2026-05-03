@@ -1436,18 +1436,23 @@ export default function App() {
           <div className="dashboard-executive-grid">
             <ResumenCards
               resumen={resumenCalculado}
-              nivelControl={nivelControlCiclo}
               amountsHidden={dashboardAmountsHidden}
               onToggleAmountsHidden={() => setDashboardAmountsHidden((current) => !current)}
             />
-            <CotizacionesPanel cotizaciones={cotizaciones} onRefrescar={cargarDatos} compact />
           </div>
         )}
 
         <div className="contenido-dashboard">
           {seccionActiva === 'dashboard' && (
             <>
-              <section className="panel operational-summary">
+              <section className="dashboard-secondary-grid">
+                {nivelControlCiclo && (
+                  <article className={`operational-item dashboard-control-metric card-control-${String(nivelControlCiclo.nivelControl || '').toLowerCase()}`}>
+                    <span className="operational-label">Nivel de control</span>
+                    <strong>{nivelControlCiclo.nivelControl}</strong>
+                    <small>{nivelControlCiclo.texto}</small>
+                  </article>
+                )}
                 <div className="operational-item">
                   <span className="operational-label">Total de egresos pendientes</span>
                   <strong>{formatMoneyText(resumenOperativo.montoPendienteEgresos)}</strong>
@@ -1460,6 +1465,7 @@ export default function App() {
                   <span className="operational-label">Cantidad de pendientes</span>
                   <strong>{resumenOperativo.pendientes}</strong>
                 </div>
+                <CotizacionesPanel cotizaciones={cotizaciones} onRefrescar={cargarDatos} compact />
               </section>
               {alertaDashboard && (
                 <section className={`dashboard-alert ${alertaDashboard.tono}`}>
