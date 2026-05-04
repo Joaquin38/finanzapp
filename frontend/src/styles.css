@@ -2661,7 +2661,7 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
   border-radius: 12px;
   background: var(--reportes-card-subtle-bg);
 }
-.reportes-pattern-controls label {
+.reportes-pattern-range {
   display: grid;
   grid-template-columns: auto minmax(160px, 220px) 28px;
   align-items: center;
@@ -2670,6 +2670,19 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
   font-size: 12px;
   font-weight: 800;
   text-transform: uppercase;
+}
+.reportes-pattern-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--reportes-label);
+  font-size: 12px;
+  font-weight: 800;
+}
+.reportes-pattern-toggle input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
 }
 .reportes-pattern-controls small {
   color: var(--reportes-label);
@@ -2705,6 +2718,37 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
   cursor: not-allowed;
   opacity: 0.45;
 }
+.reportes-pattern-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+.reportes-pattern-summary-card,
+.reportes-pattern-reading-card {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--reportes-card-subtle-bg);
+}
+.reportes-pattern-summary-card {
+  display: grid;
+  gap: 6px;
+}
+.reportes-pattern-summary-card span,
+.reportes-pattern-reading-card span {
+  color: var(--reportes-label);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.reportes-pattern-summary-card strong {
+  color: var(--reportes-value);
+  font-size: 18px;
+}
+.reportes-pattern-summary-card small {
+  color: var(--reportes-label);
+  font-size: 12px;
+}
 .reportes-pattern-picker i,
 .reportes-pattern-legend span::before {
   content: '';
@@ -2729,6 +2773,34 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
   stroke: var(--reportes-chart-grid);
   stroke-width: 1;
   opacity: 0.7;
+}
+.reportes-pattern-current-band {
+  fill: var(--primary-soft);
+  opacity: 0.28;
+}
+.reportes-pattern-current-cycle .reportes-pattern-period-line {
+  stroke: var(--primary);
+  opacity: 0.8;
+}
+.reportes-pattern-current-label {
+  fill: var(--primary);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.reportes-pattern-reading-card {
+  display: grid;
+  gap: 6px;
+}
+.reportes-pattern-reading-card p {
+  margin: 0;
+  max-width: 920px;
+  color: var(--text-primary);
+  line-height: 1.45;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 .reportes-trend-card {
   padding: 18px;
@@ -6829,7 +6901,10 @@ tbody tr.row-proyectado:hover { background: #f3e8ff; }
     align-items: stretch;
     flex-direction: column;
   }
-  .reportes-pattern-controls label {
+  .reportes-pattern-range {
+    grid-template-columns: 1fr;
+  }
+  .reportes-pattern-summary-grid {
     grid-template-columns: 1fr;
   }
   .reportes-trend-header,
