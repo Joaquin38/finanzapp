@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { parseDecimalInput, sanitizeDecimalInput } from '../utils/numberFormat.js';
 
 const moneyFormat = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
 
@@ -11,9 +12,7 @@ function formatUsd(value) {
 }
 
 function parseMonto(value) {
-  const raw = String(value ?? '').trim();
-  const normalized = raw.includes(',') ? raw.replace(/\./g, '').replace(',', '.') : raw;
-  return Number(normalized);
+  return parseDecimalInput(value);
 }
 
 function getDefaultDate(ciclo) {
@@ -161,11 +160,10 @@ export default function AhorrosPanel({
         <label>
           Monto
           <input
-            type="number"
-            min="0.01"
-            step="0.01"
+            type="text"
+            inputMode="decimal"
             value={form.monto}
-            onChange={(event) => setForm((prev) => ({ ...prev, monto: event.target.value }))}
+            onChange={(event) => setForm((prev) => ({ ...prev, monto: sanitizeDecimalInput(event.target.value) }))}
             placeholder="0,00"
             required
           />

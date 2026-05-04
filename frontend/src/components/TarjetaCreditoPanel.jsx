@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { getAnalysisConfidence } from '../utils/analysisConfidence.js';
 import { createConsumoTarjeta, deleteConsumoTarjeta, generarMovimientoResumenTarjeta, getTarjetasCredito, importConsumosTarjeta, updateCierreTarjeta, updateConsumoTarjeta } from '../services/api.js';
+import { formatDecimalInput, parseDecimalInput, sanitizeDecimalInput } from '../utils/numberFormat.js';
 
 const moneyFormat = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
 const csvExpectedHeaders = [
@@ -256,9 +257,7 @@ function buildCategoryCurveData(serie = [], selectedCategories = [], periodCount
 }
 
 function parseAmount(value) {
-  const raw = String(value ?? '').trim();
-  const normalized = raw.includes(',') ? raw.replace(/\./g, '').replace(',', '.') : raw;
-  return Number(normalized);
+  return parseDecimalInput(value);
 }
 
 function calcularMontosPorModo(form, source) {
@@ -268,14 +267,14 @@ function calcularMontosPorModo(form, source) {
   const cuota = parseAmount(next.monto_cuota);
 
   if (cuotas === 1) {
-    if (source === 'cuota' && cuota > 0) next.monto_total = cuota.toFixed(2);
-    else if (total > 0) next.monto_cuota = total.toFixed(2);
-    else if (cuota > 0) next.monto_total = cuota.toFixed(2);
+    if (source === 'cuota' && cuota > 0) next.monto_total = formatDecimalInput(cuota);
+    else if (total > 0) next.monto_cuota = formatDecimalInput(total);
+    else if (cuota > 0) next.monto_total = formatDecimalInput(cuota);
     return next;
   }
 
-  if (source === 'total' && total > 0) next.monto_cuota = (total / cuotas).toFixed(2);
-  if (source === 'cuota' && cuota > 0) next.monto_total = (cuota * cuotas).toFixed(2);
+  if (source === 'total' && total > 0) next.monto_cuota = formatDecimalInput(total / cuotas);
+  if (source === 'cuota' && cuota > 0) next.monto_total = formatDecimalInput(cuota * cuotas);
 
   return next;
 }
@@ -676,7 +675,8 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
   const updateCsvImportRow = (rowId, field, value) => {
     setCsvImportRows((rows) => rows.map((row) => {
       if (row._id !== rowId) return row;
-      const next = { ...row, [field]: value };
+      const cleanValue = ['monto_total', 'monto_cuota'].includes(field) ? sanitizeDecimalInput(value) : value;
+      const next = { ...row, [field]: cleanValue };
       if (['cantidad_cuotas', 'modo_carga', 'monto_total', 'monto_cuota'].includes(field)) {
         const source = field === 'monto_cuota' ? 'cuota' : field === 'monto_total' ? 'total' : next.modo_carga;
         return calcularMontosPorModo(next, source);
@@ -715,7 +715,11 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
       try {
         const rowIdBase = Date.now();
         setCsvImportRows(parseCsvText(reader.result).map((row, index) => ({
-          ...calcularMontosPorModo(row, row.modo_carga === 'cuota' ? 'cuota' : 'total'),
+          ...calcularMontosPorModo({
+            ...row,
+            monto_total: row.monto_total ? formatDecimalInput(parseAmount(row.monto_total)) : '',
+            monto_cuota: row.monto_cuota ? formatDecimalInput(parseAmount(row.monto_cuota)) : ''
+          }, row.modo_carga === 'cuota' ? 'cuota' : 'total'),
           _id: `${rowIdBase}-${index}`,
           _editing: false,
           _ignored: false
@@ -869,7 +873,8 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
 
   const handleChange = (field, value) => {
     setForm((prev) => {
-      const next = { ...prev, [field]: value };
+      const cleanValue = ['monto_total', 'monto_cuota'].includes(field) ? sanitizeDecimalInput(value) : value;
+      const next = { ...prev, [field]: cleanValue };
       return ['monto_total', 'monto_cuota', 'cantidad_cuotas'].includes(field)
         ? calcularMontosPorModo(next, calcSource)
         : next;
@@ -932,9 +937,9 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
       descripcion: consumo.descripcion || '',
       categoria: consumo.categoria || '',
       moneda: consumo.moneda || 'ARS',
-      monto_total: String(consumo.monto_total || ''),
+      monto_total: formatDecimalInput(consumo.monto_total || 0),
       cantidad_cuotas: String(consumo.cantidad_cuotas || 1),
-      monto_cuota: String(consumo.monto_cuota || ''),
+      monto_cuota: formatDecimalInput(consumo.monto_cuota || 0),
       tarjeta_id: String(consumo.tarjeta_id || tarjetaActual?.id || ''),
       titular: consumo.titular || '',
       observaciones: consumo.observaciones || ''
@@ -1152,8 +1157,8 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
                               <option value="cuota">cuota</option>
                             </select>
                           ) : row.modo_carga}</td>
-                          <td>{row._editing ? <input value={row.monto_total || ''} onChange={(e) => updateCsvImportRow(row._id, 'monto_total', e.target.value)} /> : row.monto_total}</td>
-                          <td>{row._editing ? <input value={row.monto_cuota || ''} onChange={(e) => updateCsvImportRow(row._id, 'monto_cuota', e.target.value)} /> : row.monto_cuota}</td>
+                          <td>{row._editing ? <input inputMode="decimal" value={row.monto_total || ''} onChange={(e) => updateCsvImportRow(row._id, 'monto_total', e.target.value)} placeholder="0,00" /> : row.monto_total}</td>
+                          <td>{row._editing ? <input inputMode="decimal" value={row.monto_cuota || ''} onChange={(e) => updateCsvImportRow(row._id, 'monto_cuota', e.target.value)} placeholder="0,00" /> : row.monto_cuota}</td>
                           <td>
                             <span className="pill">{validation.assignedCycle ? formatCycleLabel(validation.assignedCycle) : '-'}</span>
                             {validation.pasaAlProximo && <small className="tarjeta-csv-next-badge">Pasa al proximo resumen</small>}
@@ -1492,12 +1497,11 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
             <label className="field-strong">
               Monto total
               <input
-                type="number"
-                min="0.01"
-                step="0.01"
+                type="text"
+                inputMode="decimal"
                 value={form.monto_total}
                 onChange={(e) => handleChange('monto_total', e.target.value)}
-                placeholder="0.00"
+                placeholder="0,00"
                 readOnly={calcSource !== 'total'}
                 required
               />
@@ -1505,12 +1509,11 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
             <label className="field-strong">
               Monto de cuota
               <input
-                type="number"
-                min="0.01"
-                step="0.01"
+                type="text"
+                inputMode="decimal"
                 value={form.monto_cuota}
                 onChange={(e) => handleChange('monto_cuota', e.target.value)}
-                placeholder="0.00"
+                placeholder="0,00"
                 readOnly={calcSource !== 'cuota'}
                 required
               />
@@ -1812,8 +1815,8 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
                                 <option value="cuota">cuota</option>
                               </select>
                             ) : row.modo_carga}</td>
-                            <td>{row._editing ? <input value={row.monto_total || ''} onChange={(e) => updateCsvImportRow(row._id, 'monto_total', e.target.value)} /> : row.monto_total}</td>
-                            <td>{row._editing ? <input value={row.monto_cuota || ''} onChange={(e) => updateCsvImportRow(row._id, 'monto_cuota', e.target.value)} /> : row.monto_cuota}</td>
+                            <td>{row._editing ? <input inputMode="decimal" value={row.monto_total || ''} onChange={(e) => updateCsvImportRow(row._id, 'monto_total', e.target.value)} placeholder="0,00" /> : row.monto_total}</td>
+                            <td>{row._editing ? <input inputMode="decimal" value={row.monto_cuota || ''} onChange={(e) => updateCsvImportRow(row._id, 'monto_cuota', e.target.value)} placeholder="0,00" /> : row.monto_cuota}</td>
                             <td>
                               <span className="pill">{validation.assignedCycle ? formatCycleLabel(validation.assignedCycle) : '-'}</span>
                               {validation.pasaAlProximo && <small className="tarjeta-csv-next-badge">Pasa al proximo resumen</small>}

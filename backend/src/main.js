@@ -119,6 +119,25 @@ function esNumeroPositivo(value) {
   return Number.isFinite(number) && number > 0;
 }
 
+function parseNumeroDecimal(value) {
+  if (typeof value === 'number') return value;
+  const raw = String(value ?? '').trim();
+  if (!raw) return Number.NaN;
+  const normalized = raw.includes(',')
+    ? raw.replace(/\./g, '').replace(',', '.')
+    : raw.replace(/\.(?=\d{3}(?:\D|$))/g, '');
+  return Number(normalized);
+}
+
+function tieneHastaDosDecimales(value) {
+  if (typeof value === 'number') return Math.abs(value * 100 - Math.round(value * 100)) < 1e-8;
+  const raw = String(value ?? '').trim();
+  if (!raw.includes(',') && /\.(?=\d{3}(?:\D|$))/.test(raw)) return true;
+  const separatorIndex = raw.includes(',') ? raw.lastIndexOf(',') : raw.lastIndexOf('.');
+  if (separatorIndex === -1) return true;
+  return raw.slice(separatorIndex + 1).replace(/\D/g, '').length <= 2;
+}
+
 function resolveCiclo(ciclo, desde) {
   if (ciclo && /^\d{4}-\d{2}$/.test(ciclo)) return ciclo;
   if (desde) return String(desde).slice(0, 7);
@@ -4357,6 +4376,11 @@ app.post('/gastos-fijos', exigirOperacionHogar, async (req, res) => {
     return res.status(400).json({ error: 'ciclo_hasta no puede ser anterior a ciclo_desde' });
   }
 
+  const montoBaseFinal = parseNumeroDecimal(monto_base);
+  if (!Number.isFinite(montoBaseFinal) || montoBaseFinal <= 0 || !tieneHastaDosDecimales(monto_base)) {
+    return res.status(400).json({ error: 'monto_base debe ser mayor a 0 y tener hasta 2 decimales' });
+  }
+
   try {
     await asegurarVigenciaGastosFijos();
 
@@ -4377,7 +4401,7 @@ app.post('/gastos-fijos', exigirOperacionHogar, async (req, res) => {
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
       RETURNING id, hogar_id, categoria_id, descripcion, moneda, monto_base, dia_vencimiento, activo_desde_ciclo, activo_hasta_ciclo
       `,
-      [hogar_id, categoria_id, descripcion, moneda, monto_base, dia_vencimiento || null, ciclo_desde || resolveCiclo(), ciclo_hasta || null, usuarioAuditoriaId(req)]
+      [hogar_id, categoria_id, descripcion, moneda, montoBaseFinal, dia_vencimiento || null, ciclo_desde || resolveCiclo(), ciclo_hasta || null, usuarioAuditoriaId(req)]
     );
 
     return res.status(201).json({ ok: true, gasto_fijo: rows[0] });
@@ -4406,6 +4430,11 @@ app.patch('/gastos-fijos/:id', async (req, res) => {
 
   if (activo_hasta_ciclo && !cicloEsValido(activo_hasta_ciclo)) {
     return res.status(400).json({ error: 'activo_hasta_ciclo debe tener formato YYYY-MM' });
+  }
+
+  const montoBaseFinal = hasField('monto_base') ? parseNumeroDecimal(monto_base) : null;
+  if (hasField('monto_base') && (!Number.isFinite(montoBaseFinal) || montoBaseFinal <= 0 || !tieneHastaDosDecimales(monto_base))) {
+    return res.status(400).json({ error: 'monto_base debe ser mayor a 0 y tener hasta 2 decimales' });
   }
 
   try {
@@ -4466,7 +4495,7 @@ app.patch('/gastos-fijos/:id', async (req, res) => {
         hasField('moneda'),
         moneda ?? null,
         hasField('monto_base'),
-        monto_base ?? null,
+        montoBaseFinal,
         hasField('dia_vencimiento'),
         dia_vencimiento ?? null,
         hasField('activo_desde_ciclo'),

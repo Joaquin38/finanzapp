@@ -58,6 +58,7 @@ import {
 import { getCycleContext } from './utils/cycle.js';
 import { calcularNivelControlCiclo } from './utils/cycleControl.js';
 import { getAnalysisConfidence } from './utils/analysisConfidence.js';
+import { formatDecimalInput, parseDecimalInput, sanitizeDecimalInput } from './utils/numberFormat.js';
 
 const THEME_STORAGE_KEY = 'finanzapp_theme';
 const DASHBOARD_AMOUNTS_HIDDEN_STORAGE_KEY = 'finanzapp_dashboard_amounts_hidden';
@@ -786,23 +787,23 @@ export default function App() {
       descripcion: gasto.descripcion || '',
       categoria_id: gasto.categoria_id || '',
       moneda: gasto.moneda || 'ARS',
-      monto_base: Number(gasto.monto_base || 0),
+      monto_base: formatDecimalInput(gasto.monto_base || 0),
       dia_vencimiento: gasto.dia_vencimiento || '',
-      monto_ciclo: Number(movimiento.monto_ars || 0)
+      monto_ciclo: formatDecimalInput(movimiento.monto_ars || 0)
     });
   };
 
   const confirmarEditarFijoEnGrilla = async () => {
     if (!fijoEditModal || !fijoEditForm.gasto_fijo_id) return;
     const montoActual = Number(fijoEditModal.monto_ars || 0);
-    const nuevoMontoCiclo = Number(fijoEditForm.monto_ciclo || 0);
+    const nuevoMontoCiclo = parseDecimalInput(fijoEditForm.monto_ciclo);
     const delta = nuevoMontoCiclo - montoActual;
 
     await handleEditarGastoFijo(fijoEditForm.gasto_fijo_id, {
       descripcion: fijoEditForm.descripcion,
       categoria_id: fijoEditForm.categoria_id ? Number(fijoEditForm.categoria_id) : null,
       moneda: fijoEditForm.moneda,
-      monto_base: Number(fijoEditForm.monto_base || 0),
+      monto_base: parseDecimalInput(fijoEditForm.monto_base),
       dia_vencimiento: fijoEditForm.dia_vencimiento ? Number(fijoEditForm.dia_vencimiento) : null
     });
 
@@ -1198,9 +1199,9 @@ export default function App() {
   );
   const balanceCalculadoCiclo = Number(resumenFinanciero.balanceActual || 0);
   const saldoFinalEfectivoCierre =
-    saldoRealFinal === '' || Number.isNaN(Number(saldoRealFinal))
+    saldoRealFinal === '' || Number.isNaN(parseDecimalInput(saldoRealFinal))
       ? balanceCalculadoCiclo
-      : Number(saldoRealFinal);
+      : parseDecimalInput(saldoRealFinal);
   const diferenciaCierreCiclo =
     saldoFinalEfectivoCierre - balanceCalculadoCiclo;
   const tipoAjusteCierre = diferenciaCierreCiclo == null ? null : diferenciaCierreCiclo >= 0 ? 'ingreso' : 'egreso';
@@ -1784,10 +1785,11 @@ export default function App() {
               <label>
                 Monto base
                 <input
-                  type="number"
-                  min="1"
+                  type="text"
+                  inputMode="decimal"
                   value={fijoEditForm.monto_base}
-                  onChange={(e) => setFijoEditForm((prev) => ({ ...prev, monto_base: e.target.value }))}
+                  onChange={(e) => setFijoEditForm((prev) => ({ ...prev, monto_base: sanitizeDecimalInput(e.target.value) }))}
+                  placeholder="0,00"
                   required
                 />
               </label>
@@ -1804,10 +1806,11 @@ export default function App() {
               <label>
                 Monto en ciclo {cicloSeleccionado}
                 <input
-                  type="number"
-                  min="0"
+                  type="text"
+                  inputMode="decimal"
                   value={fijoEditForm.monto_ciclo}
-                  onChange={(e) => setFijoEditForm((prev) => ({ ...prev, monto_ciclo: e.target.value }))}
+                  onChange={(e) => setFijoEditForm((prev) => ({ ...prev, monto_ciclo: sanitizeDecimalInput(e.target.value) }))}
+                  placeholder="0,00"
                 />
               </label>
               <div className="confirm-actions full-width">
@@ -1845,10 +1848,10 @@ export default function App() {
               <label>
                 Saldo real final
                 <input
-                  type="number"
-                  step="0.01"
+                  type="text"
+                  inputMode="decimal"
                   value={saldoRealFinal}
-                  onChange={(e) => setSaldoRealFinal(e.target.value)}
+                  onChange={(e) => setSaldoRealFinal(sanitizeDecimalInput(e.target.value, { allowNegative: true }))}
                   placeholder={`Si lo dejás vacío usa ${formatMoneyText(balanceCalculadoCiclo)}`}
                   autoFocus
                 />

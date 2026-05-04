@@ -1,9 +1,6 @@
 import { useEffect, useState } from 'react';
 import MonthPicker from './MonthPicker.jsx';
-
-function formatMoney(value) {
-  return `$${Number(value || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
+import { formatDecimalInput, formatMoneyArs as formatMoney, parseDecimalInput, sanitizeDecimalInput } from '../utils/numberFormat.js';
 
 export default function GastosFijosPanel({
   gastos,
@@ -74,7 +71,7 @@ export default function GastosFijosPanel({
       descripcion: form.descripcion,
       categoria_id: Number(form.categoria_id),
       moneda: form.moneda,
-      monto_base: Number(form.monto_base),
+      monto_base: parseDecimalInput(form.monto_base),
       dia_vencimiento: form.dia_vencimiento ? Number(form.dia_vencimiento) : null,
       ciclo_desde: form.ciclo_desde || ciclo,
       ciclo_hasta: form.ciclo_hasta || null
@@ -105,7 +102,7 @@ export default function GastosFijosPanel({
 
   const confirmarAjuste = async () => {
     if (!gastoAjustando || loading) return;
-    const valorIngresado = Number(formAjuste.valor || 0);
+    const valorIngresado = parseDecimalInput(formAjuste.valor);
     const valorPersistido = formAjuste.tipo_ajuste === 'monto_fijo'
       ? Number((valorIngresado - montoActualAjuste).toFixed(2))
       : valorIngresado;
@@ -150,7 +147,7 @@ export default function GastosFijosPanel({
       descripcion: gasto.descripcion || '',
       categoria_id: gasto.categoria_id || '',
       moneda: gasto.moneda || 'ARS',
-      monto_base: Number(gasto.monto_base || 0),
+      monto_base: formatDecimalInput(gasto.monto_base || 0),
       dia_vencimiento: gasto.dia_vencimiento || '',
       activo_desde_ciclo: gasto.activo_desde_ciclo || ciclo,
       activo_hasta_ciclo: gasto.activo_hasta_ciclo || ''
@@ -161,7 +158,7 @@ export default function GastosFijosPanel({
     if (!gastoEditando || loading) return;
     await onEditar(gastoEditando.id, {
       descripcion: formEditar.descripcion,
-      monto_base: Number(formEditar.monto_base || 0),
+      monto_base: parseDecimalInput(formEditar.monto_base),
       categoria_id: formEditar.categoria_id ? Number(formEditar.categoria_id) : null,
       moneda: formEditar.moneda,
       dia_vencimiento: formEditar.dia_vencimiento ? Number(formEditar.dia_vencimiento) : null,
@@ -189,7 +186,7 @@ export default function GastosFijosPanel({
   });
 
   const montoActualAjuste = Number(gastoAjustando?.monto_vigente ?? gastoAjustando?.monto_base ?? 0);
-  const valorAjuste = Number(formAjuste.valor || 0);
+  const valorAjuste = parseDecimalInput(formAjuste.valor);
   const montoEstimado =
     formAjuste.tipo_ajuste === 'porcentaje'
       ? montoActualAjuste + (montoActualAjuste * valorAjuste) / 100
@@ -204,7 +201,7 @@ export default function GastosFijosPanel({
 
   const detalleResultado =
     formAjuste.tipo_ajuste === 'porcentaje'
-      ? `${valorAjuste >= 0 ? '+' : ''}${valorAjuste.toLocaleString('es-AR')}% sobre el valor actual`
+      ? `${valorAjuste >= 0 ? '+' : ''}${valorAjuste.toLocaleString('es-AR', { maximumFractionDigits: 2 })}% sobre el valor actual`
       : `Queda en ${formatMoney(valorAjuste)}`;
 
   return (
@@ -317,7 +314,14 @@ export default function GastosFijosPanel({
               </label>
               <label>
                 Monto base
-                <input type="number" min="1" value={formEditar.monto_base} onChange={(e) => setFormEditar((p) => ({ ...p, monto_base: e.target.value }))} required />
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={formEditar.monto_base}
+                  onChange={(e) => setFormEditar((p) => ({ ...p, monto_base: sanitizeDecimalInput(e.target.value) }))}
+                  placeholder="0,00"
+                  required
+                />
               </label>
               <label>
                 Dia vencimiento
@@ -387,7 +391,14 @@ export default function GastosFijosPanel({
 
               <label>
                 Monto base
-                <input type="number" min="1" value={form.monto_base} onChange={(e) => setForm((p) => ({ ...p, monto_base: e.target.value }))} required />
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={form.monto_base}
+                  onChange={(e) => setForm((p) => ({ ...p, monto_base: sanitizeDecimalInput(e.target.value) }))}
+                  placeholder="0,00"
+                  required
+                />
               </label>
 
               <label>
@@ -504,7 +515,7 @@ export default function GastosFijosPanel({
                   onChange={(e) => setFormAjuste((p) => ({
                     ...p,
                     tipo_ajuste: e.target.value,
-                    valor: e.target.value === 'monto_fijo' ? String(montoActualAjuste.toFixed(2)) : ''
+                    valor: e.target.value === 'monto_fijo' ? formatDecimalInput(montoActualAjuste) : ''
                   }))}
                 >
                   <option value="porcentaje">Porcentaje</option>
@@ -513,7 +524,14 @@ export default function GastosFijosPanel({
               </label>
               <label>
                 {formAjuste.tipo_ajuste === 'porcentaje' ? 'Porcentaje de ajuste' : 'Monto final'}
-                <input type="number" step="0.01" value={formAjuste.valor} onChange={(e) => setFormAjuste((p) => ({ ...p, valor: e.target.value }))} required />
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={formAjuste.valor}
+                  onChange={(e) => setFormAjuste((p) => ({ ...p, valor: sanitizeDecimalInput(e.target.value, { allowNegative: true }) }))}
+                  placeholder={formAjuste.tipo_ajuste === 'porcentaje' ? '0,00' : '0,00'}
+                  required
+                />
                 {formAjuste.tipo_ajuste === 'monto_fijo' && (
                   <small className="field-helper">Ingresá el importe en el que debe quedar este valor fijo.</small>
                 )}

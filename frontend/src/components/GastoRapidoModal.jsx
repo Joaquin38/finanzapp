@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { parseDecimalInput, sanitizeDecimalInput } from '../utils/numberFormat.js';
 
 export default function GastoRapidoModal({ categorias, loading, onClose, onSubmit }) {
   const categoriasEgreso = useMemo(
@@ -30,7 +31,7 @@ export default function GastoRapidoModal({ categorias, loading, onClose, onSubmi
     event.preventDefault();
     if (loading) return;
     await onSubmit({
-      monto: Number(form.monto),
+      monto: parseDecimalInput(form.monto),
       categoria_id: form.categoria_id ? Number(form.categoria_id) : null,
       descripcion: form.descripcion.trim()
     });
@@ -54,12 +55,11 @@ export default function GastoRapidoModal({ categorias, loading, onClose, onSubmi
             Monto ARS
             <input
               ref={montoRef}
-              type="number"
-              min="1"
-              step="0.01"
+              type="text"
+              inputMode="decimal"
               value={form.monto}
-              onChange={(event) => handleChange('monto', event.target.value)}
-              placeholder="0"
+              onChange={(event) => handleChange('monto', sanitizeDecimalInput(event.target.value))}
+              placeholder="0,00"
               required
             />
           </label>

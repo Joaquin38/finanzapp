@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { formatDecimalInput, parseDecimalInput, sanitizeDecimalInput } from '../utils/numberFormat.js';
 
 const initialState = {
   fecha: new Date().toISOString().slice(0, 10),
@@ -18,12 +19,6 @@ function normalizeInputDate(value) {
     if (day && month && year) return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
   }
   return value;
-}
-
-function parseMonto(value) {
-  const raw = String(value ?? '').trim();
-  const normalized = raw.includes(',') ? raw.replace(/\./g, '').replace(',', '.') : raw;
-  return Number(normalized);
 }
 
 export default function NuevoMovimientoForm({ categorias, onCrear, loading, modo = 'crear', initialValues = null }) {
@@ -59,7 +54,7 @@ export default function NuevoMovimientoForm({ categorias, onCrear, loading, modo
       tipo_movimiento_id: tipoMovimientoId,
       categoria_id: categoriaActual ? String(categoriaActual) : '',
       descripcion: initialValues.descripcion || '',
-      monto_ars: String(initialValues.monto_ars ?? ''),
+      monto_ars: formatDecimalInput(initialValues.monto_ars ?? ''),
       moneda_original: initialState.moneda_original,
       usa_ahorro: Boolean(initialValues.usa_ahorro)
     });
@@ -92,7 +87,7 @@ export default function NuevoMovimientoForm({ categorias, onCrear, loading, modo
   const handleSubmit = async (event) => {
     event.preventDefault();
     if (loading) return;
-    const monto = parseMonto(form.monto_ars);
+    const monto = parseDecimalInput(form.monto_ars);
 
     await onCrear({
       hogar_id: 1,
@@ -125,12 +120,11 @@ export default function NuevoMovimientoForm({ categorias, onCrear, loading, modo
           Monto ARS
           <input
             ref={montoRef}
-            type="number"
-            min="0.01"
-            step="0.01"
+            type="text"
+            inputMode="decimal"
             value={form.monto_ars}
-            onChange={(e) => handleChange('monto_ars', e.target.value)}
-            placeholder="0"
+            onChange={(e) => handleChange('monto_ars', sanitizeDecimalInput(e.target.value))}
+            placeholder="0,00"
             required
           />
         </label>
