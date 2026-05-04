@@ -146,6 +146,7 @@ export default function App() {
   const [movimientos, setMovimientos] = useState([]);
   const [categorias, setCategorias] = useState([]);
   const [cotizaciones, setCotizaciones] = useState([]);
+  const [dashboardMovimientosExpandido, setDashboardMovimientosExpandido] = useState(false);
   const [gastosFijos, setGastosFijos] = useState([]);
   const [gastosFijosHistoricosPorCiclo, setGastosFijosHistoricosPorCiclo] = useState({});
   const [movimientosHistoricos, setMovimientosHistoricos] = useState([]);
@@ -521,6 +522,10 @@ export default function App() {
     setEstadoOverrides({});
     setEstadoCierreCiclo({ cerrado: false, cierre: null });
   }, [hogarId]);
+
+  useEffect(() => {
+    setDashboardMovimientosExpandido(false);
+  }, [hogarId, cicloSeleccionado]);
 
   useEffect(() => {
     if (!canAccessFixedValues && seccionActiva === 'gastos_fijos') {
@@ -1106,16 +1111,19 @@ export default function App() {
 
     return items;
   }, [movimientosConsolidados, filtrosGrilla, ordenGrilla, estadoOverrides]);
-  const ultimosMovimientosDashboard = useMemo(
+  const movimientosOrdenadosDashboard = useMemo(
     () =>
       [...movimientosConsolidados]
         .sort((a, b) => {
           const av = a.esProyectado ? a.fecha : a.creado_en || a.fecha || '';
           const bv = b.esProyectado ? b.fecha : b.creado_en || b.fecha || '';
           return String(bv).localeCompare(String(av));
-        })
-        .slice(0, 8),
+        }),
     [movimientosConsolidados]
+  );
+  const movimientosDashboard = useMemo(
+    () => (dashboardMovimientosExpandido ? movimientosOrdenadosDashboard : movimientosOrdenadosDashboard.slice(0, 8)),
+    [dashboardMovimientosExpandido, movimientosOrdenadosDashboard]
   );
 
   const categoriasDisponiblesGrilla = useMemo(() => {
@@ -1493,12 +1501,17 @@ export default function App() {
               )}
               <MovimientosTable
                 title="Ultimos movimientos del ciclo"
-                movimientos={ultimosMovimientosDashboard}
+                movimientos={movimientosDashboard}
                 categoriasDisponibles={categoriasDisponiblesGrilla}
                 onEditar={handleEditar}
                 onEliminar={handleEliminar}
                 onNuevo={abrirModalCrear}
-                onVerTodos={() => setSeccionActiva('movimientos')}
+                onVerTodos={() => setDashboardMovimientosExpandido((prev) => !prev)}
+                secondaryActionLabel={dashboardMovimientosExpandido ? 'Ver menos' : 'Ver todos'}
+                headerNote={dashboardMovimientosExpandido ? 'Vista completa dentro del dashboard' : 'Resumen compacto con los movimientos mas recientes'}
+                totalCount={movimientosOrdenadosDashboard.length}
+                expanded={dashboardMovimientosExpandido}
+                variant="dashboard"
                 canCreate={canOperateHome}
                 canEdit={canManageHome}
                 canDelete={canManageHome}

@@ -57,7 +57,12 @@ export default function MovimientosTable({
   actionLoading = false,
   loading = false,
   showFilters = true,
-  showDeletedToggle = true
+  showDeletedToggle = true,
+  variant = 'default',
+  secondaryActionLabel = 'Ver todos',
+  headerNote = '',
+  totalCount = null,
+  expanded = false
 }) {
   const resolverEstado = getEstadoMovimiento || ((mov) => (mov.esProyectado ? 'proyectado' : mov.activo ? 'pagado' : 'pendiente'));
   const etiquetaEstado = (mov) => {
@@ -148,9 +153,14 @@ export default function MovimientosTable({
       )}
     </div>
   );
+  const cantidadLabel = loading
+    ? 'Cargando...'
+    : totalCount && totalCount > movimientos.length
+      ? `${movimientos.length} de ${totalCount} registros`
+      : `${movimientos.length} registros`;
 
   return (
-    <section className={`panel panel-table ${loading ? 'is-loading' : ''}`}>
+    <section className={`panel panel-table panel-table-${variant} ${expanded ? 'panel-table-expanded' : ''} ${loading ? 'is-loading' : ''}`}>
       {loading && (
         <div className="grid-loading-overlay" role="status" aria-live="polite">
           <span className="btn-spinner" aria-hidden="true" />
@@ -160,7 +170,8 @@ export default function MovimientosTable({
       <div className="panel-header table-header">
         <div>
           <h2>{title}</h2>
-          <span className="pill muted">{loading ? 'Cargando...' : `${movimientos.length} registros`}</span>
+          {headerNote && <small className="table-header-note">{headerNote}</small>}
+          <span className="pill muted">{cantidadLabel}</span>
         </div>
         <div className="table-actions">
           {canCreate && (
@@ -170,7 +181,7 @@ export default function MovimientosTable({
           )}
           {onVerTodos && (
             <button type="button" className="btn-inline secondary" onClick={onVerTodos}>
-              Ver todos
+              {secondaryActionLabel}
             </button>
           )}
           {showDeletedToggle && (
