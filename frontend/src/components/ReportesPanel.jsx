@@ -31,7 +31,7 @@ const REPORTES_BASE = [
   }
 ];
 
-const CATEGORY_CURVE_COLORS = ['#2563eb', '#dc2626', '#16a34a', '#f59e0b', '#7c3aed', '#0891b2'];
+const CATEGORY_CURVE_COLORS = ['#2f6fb3', '#b45f5f', '#2f7d46', '#a16207', '#6b5ca5', '#4c8a86'];
 
 function formatMoney(value) {
   return `$${Number(value || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -315,8 +315,8 @@ export default function ReportesPanel({
     umbralPorcentaje: UMBRAL_OTROS_PORCENTAJE
   });
   const comparativaMensual = [
-    { key: 'ingresos', label: 'Ingresos confirmados', value: Number(resumenMensual?.ingresosConfirmados || 0), color: '#16a34a' },
-    { key: 'egresos', label: 'Egresos confirmados', value: Number(resumenMensual?.egresosConfirmados || 0), color: '#ef4444' }
+    { key: 'ingresos', label: 'Ingresos confirmados', value: Number(resumenMensual?.ingresosConfirmados || 0), color: 'var(--reportes-trend-income)' },
+    { key: 'egresos', label: 'Egresos confirmados', value: Number(resumenMensual?.egresosConfirmados || 0), color: 'var(--reportes-trend-expense)' }
   ];
   const maxComparativa = Math.max(...comparativaMensual.map((item) => item.value), 0);
   const cardsMensual = [
@@ -343,7 +343,7 @@ export default function ReportesPanel({
   const ratioTone =
     ratioEgresosIngresos == null ? 'muted' : ratioEgresosIngresos < 70 ? 'good' : ratioEgresosIngresos <= 90 ? 'warn' : 'alert';
   const totalCategorias = categoriasOrdenadas.reduce((acc, item) => acc + Number(item.total || 0), 0);
-  const pieColors = ['#2563eb', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6', '#06b6d4', '#f97316', '#64748b'];
+  const pieColors = ['#2f6fb3', '#b45f5f', '#a16207', '#2f7d46', '#6b5ca5', '#4c8a86', '#9a6b4f', '#6b7a90'];
   let currentAngle = -Math.PI / 2;
   const pieSegments = categoriasOrdenadas.map((item, index) => {
     const value = Number(item.total || 0);

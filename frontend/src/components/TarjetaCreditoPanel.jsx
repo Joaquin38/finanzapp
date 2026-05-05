@@ -102,10 +102,10 @@ function buildCategoryColorMap(categories = []) {
     .sort((a, b) => String(a).localeCompare(String(b)))
     .reduce((acc, category, index) => {
       let hue = (getCategoryColorSeed(category) + index * 37) % 360;
-      let color = `hsl(${hue} 72% 44%)`;
+      let color = `hsl(${hue} 42% 42%)`;
       while (used.has(color)) {
         hue = (hue + 29) % 360;
-        color = `hsl(${hue} 72% 44%)`;
+        color = `hsl(${hue} 42% 42%)`;
       }
       used.add(color);
       acc[category] = color;
