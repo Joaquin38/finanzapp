@@ -204,13 +204,6 @@ export default function MenuLateral({
         ))}
       </nav>
 
-      {!collapsed && (
-        <div className="sidebar-powered-by" aria-label="Powered by Fixion">
-          <span>Powered by</span>
-          <img src={fixionLogo} alt="Fixion" />
-        </div>
-      )}
-
       <div className="sidebar-account account-menu" ref={accountMenuRef}>
         <button
           type="button"
@@ -287,6 +280,13 @@ export default function MenuLateral({
           </div>
         )}
       </div>
+
+      {!collapsed && (
+        <div className="sidebar-powered-by" aria-label="Powered by Fixion">
+          <span>Powered by</span>
+          <img src={fixionLogo} alt="Fixion" />
+        </div>
+      )}
     </aside>
   );
 }
