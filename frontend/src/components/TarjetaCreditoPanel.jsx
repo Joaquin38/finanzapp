@@ -294,8 +294,11 @@ function getDateForCycleDay(ciclo, day) {
   return `${ciclo}-${String(safeDay).padStart(2, '0')}`;
 }
 
-function resolvePreviewCycle(fechaCompra, fechaCierreReferencia) {
+function resolvePreviewCycle(fechaCompra, fechaCierreReferencia, selectedCiclo = '') {
   if (!fechaCompra) return '';
+  const fecha = String(fechaCompra).slice(0, 10);
+  const cierre = String(fechaCierreReferencia || '').slice(0, 10);
+  if (selectedCiclo && cierre) return fecha <= cierre ? selectedCiclo : addMonthsToCycle(selectedCiclo, 1);
   const cicloCompra = String(fechaCompra).slice(0, 7);
   const diaCierre = Number(String(fechaCierreReferencia || '').slice(8, 10) || 31);
   const diaCompra = Number(String(fechaCompra).slice(8, 10) || 1);
@@ -311,10 +314,17 @@ function getCsvClosureDate(ciclo, selectedCiclo, fechaCierreSeleccionada, tarjet
 
 function resolveCsvAssignedCycle(fechaCompra, selectedCiclo, fechaCierreSeleccionada, tarjeta, cierresExistentes = []) {
   if (!fechaCompra) return '';
+  const fecha = String(fechaCompra).slice(0, 10);
   const cicloCompra = String(fechaCompra).slice(0, 7);
-  const fechaCierreCompra = getCsvClosureDate(cicloCompra, selectedCiclo, fechaCierreSeleccionada, tarjeta, cierresExistentes);
-  if (!fechaCierreCompra) return '';
-  return String(fechaCompra).slice(0, 10) <= fechaCierreCompra ? cicloCompra : addMonthsToCycle(cicloCompra, 1);
+  const candidates = [
+    ...cierresExistentes.map((item) => ({ ciclo: item.ciclo, fecha_cierre: String(item.fecha_cierre || '').slice(0, 10) })),
+    { ciclo: selectedCiclo, fecha_cierre: String(fechaCierreSeleccionada || '').slice(0, 10) },
+    { ciclo: cicloCompra, fecha_cierre: getCsvClosureDate(cicloCompra, selectedCiclo, fechaCierreSeleccionada, tarjeta, cierresExistentes) },
+    { ciclo: addMonthsToCycle(cicloCompra, 1), fecha_cierre: getCsvClosureDate(addMonthsToCycle(cicloCompra, 1), selectedCiclo, fechaCierreSeleccionada, tarjeta, cierresExistentes) }
+  ]
+    .filter((item) => item.ciclo && item.fecha_cierre && item.fecha_cierre >= fecha)
+    .sort((a, b) => a.fecha_cierre.localeCompare(b.fecha_cierre) || a.ciclo.localeCompare(b.ciclo));
+  return candidates[0]?.ciclo || addMonthsToCycle(cicloCompra, 1);
 }
 
 function parseCsvLine(line) {
@@ -409,8 +419,7 @@ function validateCsvImportRow(row, fechaCierre, selectedCiclo, tarjeta, ciclosEx
   const montoTotal = parseAmount(row.monto_total);
   const montoCuota = parseAmount(row.monto_cuota);
   const assignedCycle = resolveCsvAssignedCycle(fecha, selectedCiclo, fechaCierre, tarjeta, cierresExistentes);
-  const cicloCompra = String(fecha || '').slice(0, 7);
-  const pasaAlProximo = assignedCycle && assignedCycle !== cicloCompra;
+  const pasaAlProximo = assignedCycle && selectedCiclo && String(assignedCycle).localeCompare(String(selectedCiclo)) > 0;
   const willCreateSummary = assignedCycle && !ciclosExistentes.has(assignedCycle);
   const nextSummaryDefaults = willCreateSummary ? {
     fecha_cierre: getDateForCycleDay(assignedCycle, tarjeta?.dia_cierre_default || 31),
@@ -568,7 +577,7 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
     return { totalArs, totalUsd, mesMasPesado, hastaCiclo, consumosPendientes: consumosPendientes.size };
   }, [consumos, cuotasFuturas, selectedCiclo]);
   const previewCicloAsignado = useMemo(() => {
-    return resolvePreviewCycle(form.fecha_compra, savedCierreForm.fecha_cierre) || selectedCiclo;
+    return resolvePreviewCycle(form.fecha_compra, savedCierreForm.fecha_cierre, selectedCiclo) || selectedCiclo;
   }, [form.fecha_compra, savedCierreForm.fecha_cierre, selectedCiclo]);
   const previewPasaAlSiguiente = String(previewCicloAsignado).localeCompare(String(selectedCiclo)) > 0;
   const consumoAsignadoAResumenCerrado = resumenSeleccionadoCerrado && previewCicloAsignado === selectedCiclo;

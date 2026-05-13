@@ -1036,8 +1036,11 @@ function compararCiclos(a, b) {
 
 function calcularCuotaInicialCompra(cantidadCuotas, cuotaActual, cuotaInicial, cicloAsignado, fechaCompra) {
   const cuotas = Math.max(Number(cantidadCuotas || 1), 1);
-  const informada = Number(cuotaActual || cuotaInicial || 1);
+  const tieneCuotaActual = cuotaActual !== undefined && cuotaActual !== null && String(cuotaActual).trim() !== '';
+  const tieneCuotaInicial = cuotaInicial !== undefined && cuotaInicial !== null && String(cuotaInicial).trim() !== '';
+  const informada = Number(tieneCuotaActual ? cuotaActual : tieneCuotaInicial ? cuotaInicial : 1);
   const cuota = Number.isInteger(informada) && informada >= 1 && informada <= cuotas ? informada : 1;
+  if (tieneCuotaActual || tieneCuotaInicial) return cuota;
   const cicloCompra = fechaIso(fechaCompra).slice(0, 7);
   return cicloAsignado && compararCiclos(cicloAsignado, cicloCompra) >= 0 ? 1 : cuota;
 }
@@ -1096,8 +1099,29 @@ async function obtenerOCrearCierreTarjeta(tarjeta, ciclo, usuarioId = null, db =
   return rows[0] || null;
 }
 
+async function obtenerCierreTarjetaPorFechaCompra(tarjeta, fechaCompraIso, db = pool) {
+  if (!tarjeta?.id || !fechaCompraIso) return null;
+  const { rows } = await db.query(
+    `
+    SELECT id, tarjeta_id, ciclo, fecha_cierre, fecha_vencimiento, estado,
+           creado_en, actualizado_en, created_at, updated_at
+    FROM cierres_tarjeta
+    WHERE tarjeta_id = $1
+      AND fecha_cierre >= $2::DATE
+      AND fecha_cierre <= ($2::DATE + INTERVAL '45 days')
+    ORDER BY fecha_cierre ASC, ciclo ASC
+    LIMIT 1
+    `,
+    [tarjeta.id, fechaCompraIso]
+  );
+  return rows[0] || null;
+}
+
 async function resolverResumenCompraTarjeta(tarjeta, fechaCompra, usuarioId = null, db = pool) {
   const fechaCompraIso = fechaIso(fechaCompra);
+  const cierrePorFecha = await obtenerCierreTarjetaPorFechaCompra(tarjeta, fechaCompraIso, db);
+  if (cierrePorFecha) return { cicloAsignado: cierrePorFecha.ciclo, cierreAsignado: cierrePorFecha };
+
   const fecha = new Date(`${fechaCompraIso}T00:00:00`);
   const cicloCompra = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
   const siguiente = siguienteCiclo(cicloCompra);
