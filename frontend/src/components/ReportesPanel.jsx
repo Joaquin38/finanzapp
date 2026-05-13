@@ -31,7 +31,33 @@ const REPORTES_BASE = [
   }
 ];
 
-const CATEGORY_CURVE_COLORS = ['#2f6fb3', '#b45f5f', '#2f7d46', '#a16207', '#6b5ca5', '#4c8a86'];
+function buildCategoryColorMap(categories = []) {
+  const map = new Map();
+  const usedHues = [];
+  [...new Set(categories)]
+    .sort((a, b) => String(a).localeCompare(String(b), 'es'))
+    .forEach((category) => {
+      let hash = 0;
+      String(category).split('').forEach((char) => {
+        hash = (hash * 31 + char.charCodeAt(0)) % 9973;
+      });
+      let hue = hash % 360;
+      let attempts = 0;
+      while (
+        attempts < 12 &&
+        usedHues.some((used) => Math.abs(used - hue) < 22 || Math.abs(used - hue) > 338)
+      ) {
+        hue = (hue + 37) % 360;
+        attempts += 1;
+      }
+      while (usedHues.includes(hue)) {
+        hue = (hue + 1) % 360;
+      }
+      usedHues.push(hue);
+      map.set(category, `hsl(${hue} 42% 42%)`);
+    });
+  return map;
+}
 
 function formatMoney(value) {
   return `$${Number(value || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -213,6 +239,7 @@ export default function ReportesPanel({
   const patternCategoryOptions = hideInactivePatternCategories
     ? patternCategoryOptionsAll.filter(patternHasActivity)
     : patternCategoryOptionsAll;
+  const patternCategoryColorMap = buildCategoryColorMap(patternCategoryOptionsAll);
   const activePatternCategories = patternCategorySelection.filter((category) => patternCategoryOptions.includes(category));
   const selectedPatternCategories = activePatternCategories.length > 0
     ? activePatternCategories.slice(0, 6)
@@ -242,12 +269,13 @@ export default function ReportesPanel({
   const togglePatternCategory = (category) => {
     setPatternCategorySelection((current) => {
       const valid = current.filter((item) => patternCategoryOptions.includes(item));
-      if (valid.includes(category)) return valid.length > 1 ? valid.filter((item) => item !== category) : valid;
-      return valid.length >= 6 ? valid : [...valid, category];
+      const base = valid.length > 0 ? valid : selectedPatternCategories;
+      if (base.includes(category)) return base.length > 1 ? base.filter((item) => item !== category) : base;
+      return base.length >= 6 ? base : [...base, category];
     });
   };
   const getPatternCategoryColor = (category) =>
-    CATEGORY_CURVE_COLORS[Math.max(selectedPatternCategories.indexOf(category), 0) % CATEGORY_CURVE_COLORS.length];
+    patternCategoryColorMap.get(category) || 'var(--primary)';
   const currentPatternCycle = visiblePatternSeries.find((item) => item.ciclo === ciclo) || visiblePatternSeries[visiblePatternSeries.length - 1] || null;
   const historicalPatternCycles = visiblePatternSeries.filter((item) => item.ciclo !== currentPatternCycle?.ciclo);
   const getPatternTotal = (cycle, key = 'confirmed') =>
