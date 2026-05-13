@@ -1,4 +1,6 @@
 import logoFinanzApp from '../assets/finanzapp-logo.png';
+import fixionLogoDarkMode from '../assets/fixion-logo-dark-mode.png';
+import fixionLogoLightMode from '../assets/fixion-logo-light-mode.png';
 
 const icons = {
   dashboard: (
@@ -135,6 +137,7 @@ export default function MenuLateral({
     }))
     .filter((group) => group.items.length > 0);
   const accountInitial = (userName || 'U').trim().charAt(0).toUpperCase();
+  const fixionLogo = theme === 'dark' ? fixionLogoDarkMode : fixionLogoLightMode;
   const goToConfig = () => {
     onSelect('mi_hogar');
     onAccountMenuClose?.();
@@ -200,6 +203,13 @@ export default function MenuLateral({
           </div>
         ))}
       </nav>
+
+      {!collapsed && (
+        <div className="sidebar-powered-by" aria-label="Powered by Fixion">
+          <span>Powered by</span>
+          <img src={fixionLogo} alt="Fixion" />
+        </div>
+      )}
 
       <div className="sidebar-account account-menu" ref={accountMenuRef}>
         <button
