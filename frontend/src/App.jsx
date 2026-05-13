@@ -794,13 +794,14 @@ export default function App() {
       moneda: gasto.moneda || 'ARS',
       monto_base: formatDecimalInput(gasto.monto_base || 0),
       dia_vencimiento: gasto.dia_vencimiento || '',
-      monto_ciclo: formatDecimalInput(movimiento.monto_ars || 0)
+      monto_ciclo: formatDecimalInput(gasto.monto_vigente ?? gasto.monto_base ?? movimiento.monto_ars ?? 0)
     });
   };
 
   const confirmarEditarFijoEnGrilla = async () => {
     if (!fijoEditModal || !fijoEditForm.gasto_fijo_id) return;
-    const montoActual = Number(fijoEditModal.monto_ars || 0);
+    const gastoActual = gastosFijos.find((item) => Number(item.id) === Number(fijoEditForm.gasto_fijo_id));
+    const montoActual = Number(gastoActual?.monto_vigente ?? gastoActual?.monto_base ?? 0);
     const nuevoMontoCiclo = parseDecimalInput(fijoEditForm.monto_ciclo);
     const delta = nuevoMontoCiclo - montoActual;
 
@@ -808,17 +809,16 @@ export default function App() {
       descripcion: fijoEditForm.descripcion,
       categoria_id: fijoEditForm.categoria_id ? Number(fijoEditForm.categoria_id) : null,
       moneda: fijoEditForm.moneda,
-      monto_base: parseDecimalInput(fijoEditForm.monto_base),
       dia_vencimiento: fijoEditForm.dia_vencimiento ? Number(fijoEditForm.dia_vencimiento) : null
     });
 
     if (delta !== 0) {
       await handleAjustarGastoFijo(fijoEditForm.gasto_fijo_id, {
         ciclo_aplicacion: cicloSeleccionado,
-        alcance: 'desde_ciclo',
+        alcance: 'solo_ciclo',
         tipo_ajuste: 'monto_fijo',
         valor: delta,
-        nota: `Ajuste desde grilla para ciclo ${cicloSeleccionado}`
+        nota: `Ajuste manual solo para ciclo ${cicloSeleccionado}`
       });
     }
 
@@ -1797,15 +1797,15 @@ export default function App() {
                 </select>
               </label>
               <label>
-                Monto base
+                Valor base original
                 <input
                   type="text"
                   inputMode="decimal"
                   value={fijoEditForm.monto_base}
-                  onChange={(e) => setFijoEditForm((prev) => ({ ...prev, monto_base: sanitizeDecimalInput(e.target.value) }))}
+                  disabled
                   placeholder="0,00"
-                  required
                 />
+                <small className="field-helper">Para modificar futuros ciclos usá Ajustar en Valores fijos.</small>
               </label>
               <label>
                 Día vencimiento
@@ -1818,7 +1818,7 @@ export default function App() {
                 />
               </label>
               <label>
-                Monto en ciclo {cicloSeleccionado}
+                Monto en ciclo {cicloSeleccionado} ({fijoEditForm.moneda})
                 <input
                   type="text"
                   inputMode="decimal"
