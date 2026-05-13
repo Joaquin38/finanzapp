@@ -1621,6 +1621,7 @@ export default function App() {
               hogarId={hogarId}
               ciclo={cicloSeleccionado}
               categorias={categorias}
+              cotizaciones={cotizaciones}
               formatMoney={formatMoneyText}
               onToast={addToast}
               onMovimientosChange={cargarDatos}

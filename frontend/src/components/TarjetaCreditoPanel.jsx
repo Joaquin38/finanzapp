@@ -447,7 +447,7 @@ function getCsvResumenImpact(row) {
   return Number(montoTotal || montoCuota || 0);
 }
 
-export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = [], formatMoney, onToast, onMovimientosChange, onVerMovimientoGenerado }) {
+export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = [], cotizaciones = [], formatMoney, onToast, onMovimientosChange, onVerMovimientoGenerado }) {
   const [tarjetas, setTarjetas] = useState([]);
   const [consumos, setConsumos] = useState([]);
   const [cierre, setCierre] = useState(null);
@@ -455,6 +455,8 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
   const [cierreForm, setCierreForm] = useState({ fecha_cierre: '', fecha_vencimiento: '' });
   const [savedCierreForm, setSavedCierreForm] = useState({ fecha_cierre: '', fecha_vencimiento: '' });
   const [resumen, setResumen] = useState({ total_ars: 0, total_usd: 0, consumos: 0, cuotas_futuras: 0 });
+  const [resumenTarjetas, setResumenTarjetas] = useState([]);
+  const [resumenTodasTarjetas, setResumenTodasTarjetas] = useState({ total_ars: 0, total_usd: 0, consumos: 0 });
   const [historialResumenes, setHistorialResumenes] = useState([]);
   const [consumosRegistrados, setConsumosRegistrados] = useState([]);
   const [analisisTarjeta, setAnalisisTarjeta] = useState(null);
@@ -485,6 +487,12 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
   const consumoDescripcionRef = useRef(null);
 
   const tarjetaActual = tarjetas.find((tarjeta) => Number(tarjeta.id) === Number(form.tarjeta_id)) || tarjetas[0];
+  const cotizacionResumenUsd = Number(
+    cotizaciones.find((item) => item.fuente === 'oficial' && Number(item.venta) > 0)?.venta
+      || cotizaciones.find((item) => Number(item.venta) > 0)?.venta
+      || 0
+  );
+  const totalEstimadoArsTarjetas = Number(resumenTodasTarjetas.total_ars || 0) + Number(resumenTodasTarjetas.total_usd || 0) * cotizacionResumenUsd;
   const resumenSeleccionadoCerrado = cierre?.estado === 'cerrado';
   const cierreTieneCambios = cierreForm.fecha_cierre !== savedCierreForm.fecha_cierre
     || cierreForm.fecha_vencimiento !== savedCierreForm.fecha_vencimiento;
@@ -783,6 +791,8 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
     setConsumos(data.consumos || []);
     setConsumosRegistrados(data.consumos_registrados || data.consumos || []);
     setResumen(data.resumen || { total_ars: 0, total_usd: 0, consumos: 0, cuotas_futuras: 0 });
+    setResumenTarjetas(data.resumen_tarjetas || []);
+    setResumenTodasTarjetas(data.resumen_todas_tarjetas || { total_ars: 0, total_usd: 0, consumos: 0 });
     setHistorialResumenes(data.historial_resumenes || []);
     setAnalisisTarjeta(data.analisis_tarjeta || null);
     setFilters((prev) => ({ ...prev, ciclo: cicloConsulta }));
@@ -1384,6 +1394,58 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
           </article>
         ))}
       </div>
+
+      <section className="panel tarjeta-cycle-spend tarjeta-section-card">
+        <div className="panel-header">
+          <div>
+            <p className="eyebrow">Gasto del ciclo</p>
+            <h2>Total por tarjetas</h2>
+            <p>ARS, USD y estimado en pesos con cotizacion actual.</p>
+          </div>
+          <span className="tarjeta-cycle-rate">
+            USD {cotizacionResumenUsd > 0 ? formatMoney(cotizacionResumenUsd) : 'sin cotizacion'}
+          </span>
+        </div>
+        <div className="tarjeta-cycle-spend-total">
+          <div>
+            <span>Total ARS</span>
+            <strong>{formatMoney(resumenTodasTarjetas.total_ars || 0)}</strong>
+          </div>
+          <div>
+            <span>Total USD</span>
+            <strong>{formatUsd(resumenTodasTarjetas.total_usd || 0)}</strong>
+          </div>
+          <div>
+            <span>Estimado total en ARS</span>
+            <strong>{formatMoney(totalEstimadoArsTarjetas || 0)}</strong>
+          </div>
+        </div>
+        <div className="tarjeta-cycle-spend-grid">
+          {resumenTarjetas.map((item) => {
+            const estimadoArs = Number(item.total_ars || 0) + Number(item.total_usd || 0) * cotizacionResumenUsd;
+            return (
+              <article className="tarjeta-cycle-spend-card" key={item.tarjeta_id}>
+                <header>
+                  <strong>{item.nombre}</strong>
+                  <span>{item.consumos || 0} consumos</span>
+                </header>
+                <div>
+                  <span>ARS</span>
+                  <strong>{formatMoney(item.total_ars || 0)}</strong>
+                </div>
+                <div>
+                  <span>USD</span>
+                  <strong>{formatUsd(item.total_usd || 0)}</strong>
+                </div>
+                <div>
+                  <span>Estimado ARS</span>
+                  <strong>{formatMoney(estimadoArs || 0)}</strong>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </section>
 
       {resumenSeleccionadoCerrado && (
         <section className="panel tarjeta-closed-summary tarjeta-closed-summary-action">

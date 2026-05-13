@@ -873,6 +873,18 @@ async function asegurarTarjetasCredito({ recalcular = true } = {}) {
     )
   `);
   await pool.query('ALTER TABLE consumos_tarjeta ADD COLUMN IF NOT EXISTS repite_mes_siguiente BOOLEAN NOT NULL DEFAULT FALSE');
+  await pool.query(`
+    UPDATE tarjetas_credito tc
+    SET nombre = 'Tarjeta MercadoPago',
+        actualizado_en = NOW()
+    WHERE LOWER(tc.nombre) = LOWER('Tarjeta principal')
+      AND NOT EXISTS (
+        SELECT 1
+        FROM tarjetas_credito existente
+        WHERE existente.hogar_id = tc.hogar_id
+          AND LOWER(existente.nombre) = LOWER('Tarjeta MercadoPago')
+      )
+  `);
   if (recalcular) {
     await pool.query(`
       UPDATE consumos_tarjeta
@@ -2661,7 +2673,7 @@ app.get('/tarjetas-credito', async (req, res) => {
     await pool.query(
       `
       INSERT INTO tarjetas_credito (hogar_id, nombre, dia_cierre_default, creado_por_usuario_id, actualizado_por_usuario_id)
-      VALUES ($1, 'Tarjeta principal', 25, $2, $2)
+      VALUES ($1, 'Tarjeta MercadoPago', 25, $2, $2)
       ON CONFLICT (hogar_id, nombre) DO NOTHING
       `,
       [hogarId, auditoriaUsuarioId]
@@ -2744,8 +2756,33 @@ app.get('/tarjetas-credito', async (req, res) => {
           [hogarId, ciclo, tarjetaConsultaId]
         )
       : { rows: [] };
+    const { rows: consumosTodasTarjetasBase } = cicloEsValido(ciclo)
+      ? await pool.query(
+          `
+          SELECT ct.id, ct.tarjeta_id, ct.cierre_id, ct.ciclo_asignado, ct.fecha_compra,
+                 ct.descripcion, ct.categoria, ct.moneda, ct.monto_total,
+                 ct.cantidad_cuotas, ct.monto_cuota, ct.cuota_inicial, ct.repite_mes_siguiente,
+                 ct.titular, ct.observaciones,
+                 crt.fecha_cierre,
+                 CASE WHEN ct.ciclo_asignado = $2 THEN 'actual' ELSE 'futuro' END AS resumen_relativo
+          FROM consumos_tarjeta ct
+          JOIN tarjetas_credito tc ON tc.id = ct.tarjeta_id
+          LEFT JOIN cierres_tarjeta crt ON crt.id = ct.cierre_id
+          WHERE tc.hogar_id = $1
+            AND tc.activa = true
+            AND (
+              ct.ciclo_asignado >= $2
+              OR TO_CHAR(TO_DATE(ct.ciclo_asignado || '-01', 'YYYY-MM-DD') + (GREATEST(ct.cantidad_cuotas - ct.cuota_inicial, 0) || ' months')::INTERVAL, 'YYYY-MM') >= $2
+              OR (ct.repite_mes_siguiente AND TO_CHAR(TO_DATE(ct.ciclo_asignado || '-01', 'YYYY-MM-DD') + INTERVAL '1 month', 'YYYY-MM') >= $2)
+            )
+          ORDER BY ct.fecha_compra DESC, ct.id DESC
+          `,
+          [hogarId, ciclo]
+        )
+      : { rows: [] };
     const consumosExpandidosVista = expandirConsumosTarjeta(consumosBase);
     const consumosExpandidosAnalisis = expandirConsumosTarjeta(consumosAnalisisBase);
+    const consumosExpandidosTodasTarjetas = expandirConsumosTarjeta(consumosTodasTarjetasBase);
     const consumos = consumosExpandidosVista
       .filter((item) => compararCiclos(item.ciclo_asignado, ciclo) >= 0)
       .sort((a, b) => compararCiclos(b.ciclo_asignado, a.ciclo_asignado) || new Date(b.fecha_compra) - new Date(a.fecha_compra));
@@ -2760,6 +2797,30 @@ app.get('/tarjetas-credito', async (req, res) => {
       { total_ars: 0, total_usd: 0, consumos: 0, cuotas_futuras: 0 }
     );
     resumen.cuotas_futuras = consumos.filter((item) => compararCiclos(item.ciclo_asignado, ciclo) > 0).length;
+    const resumenPorTarjetaMap = new Map(tarjetas.map((tarjeta) => [
+      Number(tarjeta.id),
+      { tarjeta_id: tarjeta.id, nombre: tarjeta.nombre, total_ars: 0, total_usd: 0, consumos: 0 }
+    ]));
+    consumosExpandidosTodasTarjetas
+      .filter((item) => item.ciclo_asignado === ciclo)
+      .forEach((item) => {
+        const bucket = resumenPorTarjetaMap.get(Number(item.tarjeta_id));
+        if (!bucket) return;
+        const monto = Number(item.monto_resumen || item.monto_cuota || 0);
+        if (item.moneda === 'USD') bucket.total_usd += monto;
+        else bucket.total_ars += monto;
+        bucket.consumos += 1;
+      });
+    const resumenTarjetas = Array.from(resumenPorTarjetaMap.values());
+    const resumenTodasTarjetas = resumenTarjetas.reduce(
+      (acc, item) => {
+        acc.total_ars += Number(item.total_ars || 0);
+        acc.total_usd += Number(item.total_usd || 0);
+        acc.consumos += Number(item.consumos || 0);
+        return acc;
+      },
+      { total_ars: 0, total_usd: 0, consumos: 0 }
+    );
 
     const { rows: cierresHistorial } = tarjetaConsultaId
       ? await pool.query(
@@ -2793,6 +2854,8 @@ app.get('/tarjetas-credito', async (req, res) => {
       consumos,
       consumos_registrados: consumosRegistrados,
       resumen,
+      resumen_tarjetas: resumenTarjetas,
+      resumen_todas_tarjetas: resumenTodasTarjetas,
       historial_resumenes: historialResumenes,
       analisis_tarjeta: analisisTarjeta
     });

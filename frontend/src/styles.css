@@ -4569,6 +4569,63 @@ tbody tr.row-proyectado:hover { background: color-mix(in srgb, var(--primary) 9%
 .tarjeta-usd { border-left: 4px solid var(--info); }
 .tarjeta-count { border-left: 4px solid var(--primary); }
 .tarjeta-future { border-left: 4px solid var(--warning); }
+.tarjeta-cycle-spend {
+  display: grid;
+  gap: 12px;
+}
+.tarjeta-cycle-rate {
+  justify-self: end;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-muted);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 800;
+}
+.tarjeta-cycle-spend-total,
+.tarjeta-cycle-spend-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.tarjeta-cycle-spend-total > div,
+.tarjeta-cycle-spend-card {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-elevated);
+}
+.tarjeta-cycle-spend-total span,
+.tarjeta-cycle-spend-card span {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.tarjeta-cycle-spend-total strong,
+.tarjeta-cycle-spend-card strong {
+  color: var(--text-primary);
+  font-size: 17px;
+  line-height: 1.15;
+}
+.tarjeta-cycle-spend-card header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.tarjeta-cycle-spend-card header strong {
+  font-size: 15px;
+}
+.tarjeta-cycle-spend-card header span {
+  flex: 0 0 auto;
+  text-align: right;
+}
 .tarjeta-closed-summary {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -6726,6 +6783,8 @@ tbody tr.row-proyectado:hover { background: color-mix(in srgb, var(--primary) 9%
   .dashboard-secondary-grid .cotizaciones-panel-compact { grid-column: span 2; }
   .cotizaciones-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tarjeta-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tarjeta-cycle-spend-total,
+  .tarjeta-cycle-spend-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tarjeta-closed-summary,
   .tarjeta-closed-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tarjeta-current-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -7044,6 +7103,9 @@ tbody tr.row-proyectado:hover { background: color-mix(in srgb, var(--primary) 9%
   }
   .cards-grid, .form-grid, .cotizaciones-grid, .ahorros-summary-grid, .ahorro-form { grid-template-columns: 1fr; }
   .tarjeta-summary-grid { grid-template-columns: 1fr; }
+  .tarjeta-cycle-spend-total,
+  .tarjeta-cycle-spend-grid { grid-template-columns: 1fr; }
+  .tarjeta-cycle-rate { justify-self: start; }
   .tarjeta-closed-summary,
   .tarjeta-closed-summary-grid { grid-template-columns: 1fr; }
   .tarjeta-current-grid { grid-template-columns: 1fr; }
