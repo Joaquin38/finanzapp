@@ -57,6 +57,7 @@ function getFechaProyectada(ciclo, diaVencimiento) {
 export function construirMovimientosConsolidadosDelCiclo({
   movimientos = [],
   gastosFijos = [],
+  movimientosVirtuales = [],
   cotizaciones = [],
   ciclo = '',
   estadoOverrides = {}
@@ -90,7 +91,7 @@ export function construirMovimientosConsolidadosDelCiclo({
     });
 
   const manuales = [...movimientos].sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)));
-  const consolidados = [...proyectados, ...manuales];
+  const consolidados = [...proyectados, ...movimientosVirtuales, ...manuales];
 
   return consolidados.map((movimiento) => ({
     ...movimiento,

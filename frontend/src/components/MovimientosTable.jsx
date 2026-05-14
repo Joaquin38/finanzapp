@@ -70,7 +70,9 @@ export default function MovimientosTable({
     if (mov.tipo_movimiento === 'ingreso' && estado === 'registrado') return 'cobrado';
     return estado;
   };
-  const etiquetaOrigen = (mov) => (mov.esProyectado ? 'fijo' : 'manual');
+  const etiquetaOrigen = (mov) => (mov.esEstimadoTarjetas ? 'estimado' : mov.esProyectado ? 'fijo' : 'manual');
+  const claseOrigen = (mov) => (mov.esEstimadoTarjetas ? 'badge-origen' : mov.esProyectado ? 'badge-fijo' : 'badge-origen');
+  const esAccionable = (mov) => !mov.esEstimadoTarjetas;
   const etiquetaEspecial = (mov) =>
     mov.clasificacion_movimiento === 'saldo_inicial'
       ? 'saldo inicial'
@@ -118,7 +120,7 @@ export default function MovimientosTable({
       : 'Marcar registrado';
   const renderAccionesMobile = (mov) => (
     <div className="movement-mobile-actions-list">
-      {canToggleEstado && ['egreso', 'ingreso', 'ahorro'].includes(mov.tipo_movimiento) && (
+      {esAccionable(mov) && canToggleEstado && ['egreso', 'ingreso', 'ahorro'].includes(mov.tipo_movimiento) && (
         <button
           type="button"
           className={`btn-inline ${['pagado', 'registrado'].includes(resolverEstado(mov)) ? 'success' : ''}`}
@@ -129,7 +131,7 @@ export default function MovimientosTable({
           {accionEstadoLabel(mov)}
         </button>
       )}
-      {(mov.esProyectado ? canManageFixedValues : canEdit) && (
+      {esAccionable(mov) && (mov.esProyectado ? canManageFixedValues : canEdit) && (
         <button
           type="button"
           className="btn-inline secondary"
@@ -140,7 +142,7 @@ export default function MovimientosTable({
           Editar
         </button>
       )}
-      {(mov.esProyectado ? canManageFixedValues : canDelete) && (
+      {esAccionable(mov) && (mov.esProyectado ? canManageFixedValues : canDelete) && (
         <button
           type="button"
           className="btn-inline danger"
@@ -268,7 +270,7 @@ export default function MovimientosTable({
                 </td>
                 <td>
                   <span className={`badge badge-${mov.tipo_movimiento}`}>{mov.tipo_movimiento}</span>
-                  <span className={`badge ${mov.esProyectado ? 'badge-fijo' : 'badge-origen'}`}>{etiquetaOrigen(mov)}</span>
+                  <span className={`badge ${claseOrigen(mov)}`}>{etiquetaOrigen(mov)}</span>
                   {mov.clasificacion_movimiento && mov.clasificacion_movimiento !== 'normal' && (
                     <span className={`badge ${claseBadgeEspecial(mov)}`}>{etiquetaEspecial(mov)}</span>
                   )}
@@ -291,7 +293,7 @@ export default function MovimientosTable({
                 </td>
                 <td>
                   <div className="acciones-inline">
-                    {canToggleEstado && ['egreso', 'ingreso', 'ahorro'].includes(mov.tipo_movimiento) && (
+                    {esAccionable(mov) && canToggleEstado && ['egreso', 'ingreso', 'ahorro'].includes(mov.tipo_movimiento) && (
                       <button
                         type="button"
                         className={`btn-inline ${['pagado', 'registrado'].includes(resolverEstado(mov)) ? 'success' : ''}`}
@@ -320,7 +322,7 @@ export default function MovimientosTable({
                           : '🏦'}
                       </button>
                     )}
-                    {(mov.esProyectado ? canManageFixedValues : canEdit) && (
+                    {esAccionable(mov) && (mov.esProyectado ? canManageFixedValues : canEdit) && (
                     <button
                       type="button"
                       className="btn-inline secondary"
@@ -331,7 +333,7 @@ export default function MovimientosTable({
                       ✏️
                     </button>
                     )}
-                    {(mov.esProyectado ? canManageFixedValues : canDelete) && (
+                    {esAccionable(mov) && (mov.esProyectado ? canManageFixedValues : canDelete) && (
                     <button
                       type="button"
                       className="btn-inline danger"
@@ -357,6 +359,7 @@ export default function MovimientosTable({
       <div className="movements-mobile-list">
         {movimientos.map((mov) => {
           const auditoria = auditoriaMovimiento(mov);
+          const mostrarMenu = auditoria || esAccionable(mov);
           return (
             <article key={mov.id} className={`movement-mobile-card ${mov.esProyectado ? 'row-proyectado' : ''}`}>
               <div className="movement-mobile-top">
@@ -369,7 +372,7 @@ export default function MovimientosTable({
               </div>
               <div className="movement-mobile-badges">
                 <span className={`badge badge-${mov.tipo_movimiento}`}>{mov.tipo_movimiento}</span>
-                <span className={`badge ${mov.esProyectado ? 'badge-fijo' : 'badge-origen'}`}>{etiquetaOrigen(mov)}</span>
+                <span className={`badge ${claseOrigen(mov)}`}>{etiquetaOrigen(mov)}</span>
                 {mov.clasificacion_movimiento && mov.clasificacion_movimiento !== 'normal' && (
                   <span className={`badge ${claseBadgeEspecial(mov)}`}>{etiquetaEspecial(mov)}</span>
                 )}
@@ -377,17 +380,19 @@ export default function MovimientosTable({
                 {mov.usa_ahorro && <span className="badge badge-ahorro-meta">usa ahorro</span>}
                 {mov.esProyectado && mov.ajuste_en_ciclo && <span className="badge badge-ajuste">ajustado</span>}
               </div>
-              <details className="movement-card-menu">
-                <summary aria-label="Acciones">...</summary>
-                <div className="movement-card-menu-panel">
-                  {auditoria && (
-                    <span className="movement-card-detail">
-                      Registrado por {auditoria.usuario} - {auditoria.fecha}
-                    </span>
-                  )}
-                  {renderAccionesMobile(mov)}
-                </div>
-              </details>
+              {mostrarMenu && (
+                <details className="movement-card-menu">
+                  <summary aria-label="Acciones">...</summary>
+                  <div className="movement-card-menu-panel">
+                    {auditoria && (
+                      <span className="movement-card-detail">
+                        Registrado por {auditoria.usuario} - {auditoria.fecha}
+                      </span>
+                    )}
+                    {renderAccionesMobile(mov)}
+                  </div>
+                </details>
+              )}
             </article>
           );
         })}

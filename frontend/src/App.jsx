@@ -19,6 +19,7 @@ import {
   forgotPassword,
   getMovimientos,
   getMovimientosRango,
+  getTarjetasCredito,
   getStoredSession,
   login,
   reabrirCiclo,
@@ -77,6 +78,23 @@ function getLocalIsoDate(date = new Date()) {
 
 function getLocalIsoCycle(date = new Date()) {
   return getLocalIsoDate(date).slice(0, 7);
+}
+
+function getNextIsoCycle(ciclo) {
+  const [anioTexto, mesTexto] = String(ciclo || '').split('-');
+  const anio = Number(anioTexto);
+  const mes = Number(mesTexto);
+  if (!Number.isInteger(anio) || !Number.isInteger(mes) || mes < 1 || mes > 12) {
+    return getLocalIsoCycle();
+  }
+  const fecha = new Date(anio, mes, 1);
+  return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function formatCycleMonth(ciclo) {
+  const fecha = new Date(`${ciclo}-01T00:00:00`);
+  if (Number.isNaN(fecha.getTime())) return 'próximo ciclo';
+  return fecha.toLocaleDateString('es-AR', { month: 'long' });
 }
 
 function getStoredTheme() {
@@ -150,6 +168,7 @@ export default function App() {
   const [gastosFijos, setGastosFijos] = useState([]);
   const [gastosFijosHistoricosPorCiclo, setGastosFijosHistoricosPorCiclo] = useState({});
   const [movimientosHistoricos, setMovimientosHistoricos] = useState([]);
+  const [estimadoTarjetasProximoCiclo, setEstimadoTarjetasProximoCiclo] = useState(null);
   const [dataLoading, setDataLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [cycleActionLoading, setCycleActionLoading] = useState(false);
@@ -388,15 +407,17 @@ export default function App() {
       const hastaHistorico = `${finRango.getFullYear()}-${String(finRango.getMonth() + 1).padStart(2, '0')}-${String(finRango.getDate()).padStart(2, '0')}`;
       const cicloDesdeHistorico = ciclosTendencia[0];
       const cicloHastaHistorico = ciclosTendencia[ciclosTendencia.length - 1];
+      const cicloEstimadoTarjetas = getNextIsoCycle(getLocalIsoCycle());
 
-      const [movData, catData, cotiData, gastosData, historicoData, cierreData, gastosHistoricosData] = await Promise.allSettled([
+      const [movData, catData, cotiData, gastosData, historicoData, cierreData, gastosHistoricosData, tarjetasEstimadoData] = await Promise.allSettled([
         getMovimientos(hogarId, mostrarEliminados, cicloSeleccionado),
         getCategorias(hogarId),
         getCotizaciones(),
         getGastosFijos(hogarId, cicloSeleccionado),
         getMovimientosRango(hogarId, desdeHistorico, hastaHistorico, mostrarEliminados),
         getEstadoCierreCiclo(hogarId, cicloSeleccionado),
-        getGastosFijosRango(hogarId, cicloDesdeHistorico, cicloHastaHistorico)
+        getGastosFijosRango(hogarId, cicloDesdeHistorico, cicloHastaHistorico),
+        getTarjetasCredito(hogarId, cicloEstimadoTarjetas)
       ]);
 
       if (movData.status === 'fulfilled') setMovimientos(movData.value.items || []);
@@ -409,8 +430,14 @@ export default function App() {
         const porCiclo = gastosHistoricosData.value.por_ciclo || {};
         setGastosFijosHistoricosPorCiclo(Object.fromEntries(ciclosTendencia.map((ciclo) => [ciclo, porCiclo[ciclo] || []])));
       }
+      if (tarjetasEstimadoData.status === 'fulfilled') {
+        const totalArs = Number(tarjetasEstimadoData.value?.resumen_todas_tarjetas?.total_ars || 0);
+        setEstimadoTarjetasProximoCiclo(totalArs > 0 ? { ciclo: cicloEstimadoTarjetas, totalArs } : null);
+      } else {
+        setEstimadoTarjetasProximoCiclo(null);
+      }
 
-      const errores = [movData, catData, cotiData, gastosData, historicoData, cierreData, gastosHistoricosData].filter(
+      const errores = [movData, catData, cotiData, gastosData, historicoData, cierreData, gastosHistoricosData, tarjetasEstimadoData].filter(
         (r) => r.status === 'rejected'
       );
       if (errores.length > 0) {
@@ -970,14 +997,7 @@ export default function App() {
   };
 
   const getCicloSiguiente = (ciclo) => {
-    const [anioTexto, mesTexto] = String(ciclo || '').split('-');
-    const anio = Number(anioTexto);
-    const mes = Number(mesTexto);
-    if (!Number.isInteger(anio) || !Number.isInteger(mes) || mes < 1 || mes > 12) {
-      return getLocalIsoCycle();
-    }
-    const fecha = new Date(anio, mes, 1);
-    return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
+    return getNextIsoCycle(ciclo);
   };
 
   const getCicloAnterior = (ciclo) => {
@@ -1019,16 +1039,41 @@ export default function App() {
     () => getCycleContext(cicloSeleccionado, estadoCierreCiclo.cerrado),
     [cicloSeleccionado, estadoCierreCiclo.cerrado]
   );
+  const movimientosVirtualesTarjeta = useMemo(() => {
+    if (!estimadoTarjetasProximoCiclo || estimadoTarjetasProximoCiclo.ciclo !== cicloSeleccionado) return [];
+    const categoriaTarjeta = categorias.find(
+      (categoria) =>
+        String(categoria.nombre || '').trim().toLowerCase() === 'tarjeta' &&
+        (Number(categoria.tipo_movimiento_id) === 2 || categoria.tipo_movimiento === 'egreso')
+    );
+    return [{
+      id: `estimado-tarjetas-${estimadoTarjetasProximoCiclo.ciclo}`,
+      fecha: `${estimadoTarjetasProximoCiclo.ciclo}-01`,
+      tipo_movimiento_id: 2,
+      categoria_id: categoriaTarjeta?.id || null,
+      tipo_movimiento: 'egreso',
+      categoria: categoriaTarjeta?.nombre || 'Tarjeta',
+      descripcion: `Estimado Tarjetas ${formatCycleMonth(estimadoTarjetasProximoCiclo.ciclo)}`,
+      monto_ars: Number(estimadoTarjetasProximoCiclo.totalArs || 0),
+      estado_egreso: 'pendiente',
+      activo: true,
+      esProyectado: true,
+      esEstimadoTarjetas: true,
+      ciclo: estimadoTarjetasProximoCiclo.ciclo,
+      clasificacion_movimiento: 'normal'
+    }];
+  }, [categorias, cicloSeleccionado, estimadoTarjetasProximoCiclo]);
   const movimientosConsolidados = useMemo(
     () =>
       construirMovimientosConsolidadosDelCiclo({
         movimientos,
         gastosFijos,
+        movimientosVirtuales: movimientosVirtualesTarjeta,
         cotizaciones,
         ciclo: cicloSeleccionado,
         estadoOverrides
       }),
-    [movimientos, gastosFijos, cotizaciones, cicloSeleccionado, estadoOverrides]
+    [movimientos, gastosFijos, movimientosVirtualesTarjeta, cotizaciones, cicloSeleccionado, estadoOverrides]
   );
   const cicloAnteriorSeleccionado = useMemo(() => getCicloAnterior(cicloSeleccionado), [cicloSeleccionado]);
   const movimientosConsolidadosCicloAnterior = useMemo(
@@ -1067,12 +1112,13 @@ export default function App() {
             ? movimientos
             : movimientosHistoricos.filter((mov) => String(mov.fecha || '').startsWith(key)),
           gastosFijos: key === cicloSeleccionado ? gastosFijos : gastosFijosHistoricosPorCiclo[key] || [],
+          movimientosVirtuales: key === cicloSeleccionado ? movimientosVirtualesTarjeta : [],
           cotizaciones,
           ciclo: key,
           estadoOverrides: key === cicloSeleccionado ? estadoOverrides : {}
         })
       })),
-    [cicloSeleccionado, ciclosTendencia, cotizaciones, gastosFijos, gastosFijosHistoricosPorCiclo, movimientos, movimientosHistoricos, estadoOverrides]
+    [cicloSeleccionado, ciclosTendencia, cotizaciones, gastosFijos, gastosFijosHistoricosPorCiclo, movimientos, movimientosHistoricos, movimientosVirtualesTarjeta, estadoOverrides]
   );
 
   const movimientosFiltradosYOrdenados = useMemo(() => {
