@@ -107,6 +107,18 @@ function formatPartialReference(actual, anterior, formatMoney) {
   return formatMoney(actual);
 }
 
+function hasFinancialSignal(item) {
+  return ['ingresos', 'egresos', 'balance'].some((key) => Math.abs(Number(item?.[key] || 0)) > 0);
+}
+
+function countConfirmedMovements(movimientos = []) {
+  return movimientos.filter((mov) => {
+    if (mov.tipo_movimiento === 'egreso') return mov.estado_consolidado === 'pagado';
+    if (['ingreso', 'ahorro'].includes(mov.tipo_movimiento)) return ['registrado', 'cobrado'].includes(mov.estado_consolidado);
+    return false;
+  }).length;
+}
+
 function ComparisonRow({ label, tipo, actual, anterior, formatMoney, cycleContext }) {
   const variacion = getVariation(actual, anterior);
   const isPartial = cycleContext?.cicloEnCurso;
@@ -156,6 +168,9 @@ function ComparisonCard({ serieMensual, movimientos = [], movimientosMesAnterior
   const anterior = serieMensual?.[serieMensual.length - 2] || { ingresos: 0, egresos: 0, balance: 0 };
   const recommendation = getComparisonRecommendation(actual, anterior, cycleContext);
   const isPartial = cycleContext?.cicloEnCurso;
+  const hasCurrentData = hasFinancialSignal(actual) || countConfirmedMovements(movimientos) > 0;
+  const hasPreviousData = hasFinancialSignal(anterior) || countConfirmedMovements(movimientosMesAnterior) > 0;
+  const hasComparableData = hasCurrentData && hasPreviousData;
   const currentByCategory = getConfirmedExpensesByCategory(movimientos);
   const previousByCategory = getConfirmedExpensesByCategory(movimientosMesAnterior);
   const impactRanking = Array.from(new Set([...Object.keys(currentByCategory), ...Object.keys(previousByCategory)]))
@@ -179,85 +194,103 @@ function ComparisonCard({ serieMensual, movimientos = [], movimientosMesAnterior
       />
       <ConfidenceBadge confidence={analysisConfidence} />
       {isPartial && <span className="pill muted decision-cycle-badge">Ciclo en curso</span>}
-      <div className="decision-comparison-block">
-        <span className="decision-block-title">Resumen general</span>
-        <div className="decision-comparison-grid decision-summary-grid">
-          <ComparisonRow
-            label="Ingresos"
-            tipo="ingresos"
-            actual={Number(actual.ingresos || 0)}
-            anterior={Number(anterior.ingresos || 0)}
-            formatMoney={formatMoney}
-            cycleContext={cycleContext}
-          />
-          <ComparisonRow
-            label="Egresos"
-            tipo="egresos"
-            actual={Number(actual.egresos || 0)}
-            anterior={Number(anterior.egresos || 0)}
-            formatMoney={formatMoney}
-            cycleContext={cycleContext}
-          />
-          <ComparisonRow
-            label="Balance"
-            tipo="balance"
-            actual={Number(actual.balance || 0)}
-            anterior={Number(anterior.balance || 0)}
-            formatMoney={formatMoney}
-            cycleContext={cycleContext}
-          />
+      {!hasComparableData ? (
+        <div className="decision-data-note">
+          <strong>Informacion insuficiente para comparar.</strong>
+          <p>
+            Este hogar todavia no tiene movimientos confirmados e historial suficiente. La lectura puede ser imprecisa hasta que existan al menos dos ciclos con datos reales.
+          </p>
+          {isPartial && <small>El ciclo actual tambien esta en curso: cualquier dato visible es parcial.</small>}
         </div>
-      </div>
-      {impactRanking.length > 0 && (
-        <div className="decision-comparison-block">
-          <span className="decision-block-title">Cambios por categoria</span>
-          <div className="decision-impact-list">
-            {impactRanking.map((item, index) => {
-              const diffAbs = Math.abs(item.diferencia);
-              const variationText = isPartial && item.diferencia < 0
-                ? 'Lectura parcial'
-                : item.variacion == null ? 'Sin referencia anterior' : formatVariation(item.variacion);
-              const badge =
-                item.anterior <= 0
-                  ? 'sin referencia'
-                  : item.diferencia < 0
-                    ? 'bajo'
-                    : item.diferencia > 0
-                      ? 'subio'
-                      : 'sin cambio';
-              const statusText =
-                isPartial && item.diferencia < 0
-                  ? 'esta por debajo del patron esperado para esta altura del ciclo'
-                  : item.anterior <= 0
-                    ? 'Sin referencia anterior'
-                    : item.diferencia < 0
-                      ? 'Bajo respecto al mes anterior'
-                      : item.variacion != null && item.variacion > 20
-                        ? 'Subio significativamente'
-                        : item.variacion != null && item.variacion >= 10
-                          ? 'Subio respecto al mes anterior'
-                          : 'Se mantuvo cerca del mes anterior';
-              return (
-                <div className="decision-impact-row" key={item.categoria}>
-                  <div className="decision-impact-head">
-                    <span>{item.categoria}</span>
-                    <em className={`decision-impact-badge ${badge.replace(' ', '-')}`}>{badge}</em>
-                  </div>
-                  <div className="decision-impact-values">
-                    <strong>{formatMoney(item.actual)}</strong>
-                    <small>Anterior: {item.anterior > 0 ? formatMoney(item.anterior) : 'Sin referencia'}</small>
-                    <small>Dif: {item.diferencia >= 0 ? '+' : '-'}{formatMoney(diffAbs)} ({variationText})</small>
-                  </div>
-                  <p>
-                    {item.categoria}: {statusText.toLowerCase()}. {index === 0 ? 'Es el cambio con mayor impacto en el mes.' : ''}
-                  </p>
-                </div>
-              );
-            })}
+      ) : (
+        <>
+          {analysisConfidence?.isLow && (
+            <div className="decision-data-note compact">
+              <strong>Comparacion orientativa.</strong>
+              <p>{analysisConfidence.note} Puede cambiar cuando haya mas ciclos cerrados con movimientos.</p>
+            </div>
+          )}
+          <div className="decision-comparison-block">
+            <span className="decision-block-title">Resumen general</span>
+            <div className="decision-comparison-grid decision-summary-grid">
+              <ComparisonRow
+                label="Ingresos"
+                tipo="ingresos"
+                actual={Number(actual.ingresos || 0)}
+                anterior={Number(anterior.ingresos || 0)}
+                formatMoney={formatMoney}
+                cycleContext={cycleContext}
+              />
+              <ComparisonRow
+                label="Egresos"
+                tipo="egresos"
+                actual={Number(actual.egresos || 0)}
+                anterior={Number(anterior.egresos || 0)}
+                formatMoney={formatMoney}
+                cycleContext={cycleContext}
+              />
+              <ComparisonRow
+                label="Balance"
+                tipo="balance"
+                actual={Number(actual.balance || 0)}
+                anterior={Number(anterior.balance || 0)}
+                formatMoney={formatMoney}
+                cycleContext={cycleContext}
+              />
+            </div>
           </div>
-        </div>
+          {impactRanking.length > 0 && (
+            <div className="decision-comparison-block">
+              <span className="decision-block-title">Cambios por categoria</span>
+              <div className="decision-impact-list">
+                {impactRanking.map((item, index) => {
+                  const diffAbs = Math.abs(item.diferencia);
+                  const variationText = isPartial && item.diferencia < 0
+                    ? 'Lectura parcial'
+                    : item.variacion == null ? 'Sin referencia anterior' : formatVariation(item.variacion);
+                  const badge =
+                    item.anterior <= 0
+                      ? 'sin referencia'
+                      : item.diferencia < 0
+                        ? 'bajo'
+                        : item.diferencia > 0
+                          ? 'subio'
+                          : 'sin cambio';
+                  const statusText =
+                    isPartial && item.diferencia < 0
+                      ? 'esta por debajo del patron esperado para esta altura del ciclo'
+                      : item.anterior <= 0
+                        ? 'Sin referencia anterior'
+                        : item.diferencia < 0
+                          ? 'Bajo respecto al mes anterior'
+                          : item.variacion != null && item.variacion > 20
+                            ? 'Subio significativamente'
+                            : item.variacion != null && item.variacion >= 10
+                              ? 'Subio respecto al mes anterior'
+                              : 'Se mantuvo cerca del mes anterior';
+                  return (
+                    <div className="decision-impact-row" key={item.categoria}>
+                      <div className="decision-impact-head">
+                        <span>{item.categoria}</span>
+                        <em className={`decision-impact-badge ${badge.replace(' ', '-')}`}>{badge}</em>
+                      </div>
+                      <div className="decision-impact-values">
+                        <strong>{formatMoney(item.actual)}</strong>
+                        <small>Anterior: {item.anterior > 0 ? formatMoney(item.anterior) : 'Sin referencia'}</small>
+                        <small>Dif: {item.diferencia >= 0 ? '+' : '-'}{formatMoney(diffAbs)} ({variationText})</small>
+                      </div>
+                      <p>
+                        {item.categoria}: {statusText.toLowerCase()}. {index === 0 ? 'Es el cambio con mayor impacto en el mes.' : ''}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          <strong>{analysisConfidence?.isLow ? `Comparacion orientativa. ${analysisConfidence.note}` : recommendation}</strong>
+        </>
       )}
-      <strong>{analysisConfidence?.isLow ? `Comparacion orientativa. ${analysisConfidence.note}` : recommendation}</strong>
     </article>
   );
 }
@@ -1160,7 +1193,7 @@ function SavingOpportunityCard({ realisticProjection, decisionContext, ciclo, fo
   );
 }
 
-function ExecutiveSummary({ resumen, operativo, categorias, decisionContext, realisticProjection, nivelControl, formatMoney }) {
+function ExecutiveSummary({ resumen, operativo, categorias, decisionContext, realisticProjection, nivelControl, analysisConfidence, formatMoney }) {
   const ingresos = Number(realisticProjection?.ingresoEstimado || resumen?.ingresos || 0);
   const egresos = Number(resumen?.egresos || 0);
   const balanceProyectado = Number(realisticProjection?.balanceEstimado ?? resumen?.balance_proyectado ?? 0);
@@ -1185,13 +1218,15 @@ function ExecutiveSummary({ resumen, operativo, categorias, decisionContext, rea
         ? 'Esperar a confirmar pendientes antes de ahorrar'
         : 'Evaluar separar ahorro o comprar USD'
   );
+  const showLowConfidence = analysisConfidence?.isLow;
 
   return (
     <div className="decision-executive-summary">
       {nivelControl && <p><span>Nivel de control</span><strong>{nivelControl.nivelControl}: {nivelControl.texto}</strong></p>}
-      <p><span>Estado del mes</span><strong>{estado}</strong></p>
-      <p><span>Riesgo principal</span><strong>{riesgo}</strong></p>
-      <p><span>Accion sugerida</span><strong>{accion}</strong></p>
+      {showLowConfidence && <p><span>Calidad del analisis</span><strong>Historial limitado: lectura orientativa.</strong></p>}
+      <p><span>Estado del mes</span><strong>{showLowConfidence && ingresos === 0 && egresos === 0 ? 'Sin datos suficientes' : estado}</strong></p>
+      <p><span>Riesgo principal</span><strong>{showLowConfidence && ingresos === 0 && egresos === 0 ? 'No hay base suficiente para detectar riesgos.' : riesgo}</strong></p>
+      <p><span>Accion sugerida</span><strong>{showLowConfidence && ingresos === 0 && egresos === 0 ? 'Cargar movimientos reales para mejorar el analisis.' : accion}</strong></p>
       <p><span>Balance estimado</span><strong>{formatMoney(balanceProyectado)}</strong></p>
     </div>
   );
@@ -1244,8 +1279,11 @@ export default function DecisionesPanel({
   const topCategoriesPercent = totalCategories > 0 ? Math.round((topCategoriesTotal / totalCategories) * 100) : 0;
   const lastMonth = serieMensual[serieMensual.length - 1];
   const previousMonth = serieMensual[serieMensual.length - 2];
-  const comparisonHasSignal = previousMonth && Math.abs(Number(lastMonth?.egresos || 0) - Number(previousMonth?.egresos || 0)) > 0;
-  const comparisonSummary = analysisConfidence?.isLow
+  const comparisonHasData = hasFinancialSignal(lastMonth) && hasFinancialSignal(previousMonth);
+  const comparisonHasSignal = comparisonHasData && Math.abs(Number(lastMonth?.egresos || 0) - Number(previousMonth?.egresos || 0)) > 0;
+  const comparisonSummary = !comparisonHasData
+    ? 'Comparacion: sin datos suficientes'
+    : analysisConfidence?.isLow
     ? 'Comparacion: orientativa por historial limitado'
     : cicloInfo?.cicloEnCurso ? 'Comparacion: egresos parciales del ciclo' : 'Comparacion: cierre vs mes anterior';
   const trendsSummary = categoriesBelowPattern > 0
@@ -1305,6 +1343,7 @@ export default function DecisionesPanel({
         decisionContext={decisionContext}
         realisticProjection={realisticProjection}
         nivelControl={nivelControl}
+        analysisConfidence={analysisConfidence}
         formatMoney={formatMoney}
       />
       <DecisionSection title="Decision principal">
@@ -1368,6 +1407,7 @@ export default function DecisionesPanel({
             movimientosHistoricos={movimientosHistoricos}
             formatMoney={formatMoney}
             cycleContext={cicloInfo}
+            analysisConfidence={analysisConfidence}
           />
         </div>
       </DecisionAccordion>
