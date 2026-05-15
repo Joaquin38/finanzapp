@@ -1575,6 +1575,13 @@ async function ordenarCategoriasPorHogar(usuarioId = null) {
   );
   if (base.length === 0) return;
 
+  const params = [
+    HOGAR_COLON_260_ID,
+    base.map((categoria) => categoria.nombre),
+    base.map((categoria) => categoria.tipoMovimientoId),
+    usuarioId
+  ];
+
   await pool.query(
     `
     WITH base AS (
@@ -1596,7 +1603,12 @@ async function ordenarCategoriasPorHogar(usuarioId = null) {
     ON CONFLICT (hogar_id, nombre, tipo_movimiento_id)
     DO UPDATE SET activo = true,
                   actualizado_por_usuario_id = EXCLUDED.actualizado_por_usuario_id;
+    `,
+    params
+  );
 
+  await pool.query(
+    `
     WITH base AS (
       SELECT *
       FROM UNNEST($2::text[], $3::smallint[]) AS b(nombre, tipo_movimiento_id)
@@ -1611,12 +1623,7 @@ async function ordenarCategoriasPorHogar(usuarioId = null) {
         WHERE b.nombre = c.nombre AND b.tipo_movimiento_id = c.tipo_movimiento_id
       )
     `,
-    [
-      HOGAR_COLON_260_ID,
-      base.map((categoria) => categoria.nombre),
-      base.map((categoria) => categoria.tipoMovimientoId),
-      usuarioId
-    ]
+    params
   );
 }
 
