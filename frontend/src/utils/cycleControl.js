@@ -1,11 +1,3 @@
-function isConfirmedEgreso(mov) {
-  return mov?.tipo_movimiento === 'egreso' && mov?.estado_consolidado === 'pagado';
-}
-
-function isVariableEgreso(mov) {
-  return isConfirmedEgreso(mov) && !mov.esProyectado;
-}
-
 function isPendingIngreso(mov) {
   return mov?.tipo_movimiento === 'ingreso' && !['registrado', 'cobrado'].includes(mov?.estado_consolidado);
 }
@@ -29,13 +21,7 @@ export function calcularNivelControlCiclo({
     : null;
   const ingresosPendientes = movimientos.filter(isPendingIngreso).reduce((acc, mov) => acc + Number(mov.monto_ars || 0), 0);
   const ingresosTotalesEsperados = ingresosConfirmados + ingresosPendientes;
-
-  const variableConfirmado = movimientos.filter(isVariableEgreso).reduce((acc, mov) => acc + Number(mov.monto_ars || 0), 0);
-  const avanceRatio = Math.min(Math.max(avanceCicloPorcentaje / 100, 0.05), 1);
-  const variableEsperadoCierre = variableConfirmado / avanceRatio;
-  const variablesEstimadasRestantes = Math.max(0, variableEsperadoCierre - variableConfirmado);
-  const pesoVariableProyectado = ingresosConfirmados > 0 ? (variableEsperadoCierre / ingresosConfirmados) * 100 : 0;
-  const consumoAcelerado = cycleContext.cicloEnCurso && pesoVariableProyectado > 35 && variablesEstimadasRestantes > variableConfirmado * 0.3;
+  const variablesEstimadasRestantes = 0;
   const baseIngresos = Math.max(ingresosTotalesEsperados, ingresosConfirmados, 1);
   const pendientesRelevantes = egresosPendientes > Math.max(baseIngresos * 0.18, 50000) || cantidadPendientes >= 4;
   const ingresosPendientesRelevantes = ingresosPendientes > Math.max(baseIngresos * 0.2, 50000);
@@ -50,13 +36,12 @@ export function calcularNivelControlCiclo({
     balanceProyectado < 0 ||
     margenBajoContraPendientes ||
     pendientesSinCobertura ||
-    egresosAltos ||
-    (consumoAcelerado && balanceProyectado < Math.max(egresosPendientes, baseIngresos * 0.05))
+    egresosAltos
   ) {
     nivelControl = 'Bajo';
   } else if (
     cierrePositivo &&
-    (pendientesRelevantes || ingresosPendientesRelevantes || pagosCriticosBajos || consumoAcelerado || cycleContext.cicloEnCurso)
+    (pendientesRelevantes || ingresosPendientesRelevantes || pagosCriticosBajos || cycleContext.cicloEnCurso)
   ) {
     nivelControl = 'Medio';
   }

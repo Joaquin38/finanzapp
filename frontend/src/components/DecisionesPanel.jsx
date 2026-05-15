@@ -153,7 +153,7 @@ function getComparisonRecommendation(actual, anterior, cycleContext) {
   }
 
   if (variacionEgresos != null && variacionEgresos < -10) {
-    return 'Buen ajuste: mantené este ritmo y evalua separar ahorro antes de mitad de ciclo.';
+    return 'Buen ajuste frente al mes anterior. Evalua separar ahorro cuando los pendientes principales esten cubiertos.';
   }
 
   if (balanceBajo) {
@@ -348,92 +348,6 @@ function getExpenseKind(mov) {
   return getCategoryKind(getMovementCategory(mov));
 }
 
-function isControllableExpense(mov) {
-  return ['variable', 'recurrente_variable'].includes(getExpenseKind(mov));
-}
-
-function getConfirmedExpensesUntilToday(movimientos, ciclo, dayCurrent, predicate = () => true) {
-  const limitDay = String(dayCurrent).padStart(2, '0');
-  const limitDate = `${ciclo}-${limitDay}`;
-  return getConfirmedExpenses(movimientos)
-    .filter(predicate)
-    .filter((mov) => String(mov.fecha || '').slice(0, 10) <= limitDate);
-}
-
-function RhythmCard({ movimientos, movimientosMesAnterior = [], ciclo, formatMoney }) {
-  const { dayCurrent, daysTotal } = getCycleProgress(ciclo);
-  const currentConfirmed = getConfirmedExpenses(movimientos);
-  const currentControlable = getConfirmedExpensesUntilToday(movimientos, ciclo, dayCurrent, isControllableExpense);
-  const variablesAcumulados = currentControlable
-    .filter((mov) => getExpenseKind(mov) === 'variable')
-    .reduce((acc, mov) => acc + Number(mov.monto_ars || 0), 0);
-  const recurrentesVariablesAcumulados = currentControlable
-    .filter((mov) => getExpenseKind(mov) === 'recurrente_variable')
-    .reduce((acc, mov) => acc + Number(mov.monto_ars || 0), 0);
-  const fijosPagados = currentConfirmed
-    .filter((mov) => getExpenseKind(mov) === 'fijo')
-    .reduce((acc, mov) => acc + Number(mov.monto_ars || 0), 0);
-  const fijosPendientes = movimientos
-    .filter(isPendingExpense)
-    .filter((mov) => getExpenseKind(mov) === 'fijo')
-    .reduce((acc, mov) => acc + Number(mov.monto_ars || 0), 0);
-  const actual = variablesAcumulados + recurrentesVariablesAcumulados;
-  const previousDistribution = getWeeklyDistributionPercentages(movimientosMesAnterior, isControllableExpense);
-  const historialControlable = previousDistribution.total;
-  const expectedProgress = historialControlable > 0
-    ? previousDistribution.percentages.slice(0, getWeekIndex(`${ciclo}-${String(dayCurrent).padStart(2, '0')}`) + 1).reduce((acc, value) => acc + value, 0)
-    : 0;
-  const esperado = historialControlable > 0 ? historialControlable * Math.max(expectedProgress, 0.01) : 0;
-  const diferencia = actual - esperado;
-  const variacion = getVariation(actual, esperado);
-  const sinHistorial = historialControlable <= 0;
-  const status =
-    sinHistorial ? 'Sin historial' : actual > esperado * 1.1 ? 'Ritmo alto' : actual < esperado * 0.9 ? 'Ritmo bajo' : 'Ritmo normal';
-  const tone = sinHistorial ? 'muted' : status === 'Ritmo alto' ? 'warning' : status === 'Ritmo bajo' ? 'positive' : 'muted';
-  const recommendation =
-    sinHistorial
-      ? 'Falta historial para calcular ritmo esperado.'
-      : status === 'Ritmo alto'
-        ? 'El consumo controlable viene por encima del patron esperado.'
-        : status === 'Ritmo bajo'
-          ? 'El consumo controlable viene por debajo del patron esperado.'
-          : 'El consumo controlable viene alineado al patron esperado.';
-
-  return (
-    <article className="card decision-card decision-comparison-card">
-      <DecisionCardHeader
-        title="Ritmo del mes"
-        help="Compara tu gasto controlable actual contra lo esperado segun el mes anterior. Si esta alto, ayuda a decidir si conviene frenar gastos variables."
-      />
-      <em className={`decision-status ${tone}`}>{status}</em>
-      <div className="decision-comparison-grid">
-        <div className="decision-comparison-row">
-          <span>Consumo controlable</span>
-          <strong>{formatMoney(actual)}</strong>
-          <small>Dia {dayCurrent} de {daysTotal}</small>
-        </div>
-        <div className="decision-comparison-row">
-          <span>Esperado segun patron</span>
-          <strong>{formatMoney(esperado)}</strong>
-          <small>Variables y recurrentes variables</small>
-        </div>
-        <div className="decision-comparison-row">
-          <span>Diferencia</span>
-          <strong>{formatMoney(diferencia)}</strong>
-          <em className={`decision-variation ${tone}`}>{sinHistorial ? 'Sin referencia' : formatVariation(variacion)}</em>
-        </div>
-      </div>
-      <div className="decision-composition-grid">
-        <span>Fijos pagados <strong>{formatMoney(fijosPagados)}</strong></span>
-        <span>Fijos pendientes <strong>{formatMoney(fijosPendientes)}</strong></span>
-        <span>Variables acumulados <strong>{formatMoney(variablesAcumulados)}</strong></span>
-        <span>Recurrentes variables <strong>{formatMoney(recurrentesVariablesAcumulados)}</strong></span>
-      </div>
-      <strong>{recommendation}</strong>
-    </article>
-  );
-}
-
 function getWeekIndex(fecha) {
   const day = Number(String(fecha || '').slice(8, 10));
   if (day <= 7) return 0;
@@ -500,46 +414,88 @@ function WeeklyDistributionCard({ movimientos, formatMoney }) {
   );
 }
 
-function getWeeklyDistributionPercentages(movimientos, predicate = () => true) {
-  const totals = [0, 0, 0, 0];
-  getConfirmedExpenses(movimientos).filter(predicate).forEach((mov) => {
-    totals[getWeekIndex(mov.fecha)] += Number(mov.monto_ars || 0);
+function getConfirmedHistoricalCycles(movimientos = []) {
+  return Array.from(new Set(
+    movimientos
+      .filter((mov) => isConfirmedExpense(mov) || isConfirmedIncome(mov))
+      .map((mov) => String(mov.fecha || '').slice(0, 7))
+      .filter(Boolean)
+  )).sort();
+}
+
+function getHistoricalVariablePattern(movimientosHistoricos = []) {
+  const cycles = getConfirmedHistoricalCycles(movimientosHistoricos);
+  const totalsByCategory = new Map();
+  const totalsByCycle = new Map(cycles.map((cycle) => [cycle, 0]));
+
+  getConfirmedExpenses(movimientosHistoricos)
+    .filter((mov) => getExpenseKind(mov) === 'variable')
+    .forEach((mov) => {
+      const cycle = String(mov.fecha || '').slice(0, 7);
+      const category = getMovementCategory(mov) || 'Sin categoria';
+      const amount = Number(mov.monto_ars || 0);
+      if (!cycle || !cycles.includes(cycle)) return;
+      if (!totalsByCategory.has(category)) totalsByCategory.set(category, new Map());
+      const categoryTotals = totalsByCategory.get(category);
+      categoryTotals.set(cycle, Number(categoryTotals.get(cycle) || 0) + amount);
+      totalsByCycle.set(cycle, Number(totalsByCycle.get(cycle) || 0) + amount);
+    });
+
+  const categoryAverages = new Map();
+  totalsByCategory.forEach((valuesByCycle, category) => {
+    const total = cycles.reduce((acc, cycle) => acc + Number(valuesByCycle.get(cycle) || 0), 0);
+    categoryAverages.set(category, cycles.length > 0 ? total / cycles.length : 0);
   });
-  const total = totals.reduce((acc, value) => acc + value, 0);
+
+  const totalAverage = cycles.length > 0
+    ? cycles.reduce((acc, cycle) => acc + Number(totalsByCycle.get(cycle) || 0), 0) / cycles.length
+    : 0;
+  const variableCycles = cycles.filter((cycle) => Number(totalsByCycle.get(cycle) || 0) > 0).length;
+  const confianza = cycles.length >= 3 && variableCycles >= 2 ? 'alta' : cycles.length >= 2 ? 'media' : 'baja';
+
   return {
-    total,
-    percentages: totals.map((value) => (total > 0 ? value / total : 0))
+    cyclesWithData: cycles.length,
+    variableCycles,
+    categoryAverages,
+    totalAverage,
+    confianza,
+    hasVariableHistory: cycles.length >= 2 && variableCycles > 0,
+    canProjectDeficit: confianza === 'alta'
   };
 }
 
-function calculateRealisticProjection({ movimientos, movimientosMesAnterior = [], resumen, ciclo }) {
-  const { dayCurrent, daysTotal } = getCycleProgress(ciclo);
-  const currentWeekIndex = dayCurrent <= 7 ? 0 : dayCurrent <= 14 ? 1 : dayCurrent <= 21 ? 2 : 3;
+function calculateRealisticProjection({ movimientos, movimientosMesAnterior = [], movimientosHistoricos = [], resumen, ciclo }) {
   const byKind = {
     fijo: { confirmed: 0, pending: 0 },
     recurrente_variable: { confirmed: 0, pending: 0 },
     variable: { confirmed: 0, pending: 0 },
     extraordinario: { confirmed: 0, pending: 0 }
   };
+  const currentVariableByCategory = new Map();
 
   movimientos.filter(isExpenseMovement).forEach((mov) => {
     const kind = getExpenseKind(mov);
     const bucket = byKind[kind] || byKind.variable;
     if (isConfirmedExpense(mov)) bucket.confirmed += Number(mov.monto_ars || 0);
     else if (isPendingExpense(mov)) bucket.pending += Number(mov.monto_ars || 0);
+
+    if (kind === 'variable' && (isConfirmedExpense(mov) || isPendingExpense(mov))) {
+      const category = getMovementCategory(mov) || 'Sin categoria';
+      currentVariableByCategory.set(category, Number(currentVariableByCategory.get(category) || 0) + Number(mov.monto_ars || 0));
+    }
   });
 
-  const isVariable = (mov) => getExpenseKind(mov) === 'variable';
-  const previousDistribution = getWeeklyDistributionPercentages(movimientosMesAnterior, isVariable);
-  const hasVariableHistory = previousDistribution.total > 0;
-  const expectedProgress = hasVariableHistory
-    ? previousDistribution.percentages.slice(0, currentWeekIndex + 1).reduce((acc, value) => acc + value, 0)
-    : dayCurrent / daysTotal;
-  const safeProgress = Math.max(expectedProgress, 0.01);
-  const variableProjectionSource = hasVariableHistory
-    ? byKind.variable.confirmed / safeProgress
-    : (byKind.variable.confirmed / dayCurrent) * daysTotal;
-  const variableProjection = Math.max(byKind.variable.confirmed, variableProjectionSource || 0);
+  const historicalPattern = getHistoricalVariablePattern(movimientosHistoricos);
+  const variableCategories = new Set([
+    ...Array.from(currentVariableByCategory.keys()),
+    ...Array.from(historicalPattern.categoryAverages.keys())
+  ]);
+  const variableProjection = Array.from(variableCategories).reduce((acc, category) => {
+    const current = Number(currentVariableByCategory.get(category) || 0);
+    const average = Number(historicalPattern.categoryAverages.get(category) || 0);
+    if (historicalPattern.confianza === 'baja') return acc + current;
+    return acc + Math.max(current, average);
+  }, 0);
   const fijoTotal = byKind.fijo.confirmed + byKind.fijo.pending;
   const recurrenteTotal = byKind.recurrente_variable.confirmed + byKind.recurrente_variable.pending;
   const extraordinarioTotal = byKind.extraordinario.confirmed;
@@ -548,14 +504,20 @@ function calculateRealisticProjection({ movimientos, movimientosMesAnterior = []
   const ingresosProyectados = movimientos.filter(isProjectedIncome).reduce((acc, mov) => acc + Number(mov.monto_ars || 0), 0);
   const ingresosDelCiclo = Math.max(Number(resumen?.ingresos || 0), ingresosConfirmados);
   const ingresoEstimado = Math.max(ingresosConfirmados + ingresosProyectados, ingresosDelCiclo);
-  const balanceEstimado = ingresoEstimado - egresoEstimado;
   const egresosPendientes = movimientos.filter(isPendingExpense).reduce((acc, mov) => acc + Number(mov.monto_ars || 0), 0);
-  const variablesEsperadosRestantes = Math.max(variableProjection - byKind.variable.confirmed, 0);
-  const confianza = hasVariableHistory && byKind.variable.confirmed > 0
-    ? 'alta'
-    : hasVariableHistory || byKind.variable.confirmed > 0
-      ? 'media'
-      : 'baja';
+  const variableBaseActual = byKind.variable.confirmed + byKind.variable.pending;
+  const variablesEsperadosRestantes = Math.max(variableProjection - variableBaseActual, 0);
+  const balanceProyectadoBase = Number(resumen?.balance_proyectado || 0);
+  const projectedBalanceWithHistory = balanceProyectadoBase - variablesEsperadosRestantes;
+  const balanceEstimado = !historicalPattern.canProjectDeficit && balanceProyectadoBase >= 0
+    ? Math.max(projectedBalanceWithHistory, 0)
+    : projectedBalanceWithHistory;
+  const projectionNote =
+    historicalPattern.confianza === 'baja'
+      ? 'Historial insuficiente para estimar gastos restantes.'
+      : historicalPattern.confianza === 'media'
+        ? 'Lectura orientativa con historial limitado.'
+        : 'Basado en patron historico de ciclos cerrados.';
 
   return {
     byKind,
@@ -565,15 +527,20 @@ function calculateRealisticProjection({ movimientos, movimientosMesAnterior = []
     variableProjection,
     egresoEstimado,
     balanceEstimado,
+    balanceProyectadoBase,
     ingresosDelCiclo,
     ingresoEstimado,
     ingresosConfirmados,
     ingresosProyectados,
     egresosPendientes,
     variablesEsperadosRestantes,
-    safeProgress,
-    hasVariableHistory,
-    confianza
+    safeProgress: historicalPattern.cyclesWithData > 0 ? Math.min(historicalPattern.cyclesWithData / 3, 1) : 0,
+    hasVariableHistory: historicalPattern.hasVariableHistory,
+    confianza: historicalPattern.confianza,
+    historicalCyclesWithData: historicalPattern.cyclesWithData,
+    historicalVariableAverage: historicalPattern.totalAverage,
+    canProjectDeficit: historicalPattern.canProjectDeficit,
+    projectionNote
   };
 }
 
@@ -587,6 +554,20 @@ function buildDecisionContext({ resumen, realisticProjection }) {
     Number(realisticProjection?.variablesEsperadosRestantes || 0)
   );
   const margenAhorroReal = Number(realisticProjection?.balanceEstimado || 0) - colchonMinimo;
+  const confianza = realisticProjection?.confianza || 'baja';
+
+  if (confianza === 'baja' && balanceProyectado > 0) {
+    return {
+      balanceReal,
+      balanceProyectado,
+      margenDisponible: balanceReal,
+      margenAhorroReal,
+      colchonMinimo,
+      riesgo: 'medio',
+      puedeAhorrar: true,
+      recomendacionPrincipal: 'Hay margen proyectado, pero falta historial para una recomendacion fuerte'
+    };
+  }
 
   if (margenAhorroReal <= 0) {
     return {
@@ -626,64 +607,6 @@ function buildDecisionContext({ resumen, realisticProjection }) {
   };
 }
 
-function ProjectionByPaceCard({ movimientos, movimientosMesAnterior = [], resumen, ciclo, formatMoney }) {
-  const { dayCurrent, daysTotal } = getCycleProgress(ciclo);
-  const currentWeekIndex = dayCurrent <= 7 ? 0 : dayCurrent <= 14 ? 1 : dayCurrent <= 21 ? 2 : 3;
-  const egresosConfirmados = getConfirmedExpenses(movimientos).reduce((acc, mov) => acc + Number(mov.monto_ars || 0), 0);
-  const previousDistribution = getWeeklyDistributionPercentages(movimientosMesAnterior);
-  const hasHistoricalPattern = previousDistribution.total > 0;
-  const expectedProgress = hasHistoricalPattern
-    ? previousDistribution.percentages.slice(0, currentWeekIndex + 1).reduce((acc, value) => acc + value, 0)
-    : dayCurrent / daysTotal;
-  const safeProgress = Math.max(expectedProgress, 0.01);
-  const projectedByPattern = egresosConfirmados / safeProgress;
-  const fallbackProjection = (egresosConfirmados / dayCurrent) * daysTotal;
-  const rawProjection = hasHistoricalPattern ? projectedByPattern : fallbackProjection;
-  const egresoProyectado = egresosConfirmados > 0 ? Math.min(rawProjection, egresosConfirmados * 2) : 0;
-  const ingresosConfirmados = movimientos.filter(isConfirmedIncome).reduce((acc, mov) => acc + Number(mov.monto_ars || 0), 0);
-  const ingresosProyectados = movimientos.filter(isProjectedIncome).reduce((acc, mov) => acc + Number(mov.monto_ars || 0), 0);
-  const ingresoEstimado = Math.max(ingresosConfirmados + ingresosProyectados, Number(resumen?.ingresos || 0));
-  const balanceEstimado = ingresoEstimado - egresoProyectado;
-  const margenRatio = ingresoEstimado > 0 ? balanceEstimado / ingresoEstimado : 0;
-  const estado = balanceEstimado < 0 ? 'Riesgo de deficit' : margenRatio <= 0.1 ? 'Mes ajustado' : 'Margen positivo';
-  const tone = balanceEstimado < 0 ? 'danger' : margenRatio <= 0.1 ? 'muted' : 'positive';
-  const recommendation =
-    balanceEstimado < 0
-      ? 'Si mantenes este ritmo, cerrarias negativo. Revisa gastos variables y posterga consumos no esenciales.'
-      : margenRatio <= 0.1
-        ? 'El margen es bajo. Evita gastos grandes hasta confirmar todos los pendientes.'
-        : 'Hay margen positivo. Podes evaluar separar una parte para ahorro o compra de USD.';
-
-  return (
-    <article className="card decision-card decision-comparison-card">
-      <DecisionCardHeader
-        title="Proyeccion por ritmo actual"
-        showDetail
-        help="Estima el cierre usando tipos de gasto y comportamiento historico. Sirve para decidir si conviene ahorrar, comprar USD o esperar."
-      />
-      <em className={`decision-status ${tone}`}>{estado}</em>
-      <div className="decision-comparison-grid">
-        <div className="decision-comparison-row">
-          <span>Egresos actuales</span>
-          <strong>{formatMoney(egresosConfirmados)}</strong>
-          <small>Confirmados hasta hoy</small>
-        </div>
-        <div className="decision-comparison-row">
-          <span>Porcentaje esperado</span>
-          <strong>{Math.round(safeProgress * 100)}%</strong>
-          <small>{hasHistoricalPattern ? 'Proyección basada en tu comportamiento histórico' : 'Fallback por promedio diario'}</small>
-        </div>
-        <div className="decision-comparison-row">
-          <span>Proyeccion corregida</span>
-          <strong>{formatMoney(egresoProyectado)}</strong>
-          <small>Balance estimado: {formatMoney(balanceEstimado)}</small>
-        </div>
-      </div>
-      <strong>{recommendation}</strong>
-    </article>
-  );
-}
-
 function ProjectionByFunctionalTypeCard({ movimientos, movimientosMesAnterior = [], resumen, ciclo, formatMoney, realisticProjection = null }) {
   const {
     byKind,
@@ -693,20 +616,28 @@ function ProjectionByFunctionalTypeCard({ movimientos, movimientosMesAnterior = 
     variableProjection,
     egresoEstimado,
     balanceEstimado,
+    balanceProyectadoBase,
     ingresosDelCiclo,
     ingresoEstimado,
     ingresosConfirmados,
     ingresosProyectados,
-    safeProgress,
     hasVariableHistory,
-    confianza
+    confianza,
+    historicalCyclesWithData,
+    historicalVariableAverage,
+    canProjectDeficit,
+    projectionNote
   } = realisticProjection || calculateRealisticProjection({ movimientos, movimientosMesAnterior, resumen, ciclo });
   const margenRatio = ingresoEstimado > 0 ? balanceEstimado / ingresoEstimado : 0;
-  const estado = balanceEstimado < 0 ? 'Riesgo de deficit' : margenRatio <= 0.1 ? 'Mes ajustado' : 'Margen positivo';
-  const tone = balanceEstimado < 0 ? 'danger' : margenRatio <= 0.1 ? 'muted' : 'positive';
+  const estado = balanceEstimado < 0 ? 'Riesgo de deficit' : confianza === 'baja' ? 'Historial insuficiente' : margenRatio <= 0.1 ? 'Mes ajustado' : 'Margen positivo';
+  const tone = balanceEstimado < 0 ? 'danger' : confianza === 'baja' || margenRatio <= 0.1 ? 'muted' : 'positive';
   const recommendation =
-    balanceEstimado < 0
-      ? 'El cierre estimado queda negativo. Revisa variables y pendientes antes de sumar gastos.'
+    balanceEstimado < 0 && canProjectDeficit
+      ? 'El patron historico sostiene riesgo de deficit. Revisa gastos variables antes de asumir nuevos compromisos.'
+      : balanceEstimado < 0
+        ? 'El balance proyectado base ya queda negativo. Revisa pagos e ingresos pendientes.'
+      : confianza === 'baja'
+        ? 'No hay historial suficiente para proyectar el cierre. Usa el balance proyectado como referencia principal.'
       : margenRatio <= 0.1
         ? 'El margen estimado es bajo. Conviene esperar antes de nuevas decisiones grandes.'
         : 'Hay margen estimado. Podes evaluar ahorro o compra de USD con prudencia.';
@@ -714,15 +645,15 @@ function ProjectionByFunctionalTypeCard({ movimientos, movimientosMesAnterior = 
   return (
     <article className="card decision-card decision-comparison-card decision-card-primary">
       <DecisionCardHeader
-        title="Proyeccion por ritmo actual"
+        title="Proyeccion por patron historico"
         showDetail
-        help="Estima el cierre usando tipos de gasto y comportamiento historico. Sirve para decidir si conviene ahorrar, comprar USD o esperar."
+        help="Estima el cierre usando el balance proyectado como base y solo ajusta variables cuando hay historial suficiente."
       />
       <div className="decision-status-row">
         <em className={`decision-status ${tone}`}>{estado}</em>
         <em className={`decision-status decision-confidence ${confianza}`}>Confianza {confianza}</em>
       </div>
-      <small>Proyeccion ajustada por ingresos y egresos del ciclo</small>
+      <small>{projectionNote}</small>
       <div className="decision-comparison-grid">
         <div className="decision-comparison-row">
           <span>Ingreso estimado al cierre</span>
@@ -730,24 +661,25 @@ function ProjectionByFunctionalTypeCard({ movimientos, movimientosMesAnterior = 
           <small>{formatMoney(ingresosConfirmados)} confirmados + {formatMoney(ingresosProyectados)} proyectados</small>
         </div>
         <div className="decision-comparison-row">
-          <span>Egreso estimado al cierre</span>
-          <strong>{formatMoney(egresoEstimado)}</strong>
-          <small>Fijos, recurrentes, variables y extraordinarios</small>
+          <span>Balance proyectado base</span>
+          <strong>{formatMoney(balanceProyectadoBase)}</strong>
+          <small>Mismo criterio del dashboard</small>
         </div>
         <div className="decision-comparison-row">
           <span>Balance estimado al cierre</span>
           <strong>{formatMoney(balanceEstimado)}</strong>
-          <small>Incluye ingresos proyectados y egresos estimados</small>
+          <small>{canProjectDeficit ? 'Puede ajustar por patron historico' : 'No fuerza deficit sin historial fuerte'}</small>
         </div>
         <div className="decision-comparison-row">
           <span>Variable proyectado</span>
           <strong>{formatMoney(variableProjection)}</strong>
-          <small>{hasVariableHistory ? `${Math.round(safeProgress * 100)}% esperado segun historial` : 'Fallback por promedio diario'}</small>
+          <small>{hasVariableHistory ? `Promedio historico: ${formatMoney(historicalVariableAverage)}` : 'Historial insuficiente'}</small>
         </div>
       </div>
       <div className="decision-composition-grid">
         <span>Ingreso confirmado <strong>{formatMoney(ingresosConfirmados)}</strong></span>
         <span>Ingreso proyectado <strong>{formatMoney(ingresosProyectados)}</strong></span>
+        <span>Ciclos con datos <strong>{historicalCyclesWithData}</strong></span>
         <span>Fijo <strong>{formatMoney(fijoTotal)}</strong></span>
         <span>Recurrente variable <strong>{formatMoney(recurrenteTotal)}</strong></span>
         <span>Variable proyectado <strong>{formatMoney(variableProjection)}</strong></span>
@@ -822,15 +754,12 @@ function CategoryTrendsCard({ movimientos = [], movimientosHistoricos = [], form
   const isPartial = cycleContext?.cicloEnCurso;
   const currentByCategory = getConfirmedExpensesByCategory(movimientos);
   const historicalByCategory = getCategoryMonthlyTotals(movimientosHistoricos);
+  const historicalCycles = getConfirmedHistoricalCycles(movimientosHistoricos);
   const trends = Object.entries(currentByCategory)
     .sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))
     .slice(0, 5)
     .map(([categoria, actual]) => {
-      const monthlyValues = Object.entries(historicalByCategory[categoria] || {})
-        .sort(([a], [b]) => String(b).localeCompare(String(a)))
-        .slice(0, 3)
-        .map(([, value]) => Number(value || 0))
-        .filter((value) => value > 0);
+      const monthlyValues = historicalCycles.slice(-3).map((cycle) => Number(historicalByCategory[categoria]?.[cycle] || 0));
       const promedio = monthlyValues.length > 0
         ? monthlyValues.reduce((acc, value) => acc + value, 0) / monthlyValues.length
         : 0;
@@ -849,7 +778,12 @@ function CategoryTrendsCard({ movimientos = [], movimientosHistoricos = [], form
       />
       <ConfidenceBadge confidence={analysisConfidence} />
       {isPartial && <span className="pill muted decision-cycle-badge">Ciclo en curso</span>}
-      {trends.length > 0 ? (
+      {historicalCycles.length < 2 ? (
+        <div className="decision-data-note compact">
+          <strong>No hay informacion suficiente para analizar tendencias.</strong>
+          <p>Se necesitan al menos dos ciclos con movimientos reales para comparar categorias.</p>
+        </div>
+      ) : trends.length > 0 ? (
         <div className="decision-trend-list">
           {trends.map((item) => (
             <div className="decision-trend-row" key={item.categoria}>
@@ -869,6 +803,8 @@ function CategoryTrendsCard({ movimientos = [], movimientosHistoricos = [], form
 }
 
 function getHistoricalAverageForCategory(categoria, movimientosHistoricos = []) {
+  const cycles = getConfirmedHistoricalCycles(movimientosHistoricos);
+  if (cycles.length === 0) return 0;
   const totalsByCycle = getConfirmedExpenses(movimientosHistoricos)
     .filter((mov) => isCategoryNamed(getMovementCategory(mov), categoria))
     .reduce((acc, mov) => {
@@ -877,19 +813,17 @@ function getHistoricalAverageForCategory(categoria, movimientosHistoricos = []) 
       acc[cycle] = (acc[cycle] || 0) + Number(mov.monto_ars || 0);
       return acc;
     }, {});
-  const values = Object.entries(totalsByCycle)
-    .sort(([a], [b]) => String(b).localeCompare(String(a)))
-    .slice(0, 3)
-    .map(([, value]) => Number(value || 0))
-    .filter((value) => value > 0);
+  const recentCycles = cycles.slice(-3);
+  const values = recentCycles.map((cycle) => Number(totalsByCycle[cycle] || 0));
 
-  return values.length > 0 ? values.reduce((acc, value) => acc + value, 0) / values.length : 0;
+  return values.reduce((acc, value) => acc + value, 0) / values.length;
 }
 
-function BehaviorAlertsCard({ movimientos = [], movimientosMesAnterior = [], movimientosHistoricos = [], ciclo, formatMoney, cycleContext }) {
+function BehaviorAlertsCard({ movimientos = [], movimientosMesAnterior = [], movimientosHistoricos = [], ciclo, formatMoney, cycleContext, analysisConfidence }) {
   const { dayCurrent, daysTotal } = getCycleProgress(ciclo, cycleContext);
   const isPartial = cycleContext?.cicloEnCurso;
   const progress = Math.min(Math.max(dayCurrent / Math.max(daysTotal, 1), 0), 1);
+  const historicalCycles = getConfirmedHistoricalCycles(movimientosHistoricos).length;
   const severityOrder = { Critica: 0, Atencion: 1, Observacion: 2 };
   const getSeverity = (tone, impact, expected) => {
     if (tone === 'over' && impact > Math.max(expected * 0.5, 50000)) return 'Critica';
@@ -899,12 +833,12 @@ function BehaviorAlertsCard({ movimientos = [], movimientosMesAnterior = [], mov
   };
   const currentByCategory = getConfirmedExpensesByCategory(movimientos);
   const previousByCategory = getConfirmedExpensesByCategory(movimientosMesAnterior);
-  const alerts = Object.entries(currentByCategory)
+  const alerts = historicalCycles < 2 ? [] : Object.entries(currentByCategory)
     .sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))
     .slice(0, 5)
     .map(([categoria, actual]) => {
       const promedioHistorico = getHistoricalAverageForCategory(categoria, movimientosHistoricos);
-      const esperadoActual = promedioHistorico * progress;
+      const esperadoActual = promedioHistorico;
       const previous = getCategoryTotal(previousByCategory, categoria);
       const ratio = esperadoActual > 0 ? Number(actual || 0) / esperadoActual : null;
       const variacionMesAnterior = previous > 0 ? ((Number(actual || 0) - previous) / previous) * 100 : null;
@@ -919,12 +853,12 @@ function BehaviorAlertsCard({ movimientos = [], movimientosMesAnterior = [], mov
           icon: '!',
           severity: getSeverity('over', impact, esperadoActual),
           impact,
-          text: `${categoria} esta por encima del patron esperado. Revisá si fue un gasto puntual o si conviene frenar el ritmo.`,
-          meta: `${formatMoney(actual)} vs esperado ${formatMoney(esperadoActual)}`
+          text: `${categoria} ya supero su promedio mensual habitual. Revisa si fue un gasto puntual o un nuevo patron.`,
+          meta: `${formatMoney(actual)} vs promedio historico ${formatMoney(esperadoActual)}`
         });
       }
 
-      if (ratio != null && ratio < 0.6) {
+      if (ratio != null && ratio < 0.6 && (!isPartial || progress >= 0.75)) {
         const impact = Math.abs(esperadoActual - Number(actual || 0));
         candidates.push({
           categoria,
@@ -933,8 +867,8 @@ function BehaviorAlertsCard({ movimientos = [], movimientosMesAnterior = [], mov
           icon: 'i',
           severity: getSeverity('under', impact, esperadoActual),
           impact,
-          text: `${categoria} esta por debajo de lo esperado para esta altura del ciclo. Revisá si faltan consumos por registrar.`,
-          meta: `${formatMoney(actual)} vs esperado ${formatMoney(esperadoActual)}`
+          text: `${categoria} esta muy por debajo de su promedio habitual. Revisa si faltan consumos por registrar.`,
+          meta: `${formatMoney(actual)} vs promedio historico ${formatMoney(esperadoActual)}`
         });
       }
 
@@ -966,10 +900,16 @@ function BehaviorAlertsCard({ movimientos = [], movimientosMesAnterior = [], mov
     <article className="card decision-card decision-comparison-card decision-behavior-alerts">
       <DecisionCardHeader
         title="Alertas de comportamiento"
-        help="Detecta desvios por categoria usando avance del ciclo e historial reciente. No muestra alertas si no hay cambios relevantes."
+        help="Detecta desvios por categoria contra promedios historicos. No extrapola el gasto por semana."
       />
+      <ConfidenceBadge confidence={analysisConfidence} />
       {isPartial && <span className="pill muted decision-cycle-badge">Ciclo en curso</span>}
-      {alerts.length > 0 ? (
+      {historicalCycles < 2 ? (
+        <div className="decision-data-note compact">
+          <strong>No hay informacion suficiente para analizar tendencias.</strong>
+          <p>Se necesitan al menos dos ciclos con movimientos reales para comparar comportamiento.</p>
+        </div>
+      ) : alerts.length > 0 ? (
         <div className="decision-alert-list">
           {alerts.map((alert) => (
             <div className={`decision-alert-row alert-${alert.tone}`} key={`${alert.type}-${alert.categoria}`}>
@@ -1252,18 +1192,19 @@ export default function DecisionesPanel({
   const balanceProyectado = Number(resumen?.balance_proyectado || 0);
   const pendiente = Number(operativo?.montoPendienteEgresos || 0);
   const porcentajePagado = Number(operativo?.porcentajeEgresosPagados || 0);
-  const realisticProjection = calculateRealisticProjection({ movimientos, movimientosMesAnterior, resumen, ciclo });
+  const realisticProjection = calculateRealisticProjection({ movimientos, movimientosMesAnterior, movimientosHistoricos, resumen, ciclo });
   const decisionContext = buildDecisionContext({ resumen, realisticProjection });
   const balanceEsperado = Number(realisticProjection?.balanceEstimado ?? balanceProyectado);
   const currentByCategory = getConfirmedExpensesByCategory(movimientos);
   const previousByCategory = getConfirmedExpensesByCategory(movimientosMesAnterior);
   const categoryNames = Array.from(new Set([...Object.keys(currentByCategory), ...Object.keys(previousByCategory)]));
   const cycleProgressRatio = Math.min(Math.max((cicloInfo?.avanceCicloPorcentaje || 100) / 100, 0), 1);
+  const historicalCyclesForDecisions = getConfirmedHistoricalCycles(movimientosHistoricos).length;
   const categoriesBelowPattern = categoryNames.filter((category) => {
+    if (historicalCyclesForDecisions < 2 || (cicloInfo?.cicloEnCurso && cycleProgressRatio < 0.75)) return false;
     const average = getHistoricalAverageForCategory(category, movimientosHistoricos);
     if (average <= 0) return false;
-    const expected = average * cycleProgressRatio;
-    return Number(currentByCategory[category] || 0) < expected * 0.75;
+    return Number(currentByCategory[category] || 0) < average * 0.55;
   }).length;
   const weeklyTotals = [0, 0, 0, 0];
   getConfirmedExpenses(movimientos).forEach((mov) => {
@@ -1286,7 +1227,9 @@ export default function DecisionesPanel({
     : analysisConfidence?.isLow
     ? 'Comparacion: orientativa por historial limitado'
     : cicloInfo?.cicloEnCurso ? 'Comparacion: egresos parciales del ciclo' : 'Comparacion: cierre vs mes anterior';
-  const trendsSummary = categoriesBelowPattern > 0
+  const trendsSummary = historicalCyclesForDecisions < 2
+    ? 'Tendencias: sin historial suficiente'
+    : categoriesBelowPattern > 0
     ? `${analysisConfidence?.isLow ? 'Tendencias orientativas' : 'Tendencias'}: ${categoriesBelowPattern} categorias por debajo del patron`
     : 'Tendencias: sin desvios fuertes';
   const weeklySummary = weeklyTotal > 0
