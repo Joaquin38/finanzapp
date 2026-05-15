@@ -80,6 +80,8 @@ const HOGAR_COLON_260_ID = 1;
 const USUARIO_JOAQUIN_ID = 1;
 const USUARIO_SOFIA_ID = 2;
 const CATEGORIAS_BASE = [
+  { nombre: 'Sueldo', tipoMovimiento: 'ingreso' },
+  { nombre: 'Sueldo tarjeta', tipoMovimiento: 'ingreso' },
   { nombre: 'Reintegros', tipoMovimiento: 'ingreso' },
   { nombre: 'Ajuste de cierre', tipoMovimiento: 'ingreso' },
   { nombre: 'Arrastre de cierre', tipoMovimiento: 'ingreso' },
@@ -976,6 +978,8 @@ async function asegurarDatosColon260() {
     [HOGAR_COLON_260_ID, USUARIO_JOAQUIN_ID, USUARIO_SOFIA_ID]
   );
   await pool.query('UPDATE gastos_fijos SET hogar_id = $1 WHERE hogar_id IS NULL', [HOGAR_COLON_260_ID]);
+  await asegurarCategoriasBaseTodosHogares(USUARIO_JOAQUIN_ID);
+  await ordenarCategoriasPorHogar(USUARIO_JOAQUIN_ID);
   await pool.query(`
     DO $$
     BEGIN
@@ -1544,6 +1548,73 @@ async function asegurarCategoriasBase(hogarId, usuarioId = null) {
       hogarId,
       categoriasBaseConTipo.map((categoria) => categoria.nombre),
       categoriasBaseConTipo.map((categoria) => categoria.tipoMovimientoId),
+      usuarioId
+    ]
+  );
+}
+
+async function asegurarCategoriasBaseTodosHogares(usuarioId = null) {
+  const { rows } = await pool.query('SELECT id FROM hogares ORDER BY id ASC');
+  for (const hogar of rows) {
+    await asegurarCategoriasBase(Number(hogar.id), usuarioId);
+  }
+}
+
+async function ordenarCategoriasPorHogar(usuarioId = null) {
+  const { rows: tiposRows } = await pool.query('SELECT id, codigo FROM tipos_movimiento');
+  const tipoIdPorCodigo = new Map(tiposRows.map((row) => [row.codigo, Number(row.id)]));
+  const base = Array.from(
+    new Map(
+      CATEGORIAS_BASE.map((categoria) => ({
+        nombre: categoria.nombre,
+        tipoMovimientoId: tipoIdPorCodigo.get(categoria.tipoMovimiento)
+      }))
+        .filter((categoria) => categoria.tipoMovimientoId)
+        .map((categoria) => [`${categoria.nombre}::${categoria.tipoMovimientoId}`, categoria])
+    ).values()
+  );
+  if (base.length === 0) return;
+
+  await pool.query(
+    `
+    WITH base AS (
+      SELECT *
+      FROM UNNEST($2::text[], $3::smallint[]) AS b(nombre, tipo_movimiento_id)
+    ), externas AS (
+      SELECT DISTINCT c.nombre, c.tipo_movimiento_id
+      FROM categorias c
+      WHERE c.hogar_id <> $1
+        AND c.activo = true
+        AND NOT EXISTS (
+          SELECT 1 FROM base b
+          WHERE b.nombre = c.nombre AND b.tipo_movimiento_id = c.tipo_movimiento_id
+        )
+    )
+    INSERT INTO categorias (hogar_id, nombre, tipo_movimiento_id, creado_por_usuario_id, actualizado_por_usuario_id)
+    SELECT $1, nombre, tipo_movimiento_id, $4, $4
+    FROM externas
+    ON CONFLICT (hogar_id, nombre, tipo_movimiento_id)
+    DO UPDATE SET activo = true,
+                  actualizado_por_usuario_id = EXCLUDED.actualizado_por_usuario_id;
+
+    WITH base AS (
+      SELECT *
+      FROM UNNEST($2::text[], $3::smallint[]) AS b(nombre, tipo_movimiento_id)
+    )
+    UPDATE categorias c
+    SET activo = false,
+        actualizado_por_usuario_id = $4
+    WHERE c.hogar_id <> $1
+      AND c.activo = true
+      AND NOT EXISTS (
+        SELECT 1 FROM base b
+        WHERE b.nombre = c.nombre AND b.tipo_movimiento_id = c.tipo_movimiento_id
+      )
+    `,
+    [
+      HOGAR_COLON_260_ID,
+      base.map((categoria) => categoria.nombre),
+      base.map((categoria) => categoria.tipoMovimientoId),
       usuarioId
     ]
   );
@@ -3954,7 +4025,7 @@ app.delete('/movimientos/:id', async (req, res) => {
   }
 });
 
-app.get('/categorias', async (req, res) => {
+app.get('/categorias', autenticar, exigirOperacionHogar, async (req, res) => {
   const hogarId = Number(req.query.hogar_id);
 
   if (!hogarId) {
