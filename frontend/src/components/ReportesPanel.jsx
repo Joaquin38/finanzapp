@@ -3,7 +3,6 @@ import { getCycleContext } from '../utils/cycle.js';
 
 const AGRUPAR_CATEGORIAS_CHICAS = true;
 const UMBRAL_OTROS_PORCENTAJE = 4;
-const WEEK_LABELS = ['Semana 1', 'Semana 2', 'Semana 3', 'Semana 4'];
 
 const REPORTES_BASE = [
   {
@@ -161,60 +160,6 @@ function buildMovementPatternSeries(movimientosPorCiclo = [], cicloActual = '') 
   });
 }
 
-function getWeekIndex(fecha) {
-  const day = Number(String(fecha || '').slice(8, 10));
-  if (day <= 7) return 0;
-  if (day <= 14) return 1;
-  if (day <= 21) return 2;
-  return 3;
-}
-
-function buildWeeklyMovementSummary(movimientos = [], categories = []) {
-  const categoryFilter = new Set(categories.filter(Boolean));
-  const weeks = WEEK_LABELS.map((label) => ({ label, ingresos: 0, egresos: 0, balance: 0 }));
-  movimientos
-    .filter(isConfirmedMovement)
-    .filter((mov) => categoryFilter.size === 0 || categoryFilter.has(mov.categoria || 'Sin categoria'))
-    .forEach((mov) => {
-      const week = weeks[getWeekIndex(mov.fecha)];
-      const amount = Number(mov.monto_ars || 0);
-      if (mov.tipo_movimiento === 'ingreso') week.ingresos += amount;
-      if (['egreso', 'ahorro'].includes(mov.tipo_movimiento)) week.egresos += amount;
-      week.balance = week.ingresos - week.egresos;
-    });
-  return weeks;
-}
-
-function WeeklyBreakdown({ title, subtitle, weeks }) {
-  const max = Math.max(...weeks.flatMap((week) => [week.ingresos, week.egresos, Math.abs(week.balance)]), 1);
-  const total = weeks.reduce((acc, week) => acc + week.ingresos + week.egresos, 0);
-  return (
-    <article className="reportes-weekly-card">
-      <div>
-        <strong>{title}</strong>
-        <small>{subtitle}</small>
-      </div>
-      {total > 0 ? (
-        <div className="reportes-weekly-list">
-          {weeks.map((week) => (
-            <div className="reportes-weekly-row" key={week.label}>
-              <span>{week.label}</span>
-              <div className="reportes-weekly-bars">
-                <em className="income" style={{ width: `${Math.max(4, (week.ingresos / max) * 100)}%` }} />
-                <em className="expense" style={{ width: `${Math.max(4, (week.egresos / max) * 100)}%` }} />
-              </div>
-              <b>{formatMoney(week.egresos)}</b>
-              <small>Ing. {formatMoney(week.ingresos)}</small>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <p className="empty-state">Sin movimientos confirmados para desagregar por semana.</p>
-      )}
-    </article>
-  );
-}
-
 function prepararCategoriasReportes(categorias = [], { agruparChicas = false, umbralPorcentaje = 0 } = {}) {
   const ordenadas = [...categorias].sort((a, b) => Number(b.total || 0) - Number(a.total || 0));
   if (!agruparChicas || ordenadas.length === 0) return ordenadas;
@@ -346,46 +291,6 @@ export default function ReportesPanel({
   const patternComparableCurrent = cicloEnCurso ? patternProjectedCurrent : patternConfirmedCurrent;
   const patternDeviation = patternComparableCurrent - patternHistoricalAverage;
   const patternDeviationPercentage = patternHistoricalAverage > 0 ? (patternDeviation / patternHistoricalAverage) * 100 : null;
-  const patternCategoryDeviation = selectedPatternCategories
-    .map((category) => {
-      const historicalValues = historicalPatternCycles
-        .map((item) => Number(item.confirmed[category] || 0))
-        .filter((value) => value > 0);
-      const average = historicalValues.length > 0
-        ? historicalValues.reduce((acc, value) => acc + value, 0) / historicalValues.length
-        : 0;
-      const currentValue = cicloEnCurso
-        ? Number(currentPatternCycle?.projected?.[category] || 0)
-        : Number(currentPatternCycle?.confirmed?.[category] || 0);
-      return { category, deviation: currentValue - average };
-    })
-    .sort((a, b) => Math.abs(b.deviation) - Math.abs(a.deviation))[0];
-  const patternDeviationThreshold = Math.max(patternHistoricalAverage * 0.1, 1);
-  const patternDirection = patternHistoricalAverage <= 0 || Math.abs(patternDeviation) <= patternDeviationThreshold
-    ? 'dentro'
-    : patternDeviation > 0
-      ? 'encima'
-      : 'debajo';
-  const patternIsCombinedSelection = selectedPatternCategories.length > 1;
-  const patternSelectedLabel = patternIsCombinedSelection ? 'Las categorias seleccionadas' : selectedPatternCategories[0] || 'La categoria';
-  const patternDirectionText = patternIsCombinedSelection
-    ? patternDirection === 'encima'
-      ? 'vienen por encima'
-      : patternDirection === 'debajo'
-        ? 'vienen por debajo'
-        : 'se mantienen dentro'
-    : patternDirection === 'encima'
-      ? 'viene por encima'
-      : patternDirection === 'debajo'
-        ? 'viene por debajo'
-        : 'se mantiene dentro';
-  const patternMainReading = patternHistoricalAverage <= 0
-    ? 'Todavia no hay promedio historico suficiente para comparar estas categorias.'
-    : `${patternSelectedLabel} ${patternDirectionText} del patron reciente. ${
-        patternCategoryDeviation?.category
-          ? `${patternCategoryDeviation.category} explica el mayor desvio.`
-          : 'No hay un desvio dominante.'
-      }`;
   const patternSummaryCards = [
     { key: 'avg', label: 'Promedio historico seleccionado', value: formatMoney(patternHistoricalAverage), hint: `${patternHistoricalTotals.length} periodos con datos` },
     { key: 'actual', label: 'Confirmado actual', value: formatMoney(patternConfirmedCurrent), hint: currentPatternCycle?.label || '-' },
@@ -397,9 +302,6 @@ export default function ReportesPanel({
       hint: patternDeviationPercentage == null ? 'Sin base historica' : formatVariation(patternDeviationPercentage)
     }
   ];
-  const currentCycleMovements = movimientosPorCiclo.find((item) => item.ciclo === ciclo)?.movimientos || [];
-  const tendenciaWeeklySummary = buildWeeklyMovementSummary(currentCycleMovements);
-  const patternWeeklySummary = buildWeeklyMovementSummary(currentCycleMovements, selectedPatternCategories);
   const categoriasOrdenadas = prepararCategoriasReportes(categoriasReportes, {
     agruparChicas: AGRUPAR_CATEGORIAS_CHICAS,
     umbralPorcentaje: UMBRAL_OTROS_PORCENTAJE
@@ -777,6 +679,21 @@ export default function ReportesPanel({
                               className="reportes-pattern-current-band"
                             />
                           )}
+                          {[1, 2, 3].map((week) => {
+                            const left = Math.max(patternChart.left, x - patternStepWidth / 2);
+                            const right = Math.min(patternChart.width - patternChart.right, x + patternStepWidth / 2);
+                            const weekX = left + ((right - left) * week) / 4;
+                            return (
+                              <line
+                                key={`${cycle.ciclo}-week-${week}`}
+                                x1={weekX}
+                                x2={weekX}
+                                y1={patternChart.top}
+                                y2={patternChart.height - patternChart.bottom}
+                                className="reportes-pattern-week-line"
+                              />
+                            );
+                          })}
                           <line x1={x} x2={x} y1={patternChart.top} y2={patternChart.height - patternChart.bottom} className="reportes-pattern-period-line" />
                           <text x={x} y={patternChart.height - 20} textAnchor="middle" className="reportes-trend-axis-label">
                             {cycle.label}
@@ -833,15 +750,6 @@ export default function ReportesPanel({
                     </span>
                   ))}
                 </div>
-                <WeeklyBreakdown
-                  title="Detalle semanal del ciclo"
-                  subtitle="Movimientos confirmados de las categorias seleccionadas."
-                  weeks={patternWeeklySummary}
-                />
-                <article className="reportes-pattern-reading-card">
-                  <span>Lectura del patron</span>
-                  <p>{patternMainReading}</p>
-                </article>
               </div>
             ) : (
               <div className="reportes-empty-state">
@@ -898,6 +806,27 @@ export default function ReportesPanel({
                         className="reportes-trend-hover-line"
                       />
                     )}
+
+                    {evolucionMensual.map((item, index) => (
+                      <g key={`${item.key}-weeks`}>
+                        {[1, 2, 3].map((week) => {
+                          const x = getChartX(index);
+                          const left = Math.max(chartPaddingX, x - chartStepX / 2);
+                          const right = Math.min(chartWidth - chartPaddingX, x + chartStepX / 2);
+                          const weekX = left + ((right - left) * week) / 4;
+                          return (
+                            <line
+                              key={`${item.key}-week-${week}`}
+                              x1={weekX}
+                              x2={weekX}
+                              y1={chartPaddingTop}
+                              y2={chartHeight - chartPaddingBottom}
+                              className="reportes-trend-week-line"
+                            />
+                          );
+                        })}
+                      </g>
+                    ))}
 
                     {trendLines.map((serie) => (
                       <path
@@ -1003,12 +932,6 @@ export default function ReportesPanel({
                   </svg>
                 </div>
               </div>
-
-              <WeeklyBreakdown
-                title="Detalle semanal del ciclo seleccionado"
-                subtitle="Usa fecha efectiva en valores fijos ya pagados/cobrados."
-                weeks={tendenciaWeeklySummary}
-              />
 
               {variacionesTendencia.length > 0 && (
                 <div className="reportes-trend-variation-card">

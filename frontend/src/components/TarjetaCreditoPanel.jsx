@@ -256,30 +256,6 @@ function buildCategoryCurveData(serie = [], selectedCategories = [], periodCount
   return { visibleSerie, maxArs, maxUsd, yTicksArs, yTicksUsd };
 }
 
-function getWeekIndex(fecha) {
-  const day = Number(String(fecha || '').slice(8, 10));
-  if (day <= 7) return 0;
-  if (day <= 14) return 1;
-  if (day <= 21) return 2;
-  return 3;
-}
-
-function buildWeeklyCardCategorySummary(consumos = [], ciclo = '', selectedCategories = []) {
-  const filter = new Set(selectedCategories.filter(Boolean));
-  const weeks = ['Semana 1', 'Semana 2', 'Semana 3', 'Semana 4'].map((label) => ({ label, ars: 0, usd: 0, consumos: 0 }));
-  consumos
-    .filter((item) => item.ciclo_asignado === ciclo)
-    .filter((item) => filter.size === 0 || filter.has(item.categoria || 'Sin categoria'))
-    .forEach((item) => {
-      const week = weeks[getWeekIndex(item.fecha_compra)];
-      const amount = Number(item.monto_cuota || item.monto_total || 0);
-      if (item.moneda === 'USD') week.usd += amount;
-      else week.ars += amount;
-      week.consumos += 1;
-    });
-  return weeks;
-}
-
 function parseAmount(value) {
   return parseDecimalInput(value);
 }
@@ -659,10 +635,6 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
   const categoryCurveData = useMemo(
     () => buildCategoryCurveData(analisisCategorias.serieExtendida, selectedAnalysisCategories, analysisPeriodCount),
     [analisisCategorias.serieExtendida, analysisPeriodCount, selectedAnalysisCategories]
-  );
-  const cardWeeklyCategorySummary = useMemo(
-    () => buildWeeklyCardCategorySummary(consumos, selectedCiclo, selectedAnalysisCategories),
-    [consumos, selectedCiclo, selectedAnalysisCategories]
   );
   const csvImportSteps = ['Subir CSV', 'Revisar consumos', 'Confirmar importacion'];
   const csvExistingCycles = useMemo(
@@ -2234,8 +2206,15 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
               })}
               {categoryCurveData.visibleSerie.map((cycle, index) => {
                 const x = 76 + (index * (804 / Math.max(categoryCurveData.visibleSerie.length - 1, 1)));
+                const step = 804 / Math.max(categoryCurveData.visibleSerie.length - 1, 1);
                 return (
                   <g key={cycle.ciclo}>
+                    {[1, 2, 3].map((week) => {
+                      const left = Math.max(76, x - step / 2);
+                      const right = Math.min(880, x + step / 2);
+                      const weekX = left + ((right - left) * week) / 4;
+                      return <line key={`${cycle.ciclo}-week-${week}`} className="week-line" x1={weekX} x2={weekX} y1="28" y2="190" />;
+                    })}
                     <line className="period-line" x1={x} x2={x} y1="28" y2="190" />
                     <text x={x} y="224">{formatCycleLabel(cycle.ciclo).slice(0, 3)}</text>
                   </g>
@@ -2270,23 +2249,6 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
                 {category}
               </span>
             ))}
-          </div>
-          <div className="tarjeta-weekly-breakdown">
-            <div>
-              <strong>Detalle semanal del resumen</strong>
-              <small>Importe de cuota por fecha de compra para las categorias seleccionadas.</small>
-            </div>
-            {cardWeeklyCategorySummary.some((week) => week.ars > 0 || week.usd > 0) ? (
-              cardWeeklyCategorySummary.map((week) => (
-                <article key={week.label}>
-                  <span>{week.label}</span>
-                  <strong>{formatMoney(week.ars)}</strong>
-                  <small>{formatUsd(week.usd)} - {week.consumos} consumos</small>
-                </article>
-              ))
-            ) : (
-              <p className="empty-state">Sin consumos para desagregar por semana.</p>
-            )}
           </div>
         </div>
         <div className="tarjeta-analysis-block tarjeta-cycle-chart">

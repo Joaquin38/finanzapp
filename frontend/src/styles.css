@@ -2800,8 +2800,7 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
 }
-.reportes-pattern-summary-card,
-.reportes-pattern-reading-card {
+.reportes-pattern-summary-card {
   padding: 12px;
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-md);
@@ -2811,8 +2810,7 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
   display: grid;
   gap: 6px;
 }
-.reportes-pattern-summary-card span,
-.reportes-pattern-reading-card span {
+.reportes-pattern-summary-card span {
   color: var(--reportes-label);
   font-size: 11px;
   font-weight: 800;
@@ -2851,6 +2849,13 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
   stroke-width: 1;
   opacity: 0.52;
 }
+.reportes-pattern-week-line,
+.reportes-trend-week-line {
+  stroke: var(--reportes-chart-grid);
+  stroke-width: 0.8;
+  opacity: 0.2;
+  stroke-dasharray: 2 7;
+}
 .reportes-pattern-current-band {
   fill: var(--primary-soft);
   opacity: 0.18;
@@ -2864,67 +2869,6 @@ input[type='month']::-webkit-calendar-picker-indicator:hover {
   font-size: 10px;
   font-weight: 800;
   text-transform: uppercase;
-}
-.reportes-pattern-reading-card {
-  display: grid;
-  gap: 6px;
-}
-.reportes-pattern-reading-card p {
-  margin: 0;
-  max-width: 920px;
-  color: var(--text-primary);
-  line-height: 1.45;
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-.reportes-weekly-card {
-  display: grid;
-  gap: 12px;
-  padding: 14px;
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius-md);
-  background: var(--surface-elevated);
-}
-.reportes-weekly-card > div:first-child {
-  display: grid;
-  gap: 4px;
-}
-.reportes-weekly-card strong {
-  color: var(--text-primary);
-}
-.reportes-weekly-card small {
-  color: var(--text-muted);
-}
-.reportes-weekly-list {
-  display: grid;
-  gap: 8px;
-}
-.reportes-weekly-row {
-  display: grid;
-  grid-template-columns: 80px minmax(120px, 1fr) minmax(110px, auto) minmax(110px, auto);
-  gap: 10px;
-  align-items: center;
-  padding: 8px 10px;
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-}
-.reportes-weekly-bars {
-  display: grid;
-  gap: 3px;
-}
-.reportes-weekly-bars em {
-  display: block;
-  height: 5px;
-  border-radius: 999px;
-}
-.reportes-weekly-bars .income {
-  background: var(--success);
-}
-.reportes-weekly-bars .expense {
-  background: var(--danger);
 }
 .reportes-trend-card {
   padding: 18px;
@@ -5322,6 +5266,10 @@ tbody tr.row-proyectado:hover { background: color-mix(in srgb, var(--primary) 9%
   stroke-dasharray: 3 5;
   opacity: 0.4;
 }
+.tarjeta-category-curve-chart .week-line {
+  stroke-dasharray: 2 7;
+  opacity: 0.2;
+}
 .tarjeta-category-curve-chart path {
   fill: none;
   stroke-width: 1.8;
@@ -5363,36 +5311,6 @@ tbody tr.row-proyectado:hover { background: color-mix(in srgb, var(--primary) 9%
   height: 8px;
   border-radius: 999px;
   background: var(--curve-color);
-}
-.tarjeta-weekly-breakdown {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  padding: 12px;
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius-md);
-  background: var(--surface-elevated);
-}
-.tarjeta-weekly-breakdown > div {
-  grid-column: 1 / -1;
-  display: grid;
-  gap: 4px;
-}
-.tarjeta-weekly-breakdown article {
-  display: grid;
-  gap: 5px;
-  padding: 10px;
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-}
-.tarjeta-weekly-breakdown span,
-.tarjeta-weekly-breakdown small {
-  color: var(--text-muted);
-  font-size: 12px;
-}
-.tarjeta-weekly-breakdown strong {
-  color: var(--text-primary);
 }
 .tarjeta-category-bars {
   display: grid;
@@ -7316,13 +7234,6 @@ tbody tr.row-proyectado:hover { background: color-mix(in srgb, var(--primary) 9%
     grid-template-columns: 1fr;
   }
   .reportes-pattern-summary-grid {
-    grid-template-columns: 1fr;
-  }
-  .reportes-weekly-row {
-    grid-template-columns: 1fr;
-    align-items: stretch;
-  }
-  .tarjeta-weekly-breakdown {
     grid-template-columns: 1fr;
   }
   .reportes-trend-header,
