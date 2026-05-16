@@ -202,6 +202,7 @@ export default function App() {
     fechaDesde: '',
     fechaHasta: '',
     tipoMovimiento: '',
+    estado: '',
     categoria: '',
     busqueda: ''
   });
@@ -1135,6 +1136,9 @@ export default function App() {
     }
     if (filtrosGrilla.categoria) {
       items = items.filter((mov) => String(mov.categoria || '') === filtrosGrilla.categoria);
+    }
+    if (filtrosGrilla.estado) {
+      items = items.filter((mov) => String(getEstadoMovimiento(mov) || mov.estado_consolidado || '') === filtrosGrilla.estado);
     }
     if (filtrosGrilla.busqueda?.trim()) {
       const textoBusqueda = filtrosGrilla.busqueda.trim().toLocaleLowerCase('es-AR');

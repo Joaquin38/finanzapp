@@ -244,6 +244,17 @@ export default function MovimientosTable({
             ))}
           </select>
         </label>
+        <label className="table-select-filter">
+          Estado
+          <select value={filtros.estado || ''} onChange={(e) => onFiltrosChange((prev) => ({ ...prev, estado: e.target.value }))}>
+            <option value="">Todos</option>
+            <option value="pendiente">Pendiente</option>
+            <option value="proyectado">Proyectado</option>
+            <option value="pagado">Pagado</option>
+            <option value="registrado">Registrado</option>
+            <option value="cobrado">Cobrado</option>
+          </select>
+        </label>
         </div>
       )}
       <div className="table-wrapper">
