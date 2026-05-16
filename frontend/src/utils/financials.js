@@ -54,6 +54,12 @@ function getFechaProyectada(ciclo, diaVencimiento) {
   return new Date(anioNumero, mesNumero, dia).toISOString().slice(0, 10);
 }
 
+function esEstadoRealizado(item) {
+  if (item.tipo_movimiento === 'egreso') return item.estado_egreso === 'pagado';
+  if (item.tipo_movimiento === 'ingreso') return item.estado_ingreso === 'registrado';
+  return false;
+}
+
 export function construirMovimientosConsolidadosDelCiclo({
   movimientos = [],
   gastosFijos = [],
@@ -69,11 +75,17 @@ export function construirMovimientosConsolidadosDelCiclo({
     .map((item) => {
       const montoVigente = Number(item.monto_vigente ?? item.monto_base ?? 0);
       const montoConvertido = item.moneda === 'USD' && ventaOficial > 0 ? montoVigente * ventaOficial : montoVigente;
+      const fechaProgramada = getFechaProyectada(ciclo, item.dia_vencimiento);
+      const fechaRealizacion = String(item.fecha_realizacion || '').slice(0, 10);
+      const usarFechaReal = fechaRealizacion && esEstadoRealizado(item);
 
       return {
         id: `valor-fijo-${item.id}`,
         gasto_fijo_id: item.id,
-        fecha: getFechaProyectada(ciclo, item.dia_vencimiento),
+        fecha: usarFechaReal ? fechaRealizacion : fechaProgramada,
+        fecha_programada: fechaProgramada,
+        fecha_realizacion: usarFechaReal ? fechaRealizacion : '',
+        fecha_estado: String(item.fecha_estado || '').slice(0, 10),
         tipo_movimiento_id:
           item.tipo_movimiento === 'ingreso' ? 1 : item.tipo_movimiento === 'ahorro' ? 3 : 2,
         categoria_id: item.categoria_id ?? null,

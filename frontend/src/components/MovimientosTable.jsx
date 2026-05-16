@@ -100,6 +100,17 @@ export default function MovimientosTable({
     );
   };
   const sortIndicator = (campo) => (orden.campo === campo ? (orden.direccion === 'asc' ? ' ▲' : ' ▼') : '');
+  const renderFechaMovimiento = (mov) => (
+    <div className="movement-date-stack">
+      <span>{formatFecha(mov.fecha)}</span>
+      {mov.esProyectado && mov.fecha_programada && mov.fecha_programada !== mov.fecha && (
+        <small>Programada {formatFecha(mov.fecha_programada)}</small>
+      )}
+      {mov.esProyectado && !mov.fecha_realizacion && mov.fecha_estado && (
+        <small>Ult. cambio {formatFecha(mov.fecha_estado)}</small>
+      )}
+    </div>
+  );
   const toggleSort = (campo) => {
     onOrdenChange((prev) => {
       if (prev.campo === campo) {
@@ -276,7 +287,7 @@ export default function MovimientosTable({
                 <td>
                   <div className="movement-date-cell">
                     {renderAuditoria(mov)}
-                    <span>{formatFecha(mov.fecha)}</span>
+                    {renderFechaMovimiento(mov)}
                   </div>
                 </td>
                 <td>
@@ -377,6 +388,13 @@ export default function MovimientosTable({
                 <span className="movement-mobile-date">{formatFecha(mov.fecha)}</span>
                 <strong className="movement-mobile-amount">{formatMoney(mov.monto_ars)}</strong>
               </div>
+              {mov.esProyectado && (mov.fecha_programada !== mov.fecha || (!mov.fecha_realizacion && mov.fecha_estado)) && (
+                <small className="movement-mobile-fixed-date">
+                  {mov.fecha_programada !== mov.fecha
+                    ? `Programada ${formatFecha(mov.fecha_programada)}`
+                    : `Ult. cambio ${formatFecha(mov.fecha_estado)}`}
+                </small>
+              )}
               <div className="movement-mobile-main">
                 <strong>{mov.categoria || '-'}</strong>
                 <span>{mov.descripcion || '-'}</span>

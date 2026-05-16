@@ -3,6 +3,7 @@ import { getCycleContext } from '../utils/cycle.js';
 
 const AGRUPAR_CATEGORIAS_CHICAS = true;
 const UMBRAL_OTROS_PORCENTAJE = 4;
+const WEEK_LABELS = ['Semana 1', 'Semana 2', 'Semana 3', 'Semana 4'];
 
 const REPORTES_BASE = [
   {
@@ -158,6 +159,60 @@ function buildMovementPatternSeries(movimientosPorCiclo = [], cicloActual = '') 
     });
     return { ciclo, label: formatCycleLabel(ciclo), confirmed, projected: ciclo === cicloActual ? projected : null };
   });
+}
+
+function getWeekIndex(fecha) {
+  const day = Number(String(fecha || '').slice(8, 10));
+  if (day <= 7) return 0;
+  if (day <= 14) return 1;
+  if (day <= 21) return 2;
+  return 3;
+}
+
+function buildWeeklyMovementSummary(movimientos = [], categories = []) {
+  const categoryFilter = new Set(categories.filter(Boolean));
+  const weeks = WEEK_LABELS.map((label) => ({ label, ingresos: 0, egresos: 0, balance: 0 }));
+  movimientos
+    .filter(isConfirmedMovement)
+    .filter((mov) => categoryFilter.size === 0 || categoryFilter.has(mov.categoria || 'Sin categoria'))
+    .forEach((mov) => {
+      const week = weeks[getWeekIndex(mov.fecha)];
+      const amount = Number(mov.monto_ars || 0);
+      if (mov.tipo_movimiento === 'ingreso') week.ingresos += amount;
+      if (['egreso', 'ahorro'].includes(mov.tipo_movimiento)) week.egresos += amount;
+      week.balance = week.ingresos - week.egresos;
+    });
+  return weeks;
+}
+
+function WeeklyBreakdown({ title, subtitle, weeks }) {
+  const max = Math.max(...weeks.flatMap((week) => [week.ingresos, week.egresos, Math.abs(week.balance)]), 1);
+  const total = weeks.reduce((acc, week) => acc + week.ingresos + week.egresos, 0);
+  return (
+    <article className="reportes-weekly-card">
+      <div>
+        <strong>{title}</strong>
+        <small>{subtitle}</small>
+      </div>
+      {total > 0 ? (
+        <div className="reportes-weekly-list">
+          {weeks.map((week) => (
+            <div className="reportes-weekly-row" key={week.label}>
+              <span>{week.label}</span>
+              <div className="reportes-weekly-bars">
+                <em className="income" style={{ width: `${Math.max(4, (week.ingresos / max) * 100)}%` }} />
+                <em className="expense" style={{ width: `${Math.max(4, (week.egresos / max) * 100)}%` }} />
+              </div>
+              <b>{formatMoney(week.egresos)}</b>
+              <small>Ing. {formatMoney(week.ingresos)}</small>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="empty-state">Sin movimientos confirmados para desagregar por semana.</p>
+      )}
+    </article>
+  );
 }
 
 function prepararCategoriasReportes(categorias = [], { agruparChicas = false, umbralPorcentaje = 0 } = {}) {
@@ -338,6 +393,9 @@ export default function ReportesPanel({
       hint: patternDeviationPercentage == null ? 'Sin base historica' : formatVariation(patternDeviationPercentage)
     }
   ];
+  const currentCycleMovements = movimientosPorCiclo.find((item) => item.ciclo === ciclo)?.movimientos || [];
+  const tendenciaWeeklySummary = buildWeeklyMovementSummary(currentCycleMovements);
+  const patternWeeklySummary = buildWeeklyMovementSummary(currentCycleMovements, selectedPatternCategories);
   const categoriasOrdenadas = prepararCategoriasReportes(categoriasReportes, {
     agruparChicas: AGRUPAR_CATEGORIAS_CHICAS,
     umbralPorcentaje: UMBRAL_OTROS_PORCENTAJE
@@ -771,6 +829,11 @@ export default function ReportesPanel({
                     </span>
                   ))}
                 </div>
+                <WeeklyBreakdown
+                  title="Detalle semanal del ciclo"
+                  subtitle="Movimientos confirmados de las categorias seleccionadas."
+                  weeks={patternWeeklySummary}
+                />
                 <article className="reportes-pattern-reading-card">
                   <span>Lectura del patron</span>
                   <p>{patternMainReading}</p>
@@ -936,6 +999,12 @@ export default function ReportesPanel({
                   </svg>
                 </div>
               </div>
+
+              <WeeklyBreakdown
+                title="Detalle semanal del ciclo seleccionado"
+                subtitle="Usa fecha efectiva en valores fijos ya pagados/cobrados."
+                weeks={tendenciaWeeklySummary}
+              />
 
               {variacionesTendencia.length > 0 && (
                 <div className="reportes-trend-variation-card">

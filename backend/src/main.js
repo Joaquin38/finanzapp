@@ -116,6 +116,10 @@ function fechaIso(value) {
   return String(value).slice(0, 10);
 }
 
+function fechaHoyArgentina() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date());
+}
+
 function esNumeroPositivo(value) {
   const number = Number(value);
   return Number.isFinite(number) && number > 0;
@@ -1469,6 +1473,25 @@ async function asegurarEstadosGastosFijosPorCiclo() {
       actualizado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE (gasto_fijo_id, ciclo)
     )
+  `);
+  await pool.query(`
+    ALTER TABLE estados_gastos_fijos_ciclo
+    ADD COLUMN IF NOT EXISTS fecha_estado DATE
+  `);
+  await pool.query(`
+    ALTER TABLE estados_gastos_fijos_ciclo
+    ADD COLUMN IF NOT EXISTS fecha_realizacion DATE
+  `);
+  await pool.query(`
+    UPDATE estados_gastos_fijos_ciclo
+    SET fecha_estado = COALESCE(fecha_estado, actualizado_en::date, creado_en::date)
+    WHERE fecha_estado IS NULL
+  `);
+  await pool.query(`
+    UPDATE estados_gastos_fijos_ciclo
+    SET fecha_realizacion = COALESCE(fecha_realizacion, actualizado_en::date, creado_en::date)
+    WHERE fecha_realizacion IS NULL
+      AND (estado_egreso = 'pagado' OR estado_ingreso = 'registrado')
   `);
 }
 
@@ -4423,7 +4446,7 @@ async function obtenerGastosFijosCiclo(hogarId, cicloConsulta) {
     ),
     pool.query(
       `
-      SELECT gasto_fijo_id, estado_egreso, estado_ingreso
+      SELECT gasto_fijo_id, estado_egreso, estado_ingreso, fecha_estado, fecha_realizacion
       FROM estados_gastos_fijos_ciclo
       WHERE gasto_fijo_id = ANY($1::bigint[])
         AND ciclo = $2
@@ -4462,6 +4485,8 @@ async function obtenerGastosFijosCiclo(hogarId, cicloConsulta) {
       ajuste_en_ciclo: gastosConAjusteCiclo.has(id),
       estado_egreso: estadoCiclo.estado_egreso || null,
       estado_ingreso: estadoCiclo.estado_ingreso || null,
+      fecha_estado: fechaIso(estadoCiclo.fecha_estado),
+      fecha_realizacion: fechaIso(estadoCiclo.fecha_realizacion),
       monto_vigente: Number(montoVigente.toFixed(2))
     };
   });
@@ -5055,22 +5080,28 @@ app.patch('/gastos-fijos/:id/estado-ciclo', async (req, res) => {
       return res.status(403).json({ error: 'No tenes permisos para operar este valor fijo' });
     }
 
+    const fechaEstado = fechaHoyArgentina();
+    const fechaRealizacion =
+      estado_egreso === 'pagado' || estado_ingreso === 'registrado' ? fechaEstado : null;
+
     const { rows } = await pool.query(
       `
       INSERT INTO estados_gastos_fijos_ciclo (
         gasto_fijo_id, ciclo, estado_egreso, estado_ingreso,
-        creado_por_usuario_id, actualizado_por_usuario_id
+        fecha_estado, fecha_realizacion, creado_por_usuario_id, actualizado_por_usuario_id
       )
-      VALUES ($1, $2, $3, $4, $5, $5)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
       ON CONFLICT (gasto_fijo_id, ciclo)
       DO UPDATE SET
         estado_egreso = COALESCE(EXCLUDED.estado_egreso, estados_gastos_fijos_ciclo.estado_egreso),
         estado_ingreso = COALESCE(EXCLUDED.estado_ingreso, estados_gastos_fijos_ciclo.estado_ingreso),
+        fecha_estado = EXCLUDED.fecha_estado,
+        fecha_realizacion = EXCLUDED.fecha_realizacion,
         actualizado_por_usuario_id = EXCLUDED.actualizado_por_usuario_id,
         actualizado_en = NOW()
-      RETURNING id, gasto_fijo_id, ciclo, estado_egreso, estado_ingreso
+      RETURNING id, gasto_fijo_id, ciclo, estado_egreso, estado_ingreso, fecha_estado, fecha_realizacion
       `,
-      [gastoFijoId, ciclo, estado_egreso ?? null, estado_ingreso ?? null, usuarioAuditoriaId(req)]
+      [gastoFijoId, ciclo, estado_egreso ?? null, estado_ingreso ?? null, fechaEstado, fechaRealizacion, usuarioAuditoriaId(req)]
     );
 
     return res.status(200).json({ ok: true, estado_ciclo: rows[0] });

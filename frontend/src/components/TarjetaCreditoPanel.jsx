@@ -256,6 +256,30 @@ function buildCategoryCurveData(serie = [], selectedCategories = [], periodCount
   return { visibleSerie, maxArs, maxUsd, yTicksArs, yTicksUsd };
 }
 
+function getWeekIndex(fecha) {
+  const day = Number(String(fecha || '').slice(8, 10));
+  if (day <= 7) return 0;
+  if (day <= 14) return 1;
+  if (day <= 21) return 2;
+  return 3;
+}
+
+function buildWeeklyCardCategorySummary(consumos = [], ciclo = '', selectedCategories = []) {
+  const filter = new Set(selectedCategories.filter(Boolean));
+  const weeks = ['Semana 1', 'Semana 2', 'Semana 3', 'Semana 4'].map((label) => ({ label, ars: 0, usd: 0, consumos: 0 }));
+  consumos
+    .filter((item) => item.ciclo_asignado === ciclo)
+    .filter((item) => filter.size === 0 || filter.has(item.categoria || 'Sin categoria'))
+    .forEach((item) => {
+      const week = weeks[getWeekIndex(item.fecha_compra)];
+      const amount = Number(item.monto_cuota || item.monto_total || 0);
+      if (item.moneda === 'USD') week.usd += amount;
+      else week.ars += amount;
+      week.consumos += 1;
+    });
+  return weeks;
+}
+
 function parseAmount(value) {
   return parseDecimalInput(value);
 }
@@ -635,6 +659,10 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
   const categoryCurveData = useMemo(
     () => buildCategoryCurveData(analisisCategorias.serieExtendida, selectedAnalysisCategories, analysisPeriodCount),
     [analisisCategorias.serieExtendida, analysisPeriodCount, selectedAnalysisCategories]
+  );
+  const cardWeeklyCategorySummary = useMemo(
+    () => buildWeeklyCardCategorySummary(consumos, selectedCiclo, selectedAnalysisCategories),
+    [consumos, selectedCiclo, selectedAnalysisCategories]
   );
   const csvImportSteps = ['Subir CSV', 'Revisar consumos', 'Confirmar importacion'];
   const csvExistingCycles = useMemo(
@@ -2242,6 +2270,23 @@ export default function TarjetaCreditoPanel({ hogarId, ciclo = '', categorias = 
                 {category}
               </span>
             ))}
+          </div>
+          <div className="tarjeta-weekly-breakdown">
+            <div>
+              <strong>Detalle semanal del resumen</strong>
+              <small>Importe de cuota por fecha de compra para las categorias seleccionadas.</small>
+            </div>
+            {cardWeeklyCategorySummary.some((week) => week.ars > 0 || week.usd > 0) ? (
+              cardWeeklyCategorySummary.map((week) => (
+                <article key={week.label}>
+                  <span>{week.label}</span>
+                  <strong>{formatMoney(week.ars)}</strong>
+                  <small>{formatUsd(week.usd)} - {week.consumos} consumos</small>
+                </article>
+              ))
+            ) : (
+              <p className="empty-state">Sin consumos para desagregar por semana.</p>
+            )}
           </div>
         </div>
         <div className="tarjeta-analysis-block tarjeta-cycle-chart">
