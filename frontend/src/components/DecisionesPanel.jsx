@@ -443,12 +443,16 @@ function getHistoricalVariablePattern(movimientosHistoricos = []) {
 
   const categoryAverages = new Map();
   totalsByCategory.forEach((valuesByCycle, category) => {
-    const total = cycles.reduce((acc, cycle) => acc + Number(valuesByCycle.get(cycle) || 0), 0);
-    categoryAverages.set(category, cycles.length > 0 ? total / cycles.length : 0);
+    const values = cycles
+      .map((cycle) => Number(valuesByCycle.get(cycle) || 0))
+      .filter((value) => value > 0);
+    const total = values.reduce((acc, value) => acc + value, 0);
+    categoryAverages.set(category, values.length > 0 ? total / values.length : 0);
   });
 
-  const totalAverage = cycles.length > 0
-    ? cycles.reduce((acc, cycle) => acc + Number(totalsByCycle.get(cycle) || 0), 0) / cycles.length
+  const cycleTotalsWithData = cycles.map((cycle) => Number(totalsByCycle.get(cycle) || 0)).filter((value) => value > 0);
+  const totalAverage = cycleTotalsWithData.length > 0
+    ? cycleTotalsWithData.reduce((acc, value) => acc + value, 0) / cycleTotalsWithData.length
     : 0;
   const variableCycles = cycles.filter((cycle) => Number(totalsByCycle.get(cycle) || 0) > 0).length;
   const confianza = cycles.length >= 3 && variableCycles >= 2 ? 'alta' : cycles.length >= 2 ? 'media' : 'baja';
@@ -759,7 +763,10 @@ function CategoryTrendsCard({ movimientos = [], movimientosHistoricos = [], form
     .sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))
     .slice(0, 5)
     .map(([categoria, actual]) => {
-      const monthlyValues = historicalCycles.slice(-3).map((cycle) => Number(historicalByCategory[categoria]?.[cycle] || 0));
+      const monthlyValues = historicalCycles
+        .slice(-3)
+        .map((cycle) => Number(historicalByCategory[categoria]?.[cycle] || 0))
+        .filter((value) => value > 0);
       const promedio = monthlyValues.length > 0
         ? monthlyValues.reduce((acc, value) => acc + value, 0) / monthlyValues.length
         : 0;
@@ -814,7 +821,10 @@ function getHistoricalAverageForCategory(categoria, movimientosHistoricos = []) 
       return acc;
     }, {});
   const recentCycles = cycles.slice(-3);
-  const values = recentCycles.map((cycle) => Number(totalsByCycle[cycle] || 0));
+  const values = recentCycles
+    .map((cycle) => Number(totalsByCycle[cycle] || 0))
+    .filter((value) => value > 0);
+  if (values.length === 0) return 0;
 
   return values.reduce((acc, value) => acc + value, 0) / values.length;
 }

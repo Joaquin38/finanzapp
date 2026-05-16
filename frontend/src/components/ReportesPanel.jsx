@@ -335,7 +335,9 @@ export default function ReportesPanel({
   const historicalPatternCycles = visiblePatternSeries.filter((item) => item.ciclo !== currentPatternCycle?.ciclo);
   const getPatternTotal = (cycle, key = 'confirmed') =>
     selectedPatternCategories.reduce((acc, category) => acc + Number(cycle?.[key]?.[category] || 0), 0);
-  const patternHistoricalTotals = historicalPatternCycles.map((item) => getPatternTotal(item, 'confirmed'));
+  const patternHistoricalTotals = historicalPatternCycles
+    .map((item) => getPatternTotal(item, 'confirmed'))
+    .filter((value) => Number(value || 0) > 0);
   const patternHistoricalAverage = patternHistoricalTotals.length > 0
     ? patternHistoricalTotals.reduce((acc, value) => acc + value, 0) / patternHistoricalTotals.length
     : 0;
@@ -346,7 +348,9 @@ export default function ReportesPanel({
   const patternDeviationPercentage = patternHistoricalAverage > 0 ? (patternDeviation / patternHistoricalAverage) * 100 : null;
   const patternCategoryDeviation = selectedPatternCategories
     .map((category) => {
-      const historicalValues = historicalPatternCycles.map((item) => Number(item.confirmed[category] || 0));
+      const historicalValues = historicalPatternCycles
+        .map((item) => Number(item.confirmed[category] || 0))
+        .filter((value) => value > 0);
       const average = historicalValues.length > 0
         ? historicalValues.reduce((acc, value) => acc + value, 0) / historicalValues.length
         : 0;
@@ -383,7 +387,7 @@ export default function ReportesPanel({
           : 'No hay un desvio dominante.'
       }`;
   const patternSummaryCards = [
-    { key: 'avg', label: 'Promedio historico seleccionado', value: formatMoney(patternHistoricalAverage), hint: `${historicalPatternCycles.length} periodos base` },
+    { key: 'avg', label: 'Promedio historico seleccionado', value: formatMoney(patternHistoricalAverage), hint: `${patternHistoricalTotals.length} periodos con datos` },
     { key: 'actual', label: 'Confirmado actual', value: formatMoney(patternConfirmedCurrent), hint: currentPatternCycle?.label || '-' },
     { key: 'projected', label: 'Proyectado al cierre', value: formatMoney(patternProjectedCurrent), hint: cicloEnCurso ? 'Incluye pendiente/proyectado' : 'Ciclo cerrado' },
     {

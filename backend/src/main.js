@@ -1351,12 +1351,19 @@ function construirAnalisisTarjeta(consumosExpandidos, historialResumenes, cicloS
   anteriores.forEach((item) => {
     item.categorias.forEach((categoria) => {
       if (!categoriasPrevias.has(categoria.categoria)) {
-        categoriasPrevias.set(categoria.categoria, { total_ars: 0, total_usd: 0, muestras: 0 });
+        categoriasPrevias.set(categoria.categoria, { total_ars: 0, total_usd: 0, muestras_ars: 0, muestras_usd: 0 });
       }
       const bucket = categoriasPrevias.get(categoria.categoria);
-      bucket.total_ars += Number(categoria.total_ars || 0);
-      bucket.total_usd += Number(categoria.total_usd || 0);
-      bucket.muestras += 1;
+      const totalArsCategoria = Number(categoria.total_ars || 0);
+      const totalUsdCategoria = Number(categoria.total_usd || 0);
+      if (totalArsCategoria > 0) {
+        bucket.total_ars += totalArsCategoria;
+        bucket.muestras_ars += 1;
+      }
+      if (totalUsdCategoria > 0) {
+        bucket.total_usd += totalUsdCategoria;
+        bucket.muestras_usd += 1;
+      }
     });
   });
 
@@ -1365,9 +1372,9 @@ function construirAnalisisTarjeta(consumosExpandidos, historialResumenes, cicloS
     ...Array.from(categoriasPrevias.keys())
   ])).map((categoria) => {
     const actualCategoria = actual.categorias.find((item) => item.categoria === categoria) || { total_ars: 0, total_usd: 0, consumos: 0 };
-    const previa = categoriasPrevias.get(categoria) || { total_ars: 0, total_usd: 0, muestras: 0 };
-    const promedioCategoriaArs = previa.muestras > 0 ? previa.total_ars / previa.muestras : 0;
-    const promedioCategoriaUsd = previa.muestras > 0 ? previa.total_usd / previa.muestras : 0;
+    const previa = categoriasPrevias.get(categoria) || { total_ars: 0, total_usd: 0, muestras_ars: 0, muestras_usd: 0 };
+    const promedioCategoriaArs = previa.muestras_ars > 0 ? previa.total_ars / previa.muestras_ars : 0;
+    const promedioCategoriaUsd = previa.muestras_usd > 0 ? previa.total_usd / previa.muestras_usd : 0;
     return {
       categoria,
       actual_ars: actualCategoria.total_ars,
